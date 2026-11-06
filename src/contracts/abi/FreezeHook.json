@@ -1,0 +1,34 @@
+[
+  {
+    "name": "claimOfPool",
+    "type": "function",
+    "stateMutability": "view",
+    "inputs": [
+      {
+        "type": "bytes32",
+        "name": "poolId"
+      }
+    ],
+    "outputs": [
+      {
+        "type": "uint256",
+        "name": "claimId"
+      }
+    ]
+  },
+  {
+    "name": "ImpliedOdds",
+    "type": "event",
+    "inputs": [
+      {
+        "type": "uint256",
+        "name": "claimId",
+        "indexed": true
+      },
+      {
+        "type": "uint256",
+        "name": "forPriceX18"
+      }
+    ]
+  }
+]

@@ -12,3 +12,5 @@
 ✓ Compiled in 368ms
  GET /styleguide 200 in 52ms (next.js: 7ms, application-code: 45ms)
  GET /styleguide 200 in 24ms (next.js: 1.7ms, application-code: 22ms)
+✓ Compiled in 364ms
+  Turbopack has seen frequent file updates and is waiting for the filesystem to settle (0.5s elapsed so far; last modified: "/Users/prayant/Project-2/EthGlobal-Mumbai/ScoobyDAO/ScoobyDAO-web/node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/results.json").

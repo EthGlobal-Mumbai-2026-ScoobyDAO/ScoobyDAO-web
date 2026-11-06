@@ -1,0 +1,214 @@
+[
+  {
+    "name": "register",
+    "type": "function",
+    "stateMutability": "nonpayable",
+    "inputs": [
+      {
+        "type": "address",
+        "name": "token"
+      },
+      {
+        "type": "bytes32",
+        "name": "manifestHash"
+      },
+      {
+        "type": "bytes32",
+        "name": "approvalId"
+      },
+      {
+        "type": "uint64",
+        "name": "windowSeconds"
+      },
+      {
+        "type": "address[]",
+        "name": "excluded"
+      }
+    ],
+    "outputs": [
+      {
+        "type": "uint256",
+        "name": "claimId"
+      }
+    ]
+  },
+  {
+    "name": "trigger",
+    "type": "function",
+    "stateMutability": "nonpayable",
+    "inputs": [
+      {
+        "type": "uint256",
+        "name": "claimId"
+      },
+      {
+        "type": "bytes32",
+        "name": "evidenceHash"
+      }
+    ],
+    "outputs": []
+  },
+  {
+    "name": "resolve",
+    "type": "function",
+    "stateMutability": "nonpayable",
+    "inputs": [
+      {
+        "type": "uint256",
+        "name": "claimId"
+      }
+    ],
+    "outputs": []
+  },
+  {
+    "name": "getClaim",
+    "type": "function",
+    "stateMutability": "view",
+    "inputs": [
+      {
+        "type": "uint256",
+        "name": "claimId"
+      }
+    ],
+    "outputs": [
+      {
+        "type": "tuple",
+        "components": [
+          {
+            "type": "address",
+            "name": "token"
+          },
+          {
+            "type": "bytes32",
+            "name": "manifestHash"
+          },
+          {
+            "type": "bytes32",
+            "name": "approvalId"
+          },
+          {
+            "type": "uint64",
+            "name": "openedAt"
+          },
+          {
+            "type": "uint64",
+            "name": "windowEnd"
+          },
+          {
+            "type": "uint64",
+            "name": "frozenAt"
+          },
+          {
+            "type": "uint8",
+            "name": "status"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "isExcluded",
+    "type": "function",
+    "stateMutability": "view",
+    "inputs": [
+      {
+        "type": "uint256",
+        "name": "claimId"
+      },
+      {
+        "type": "address",
+        "name": "who"
+      }
+    ],
+    "outputs": [
+      {
+        "type": "bool"
+      }
+    ]
+  },
+  {
+    "name": "commitsOpen",
+    "type": "function",
+    "stateMutability": "view",
+    "inputs": [
+      {
+        "type": "uint256",
+        "name": "claimId"
+      }
+    ],
+    "outputs": [
+      {
+        "type": "bool"
+      }
+    ]
+  },
+  {
+    "name": "revealPeriod",
+    "type": "function",
+    "stateMutability": "view",
+    "inputs": [],
+    "outputs": [
+      {
+        "type": "uint64"
+      }
+    ]
+  },
+  {
+    "name": "ClaimRegistered",
+    "type": "event",
+    "inputs": [
+      {
+        "type": "uint256",
+        "name": "claimId",
+        "indexed": true
+      },
+      {
+        "type": "address",
+        "name": "token",
+        "indexed": true
+      },
+      {
+        "type": "bytes32",
+        "name": "manifestHash"
+      },
+      {
+        "type": "bytes32",
+        "name": "approvalId"
+      }
+    ]
+  },
+  {
+    "name": "ClaimTriggered",
+    "type": "event",
+    "inputs": [
+      {
+        "type": "uint256",
+        "name": "claimId",
+        "indexed": true
+      },
+      {
+        "type": "bytes32",
+        "name": "evidenceHash"
+      },
+      {
+        "type": "uint64",
+        "name": "at"
+      }
+    ]
+  },
+  {
+    "name": "ClaimResolved",
+    "type": "event",
+    "inputs": [
+      {
+        "type": "uint256",
+        "name": "claimId",
+        "indexed": true
+      },
+      {
+        "type": "uint8",
+        "name": "outcome"
+      }
+    ]
+  }
+]
