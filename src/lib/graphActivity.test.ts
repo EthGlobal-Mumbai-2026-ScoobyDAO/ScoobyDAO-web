@@ -67,4 +67,21 @@ describe('historical Graph capture boundary', () => {
     expect(parseGraphActivity(v, token)?.status).toBe('unknown');
     expect(parseGraphActivity({ ...v, volume_inr: '0' }, token)).toBeNull();
   });
+  it('rejects the unintegrated partial-hour proposal rather than interpreting it as a pass', () => {
+    expect(
+      parseGraphActivity(
+        {
+          ...activity,
+          profile: 'scooby.graph-activity-30d/2-proposal',
+          status: 'observed_source_volume_at_least_threshold',
+          volume_usd: null,
+          volume_inr: null,
+          observed_volume_usd: '120000',
+          observed_volume_inr: '11000000',
+          coverage: { expected_hours: 720, observed_hours: 669 },
+        },
+        token,
+      ),
+    ).toBeNull();
+  });
 });
