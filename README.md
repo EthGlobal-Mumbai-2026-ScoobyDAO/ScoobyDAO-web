@@ -1,5 +1,7 @@
 # Unmasked (web)
 
+**Live V2 app:** [scoobydao-web.vercel.app](https://scoobydao-web.vercel.app) · [Vercel project](https://vercel.com/dwaipayan25s-projects/scoobydao-web)
+
 Frontend for **Unmasked** (ETHGlobal Mumbai 2026). AI agents and an original detective-hound mascot, Sniff, research suspicious tokens and write a five-pillar report. A reviewed report is published to a `ReportRegistry`, and anyone stakes **dUSD** on **Yes** or **No**, directly on Ethereum Sepolia or from Arbitrum Sepolia over Chainlink CCIP. Each stake records a non-transferable Yes/No position and mints the same amount of a transferable **yield token (YT)**, which trades on a Uniswap v4 hook market until maturity. After maturity a proposed result can be challenged before anyone finalizes it.
 
 The live default is the deployed **RiskFi V2** demo (report #1 on Ethereum Sepolia, CCIP sender on Arbitrum Sepolia), driven only by the contracts handoff bundle in `../v2`. `/reports` is a separate read-only research library, empty unless `NEXT_PUBLIC_REPORT_API_URL` points at a trusted research API (see [LIVE-STATE.md](LIVE-STATE.md) and [HANDOFF-REPORTS.md](HANDOFF-REPORTS.md)).
@@ -30,7 +32,8 @@ npm run dev                     # http://localhost:3000
 | `NEXT_PUBLIC_PROTOCOL` | `v2` (default, the deployed demo) or `v1` |
 | `NEXT_PUBLIC_SEPOLIA_RPC_URL` · `NEXT_PUBLIC_ARB_SEPOLIA_RPC_URL` | **Use dedicated read-only RPCs.** Public RPCs cap `eth_getLogs` (viem's default Sepolia RPC allows 1,000 blocks per request; some prune old logs). The app keeps every log read in bounded 1,000-block chunks, but rate limits still bite during a demo. These URLs ship to the browser: restrict the keys. |
 | `NEXT_PUBLIC_CCIP_API` | Chainlink CCIP message API (default `https://api.ccip.chain.link`) |
-| `NEXT_PUBLIC_API_URL` | backend `/web/v1` for case files and approvals |
+| `NEXT_PUBLIC_BACKEND_API_URL` | deployed backend `/web/v1` upstream used by the Next.js proxy |
+| `NEXT_PUBLIC_API_URL` | same-origin `/api/backend` path for case files and approvals |
 | `NEXT_PUBLIC_USE_FIXTURES` | `true` = demo backend data (opt-in; never automatic) |
 | `NEXT_PUBLIC_FAUCET_URL` | optional operator-run dUSD faucet |
 | `NEXT_PUBLIC_OPERATOR_VIEW` | `true` enables `/operator` (role-gated demo actions) |
