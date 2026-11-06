@@ -5,7 +5,8 @@ const layer = (depth: number) => ({
   transform: `translate3d(calc(var(--px, 0) * ${depth}px), calc(var(--py, 0) * ${depth * 0.5}px), 0)`,
 });
 
-export function HeroParallaxFallback() {
+/** Sniff stands in the yard between the fog and the foreground trees; `sniff` fills that slot. */
+export function HeroParallaxFallback({ sniff }: { sniff?: React.ReactNode }) {
   return (
     <div aria-hidden className="absolute inset-0 overflow-hidden">
       {/* 1 sky */}
@@ -91,6 +92,16 @@ export function HeroParallaxFallback() {
           }}
         />
       </div>
+      {/* Sniff (2D figure, or 3D once loaded) */}
+      {sniff && (
+        <div
+          className="absolute bottom-[13%] left-[60%] hidden aspect-[3/4] w-[clamp(150px,15vw,250px)] sm:block lg:left-[63%]"
+          style={layer(26)}
+        >
+          <div className="absolute inset-x-[8%] bottom-[-3%] h-[10%] rounded-[50%] bg-black/55 blur-md" />
+          {sniff}
+        </div>
+      )}
       {/* 5 foreground trees */}
       <svg
         className="absolute bottom-0 left-0 h-[46%] w-full"

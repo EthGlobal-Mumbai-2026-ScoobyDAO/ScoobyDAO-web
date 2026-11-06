@@ -2,17 +2,29 @@
 
 import { useAnimations, useGLTF } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Suspense, useEffect, useMemo, useRef } from 'react';
+import { Suspense, useEffect, useRef } from 'react';
 import * as THREE from 'three';
 
-// Landing hero 3D (THEME.md §3). Loaded only on capable devices, after first paint.
+// Landing hero 3D Sniff (THEME.md §3). Loaded only on capable devices, on pointer intent.
 // Renders on demand: a driver requests frames only while the hero is on screen.
 
 export const SNIFF_MODEL_URL = '/models/sniff.glb';
 
 type Pointer = { current: { x: number; y: number } };
 
-export default function HeroScene3D({ host, hasModel }: { host: HTMLElement; hasModel: boolean }) {
+/**
+ * Transparent canvas that renders only Sniff, sized to his spot in the 2D scene. The night
+ * scene, parallax and flashlight stay in the DOM layers around it.
+ */
+export default function HeroScene3D({
+  host,
+  hasModel,
+  onReady,
+}: {
+  host: HTMLElement;
+  hasModel: boolean;
+  onReady: () => void;
+}) {
   const pointer = useRef({ x: 0.4, y: -0.1 });
 
   useEffect(() => {
@@ -31,22 +43,20 @@ export default function HeroScene3D({ host, hasModel }: { host: HTMLElement; has
     <Canvas
       frameloop="demand"
       dpr={[1, 1.75]}
-      camera={{ position: [0, 2.2, 10], fov: 40 }}
-      onCreated={({ camera }) => camera.lookAt(1.2, 1.2, 0)}
-      gl={{ antialias: true, powerPreference: 'low-power' }}
-      className="!absolute inset-0"
+      camera={{ position: [0, 1.1, 7.2], fov: 30 }}
+      gl={{ alpha: true, antialias: true, powerPreference: 'low-power' }}
+      onCreated={({ camera, gl }) => {
+        camera.lookAt(0, 1.05, 0);
+        gl.setClearColor(0x000000, 0);
+        requestAnimationFrame(onReady);
+      }}
       aria-hidden
     >
-      <color attach="background" args={['#0b1026']} />
-      <fog attach="fog" args={['#121a40', 6, 22]} />
-      <ambientLight intensity={0.18} color="#7a86b8" />
-      <directionalLight position={[-6, 8, -4]} intensity={0.35} color="#b8a9ff" />
-      {/* warm fill so Sniff isn't a silhouette against his own torch */}
-      <pointLight position={[2.2, 2.4, 4.5]} intensity={6} distance={8} color="#ffd9a0" />
+      <ambientLight intensity={0.55} color="#9aa6d8" />
+      <directionalLight position={[-3, 4, 2]} intensity={0.6} color="#b8a9ff" />
+      <pointLight position={[1.5, 2, 3.5]} intensity={8} distance={9} color="#ffd9a0" />
       <Driver host={host} />
-      <Flashlight pointer={pointer} />
-      <Yard />
-      <Suspense fallback={<PlaceholderSniff pointer={pointer} />}>
+      <Suspense fallback={null}>
         {hasModel ? <SniffModel pointer={pointer} /> : <PlaceholderSniff pointer={pointer} />}
       </Suspense>
     </Canvas>
@@ -89,77 +99,6 @@ function Driver({ host }: { host: HTMLElement }) {
   return null;
 }
 
-/** Spotlight from Sniff's pocket torch; its target eases toward the pointer. */
-function Flashlight({ pointer }: { pointer: Pointer }) {
-  const target = useMemo(() => new THREE.Object3D(), []);
-  useFrame((_, dt) => {
-    const want = new THREE.Vector3(pointer.current.x * 8, 0.4 + pointer.current.y * 3, -4);
-    target.position.lerp(want, Math.min(1, dt * 4));
-    target.updateMatrixWorld();
-  });
-  return (
-    <>
-      <primitive object={target} />
-      <spotLight
-        position={[3.4, 2.2, 2.6]}
-        target={target}
-        angle={0.36}
-        penumbra={0.6}
-        intensity={70}
-        distance={26}
-        decay={1.5}
-        color="#ffd98a"
-      />
-    </>
-  );
-}
-
-function Yard() {
-  return (
-    <group>
-      <mesh rotation-x={-Math.PI / 2} position={[0, -0.01, 0]}>
-        <planeGeometry args={[60, 60]} />
-        <meshStandardMaterial color="#0e1433" roughness={1} />
-      </mesh>
-      {/* moon */}
-      <mesh position={[7, 7, -16]}>
-        <sphereGeometry args={[1.3, 32, 32]} />
-        <meshBasicMaterial color="#f1e6c2" fog={false} />
-      </mesh>
-      {/* mansion */}
-      <group position={[-1.5, 0, -9]}>
-        <mesh position={[0, 1.6, 0]}>
-          <boxGeometry args={[4.2, 3.2, 2.4]} />
-          <meshStandardMaterial color="#1a2150" roughness={0.9} />
-        </mesh>
-        <mesh position={[0, 3.8, 0]} rotation-y={Math.PI / 4}>
-          <coneGeometry args={[3.1, 1.6, 4]} />
-          <meshStandardMaterial color="#10163a" />
-        </mesh>
-        <mesh position={[1.3, 3.6, 0.2]}>
-          <boxGeometry args={[0.8, 2.6, 0.8]} />
-          <meshStandardMaterial color="#1a2150" />
-        </mesh>
-        <mesh position={[1.3, 2.9, 0.61]}>
-          <planeGeometry args={[0.3, 0.4]} />
-          <meshBasicMaterial color="#ffc857" />
-        </mesh>
-      </group>
-      {/* bare trees */}
-      {[
-        [-5, -4],
-        [-6.5, -9],
-        [6.8, -3],
-      ].map(([x, z], i) => (
-        <mesh key={i} position={[x, 1.6, z]}>
-          <cylinderGeometry args={[0.08, 0.22, 3.2, 6]} />
-          <meshStandardMaterial color="#0a0e26" />
-        </mesh>
-      ))}
-    </group>
-  );
-}
-
 /** Real model: plays idle by default (clips: idle, sniff, alert, triumph). */
 function SniffModel({ pointer }: { pointer: Pointer }) {
   const { scene, animations } = useGLTF(SNIFF_MODEL_URL);
@@ -179,7 +118,7 @@ function SniffModel({ pointer }: { pointer: Pointer }) {
       );
   });
   return (
-    <group ref={group} position={[3.4, 0, 1.2]}>
+    <group ref={group} position={[0, 0, 0]}>
       <primitive object={scene} />
     </group>
   );
@@ -206,7 +145,7 @@ function PlaceholderSniff({ pointer }: { pointer: Pointer }) {
   const fur = '#d9a066';
   const ear = '#8a5a2b';
   return (
-    <group position={[3.4, 0, 1.2]} scale={0.85} rotation-y={-0.35}>
+    <group position={[0, 0, 0]} rotation-y={-0.2}>
       {/* coat */}
       <mesh position={[0, 0.6, 0]}>
         <coneGeometry args={[0.75, 1.3, 8]} />

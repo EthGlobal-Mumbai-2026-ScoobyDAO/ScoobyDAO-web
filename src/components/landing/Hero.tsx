@@ -1,14 +1,15 @@
 'use client';
 
 import Link from 'next/link';
+import { SectionLink } from '@/components/SectionLink';
 import { useEffect, useRef, type ReactNode } from 'react';
 
-// Positions keep clear of the left-aligned headline; only the first shows on small screens.
+// Positions keep clear of the left-aligned headline and of Sniff; only the first shows on small screens.
 const CLUES: { text: string; x: string; y: string; mobile?: boolean }[] = [
-  { text: 'sell() → revert', x: '74%', y: '14%', mobile: true },
-  { text: 'owner: setTrap(true)', x: '82%', y: '56%' },
-  { text: 'funded 0.8 ETH, 40 min before deploy', x: '74%', y: '74%' },
-  { text: 'sell tax: 99%', x: '88%', y: '36%' },
+  { text: 'sell() → revert', x: '64%', y: '15%', mobile: true },
+  { text: 'owner: setTrap(true)', x: '87%', y: '50%' },
+  { text: 'funded 0.8 ETH, 40 min before deploy', x: '86%', y: '72%' },
+  { text: 'sell tax: 99%', x: '90%', y: '30%' },
 ];
 
 /**
@@ -60,7 +61,7 @@ export function Hero({ scene }: { scene: ReactNode }) {
         {CLUES.map((c) => (
           <span
             key={c.text}
-            className={`num absolute -translate-x-1/2 rotate-[-3deg] rounded-sm ${c.mobile ? '' : 'hidden sm:block'} bg-[#f6f1e3] px-2 py-1 text-xs text-[#2a2418] shadow-lg sm:text-sm`}
+            className={`num absolute -translate-x-1/2 rotate-[-3deg] rounded-sm whitespace-nowrap ${c.mobile ? '' : 'hidden sm:block'} bg-[#f6f1e3] px-2 py-1 text-xs text-[#2a2418] shadow-lg sm:text-sm`}
             style={{ left: c.x, top: c.y }}
           >
             {c.text}
@@ -90,12 +91,12 @@ export function Hero({ scene }: { scene: ReactNode }) {
           >
             Browse cases
           </Link>
-          <Link
-            href="#how-it-works"
+          <SectionLink
+            section="how-it-works"
             className="rounded-xl border border-[#7a86b8] bg-[#0b1026]/60 px-6 py-3.5 text-lg font-semibold backdrop-blur hover:border-[#e8ecff]"
           >
             How it works
-          </Link>
+          </SectionLink>
         </div>
       </div>
     </section>

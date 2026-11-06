@@ -3,7 +3,8 @@ export const env = {
   apiUrl: process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080',
   chainId: Number(process.env.NEXT_PUBLIC_CHAIN_ID ?? 11155111),
   sepoliaRpcUrl: process.env.NEXT_PUBLIC_SEPOLIA_RPC_URL || undefined,
-  walletConnectProjectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || 'scoobydao-dev',
+  /** Empty until a real WalletConnect Cloud id is set; WalletConnect is then left out entirely. */
+  walletConnectProjectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || '',
   demoMode: process.env.NEXT_PUBLIC_DEMO_MODE === 'true',
   forceFixtures: process.env.NEXT_PUBLIC_USE_FIXTURES === 'true',
 } as const;

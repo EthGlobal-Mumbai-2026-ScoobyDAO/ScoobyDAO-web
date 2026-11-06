@@ -41,7 +41,7 @@ Per the team: frontend-owned names use `scoobydao`.
 - **`@coinbase/cdp-sdk` aliased to a stub** (`src/stubs/cdp-sdk.ts`, via `turbopack.resolveAlias` in `next.config.ts`). The RainbowKit barrel imports wagmi's `baseAccount` connector → `@base-org/account` → `@coinbase/cdp-sdk`, which imports optional `@x402/*` packages that aren't installed, so `next build` failed. `@base-org/account` only uses `CdpClient` for Base subscription payments, which we never use. Remove the alias if a future RainbowKit/wagmi release fixes this.
 - Wallet list is explicit (MetaMask, Rabby, WalletConnect, injected) via `connectorsForWallets`.
 - Next 16 removed `next lint`; `npm run lint` runs the ESLint CLI with `eslint-config-next` flat config.
-- `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` is empty in dev, so `src/lib/env.ts` falls back to a dummy id; WalletConnect's config/pulse endpoints then 403/400 in the console. Injected wallets (MetaMask, Rabby) still work. Set a real project id before the demo.
+- `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`: when empty, WalletConnect is left out of the wallet list entirely (only browser-extension wallets via `injectedWallet`), so there are no 403/400 or Lit dev-mode console messages. Set a real project id before the demo to offer MetaMask/Rabby/WalletConnect explicitly.
 
 ## Design decisions
 
@@ -102,3 +102,9 @@ Gaps / assumptions (contracts repo please confirm):
 | Every tx shows pending → confirmed → explorer link | Pass for live txs (toast links to Sepolia Etherscan); in fixture mode the hash is shown without a link since it isn't real. Failed txs show the decoded revert. |
 | Frozen state visible on stake and market pages | Pass (banner with block number on both; market inputs disabled + forced-swap revert). |
 | Lighthouse performance ≥ 80 on landing; .glb < 3 MB | Pass: 98 mobile / 100 desktop; no .glb shipped yet (manifest gate ready). |
+
+## Fixes after review (2026-11-06)
+
+- **Hero background no longer swaps out.** 3D used to replace the whole 2D scene (new moon/mansion, CSS flashlight hidden) and Sniff popped in on top. Now the 2D night scene, parallax and CSS flashlight are always the background; Sniff has one slot in the yard: a 2D figure from first paint, and on capable desktops a *transparent* R3F canvas rendering only Sniff in the same box, crossfading in. He sits under the darkness layer, so the flashlight reveals him.
+- **"How it works" repeat clicks.** Next only scrolls on a hash *change*, so clicks after the first did nothing. `SectionLink` scrolls every time on `/` (instant under reduced motion), updates the hash and focuses the section; from other pages it navigates to `/#how-it-works`.
+- **Console noise.** WalletConnect only initialises with a real project id; the backend `/health` probe result is cached for 60s in sessionStorage (one `ERR_CONNECTION_REFUSED` per minute while the backend is down, instead of one per page load; set `NEXT_PUBLIC_USE_FIXTURES=true` in `.env.local` to skip it entirely); three.js pinned to 0.182 because r183 deprecated `THREE.Clock`, which React Three Fiber 9.8 still constructs.

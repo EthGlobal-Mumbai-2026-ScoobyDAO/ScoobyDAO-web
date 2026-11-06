@@ -27,8 +27,9 @@ export function HowItWorks() {
   return (
     <section
       id="how-it-works"
+      tabIndex={-1}
       aria-labelledby="how-h"
-      className="mx-auto max-w-6xl scroll-mt-20 px-4 py-20 sm:py-28"
+      className="mx-auto max-w-6xl scroll-mt-20 px-4 py-20 outline-none sm:py-28"
     >
       <h2 id="how-h" className="font-display text-4xl sm:text-5xl">
         How it works

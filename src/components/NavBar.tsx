@@ -3,14 +3,37 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Logo } from './Logo';
+import { SectionLink } from './SectionLink';
 import { NetworkBadge } from './NetworkBadge';
 import { ThemeToggle } from './ThemeToggle';
 import { WalletButton } from './WalletButton';
 
 const LINKS = [
   { href: '/cases', label: 'Cases' },
-  { href: '/#how-it-works', label: 'How it works' },
-];
+  { href: '/#how-it-works', label: 'How it works', section: 'how-it-works' },
+] as const;
+
+function NavLink({
+  link,
+  className,
+  current,
+}: {
+  link: (typeof LINKS)[number];
+  className: string;
+  current?: boolean;
+}) {
+  if ('section' in link)
+    return (
+      <SectionLink section={link.section} className={className}>
+        {link.label}
+      </SectionLink>
+    );
+  return (
+    <Link href={link.href} aria-current={current ? 'page' : undefined} className={className}>
+      {link.label}
+    </Link>
+  );
+}
 
 export function NavBar() {
   const pathname = usePathname();
@@ -26,13 +49,11 @@ export function NavBar() {
             const active = l.href === '/cases' ? pathname.startsWith('/case') : false;
             return (
               <li key={l.href}>
-                <Link
-                  href={l.href}
-                  aria-current={active ? 'page' : undefined}
+                <NavLink
+                  link={l}
+                  current={active}
                   className={`hover:text-text ${active ? 'text-text decoration-beam underline decoration-2 underline-offset-8' : 'text-muted'}`}
-                >
-                  {l.label}
-                </Link>
+                />
               </li>
             );
           })}
@@ -48,9 +69,7 @@ export function NavBar() {
       <ul className="border-line flex gap-5 border-t px-4 py-2 text-sm sm:hidden">
         {LINKS.map((l) => (
           <li key={l.href}>
-            <Link href={l.href} className="text-muted hover:text-text">
-              {l.label}
-            </Link>
+            <NavLink link={l} className="text-muted hover:text-text" />
           </li>
         ))}
         <li className="ml-auto">
