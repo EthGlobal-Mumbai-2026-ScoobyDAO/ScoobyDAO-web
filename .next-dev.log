@@ -408,3 +408,4 @@
 [browser] [Reown Config] Failed to fetch remote project configuration. Using local/default values. Error: HTTP status code: 403
 ✓ Compiled in 146ms
  GET / 200 in 30ms (next.js: 4ms, application-code: 26ms)
+[?25h
