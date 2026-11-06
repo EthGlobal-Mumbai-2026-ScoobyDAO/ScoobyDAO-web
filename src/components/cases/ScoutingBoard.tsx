@@ -114,7 +114,7 @@ export function ScoutingBoard() {
               ['all', 'All'],
               ['attention', 'Needs attention'],
               ['research', 'Research'],
-              ['monitored', 'Monitored'],
+              ['monitored', 'Monitoring / unavailable'],
             ] as const
           ).map(([value, label]) => (
             <button
@@ -374,6 +374,21 @@ function CandidateCard({
         <p className="mt-1 text-sm">
           {laneLabel}. {shortReason}
         </p>
+        {c.lane === 'unavailable' && c.continuation.reason && (
+          <p className="text-muted mt-1 text-xs">
+            World ID / continuation: {c.continuation.reason}
+          </p>
+        )}
+        {c.research?.authorization === 'policy_qualified_local' && (
+          <p className="text-muted mt-1 text-xs">
+            Admission: backend-reported automatic policy qualification.
+          </p>
+        )}
+        {c.research?.authorization === 'world_id_human' && (
+          <p className="text-muted mt-1 text-xs">
+            Admission: backend-reported World ID confirmation.
+          </p>
+        )}
         {c.research && (
           <p className="text-muted mt-1 text-xs">
             Research status: {c.research.status}
