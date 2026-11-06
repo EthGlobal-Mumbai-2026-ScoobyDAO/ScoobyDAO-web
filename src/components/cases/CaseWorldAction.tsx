@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ScoutingCase } from '@/lib/scouting';
 
 type Binding = {
@@ -75,9 +75,15 @@ function attempt(v: unknown, c: ScoutingCase, ch: Binding): Attempt {
     }
   return v as Attempt;
 }
-async function request(origin: string, path: string, init?: RequestInit): Promise<unknown> {
+async function request(
+  origin: string,
+  path: string,
+  token: string,
+  init?: RequestInit,
+): Promise<unknown> {
   const response = await fetch(origin + path, {
     ...init,
+    headers: { ...init?.headers, Authorization: `Bearer ${token}` },
     cache: 'no-store',
     redirect: 'error',
     signal: AbortSignal.timeout(15000),
@@ -95,40 +101,57 @@ async function request(origin: string, path: string, init?: RequestInit): Promis
 export function CaseWorldAction({
   candidate: c,
   origin,
+  token,
   onChanged,
   now,
 }: {
   candidate: ScoutingCase;
   origin: string;
+  token: string;
   onChanged: () => void;
   now: number;
 }) {
   const [current, setCurrent] = useState<{ challenge: Binding; attempt: Attempt } | null>(null);
+  const [challenge, setChallenge] = useState<Binding | null>(null);
+  const key = useRef<string | null>(null);
+  const submitting = useRef(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const available =
     c.continuation.availability === 'available' && now > 0 && Date.parse(c.expires_at) > now;
   async function start() {
+    if (submitting.current) return;
+    submitting.current = true;
     setBusy(true);
     setError('');
     try {
-      const ch = binding(
-        await request(origin, `/scouting/cases/${c.case_id}/challenge`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
-          body: JSON.stringify({
-            expected_revision: c.snapshot_digest,
-            action: 'diagnostic_research',
-          }),
-        }),
-        c,
-      );
+      key.current ??= crypto.randomUUID();
+      const ch =
+        challenge ??
+        binding(
+          await request(
+            origin,
+            `/scouting/cases/${encodeURIComponent(c.case_id)}/challenge`,
+            token,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key.current },
+              body: JSON.stringify({
+                expected_revision: c.snapshot_digest,
+                action: 'diagnostic_research',
+              }),
+            },
+          ),
+          c,
+        );
       if (ch.state !== 'pending' || ch.expires_at * 1000 <= Date.now())
         throw new Error('Confirmation expired or changed. Refresh the case.');
+      setChallenge(ch);
       const a = attempt(
         await request(
           origin,
           `/scouting/challenges/${encodeURIComponent(ch.challenge_id)}/world-attempt`,
+          token,
           { method: 'POST' },
         ),
         c,
@@ -138,6 +161,7 @@ export function CaseWorldAction({
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Confirmation unavailable.');
     } finally {
+      submitting.current = false;
       setBusy(false);
     }
   }
@@ -151,6 +175,7 @@ export function CaseWorldAction({
             await request(
               origin,
               `/scouting/world-attempts/${encodeURIComponent(current.attempt.attempt_id)}`,
+              token,
             ),
             c,
             current.challenge,
@@ -158,6 +183,10 @@ export function CaseWorldAction({
           if (!stopped) {
             setCurrent({ challenge: current.challenge, attempt: a });
             setError('');
+            if (a.state !== 'pending') {
+              setChallenge(null);
+              key.current = null;
+            }
             if (a.state === 'approved') onChanged();
           }
         } catch (e) {
@@ -170,7 +199,7 @@ export function CaseWorldAction({
       stopped = true;
       clearTimeout(timer);
     };
-  }, [c, current, onChanged, origin]);
+  }, [c, current, onChanged, origin, token]);
   async function cancel() {
     if (!current) return;
     setBusy(true);
@@ -180,12 +209,17 @@ export function CaseWorldAction({
         await request(
           origin,
           `/scouting/world-attempts/${encodeURIComponent(current.attempt.attempt_id)}/cancel`,
+          token,
           { method: 'POST' },
         ),
         c,
         current.challenge,
       );
       setCurrent({ challenge: current.challenge, attempt: a });
+      if (a.state !== 'pending') {
+        setChallenge(null);
+        key.current = null;
+      }
       onChanged();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not cancel.');
@@ -265,30 +299,37 @@ export function CaseWorldAction({
 export function RetryInvestigation({
   candidate,
   origin,
+  token,
   onChanged,
   now,
 }: {
   candidate: ScoutingCase;
   origin: string;
+  token: string;
   onChanged: () => void;
   now: number;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const requestKey = useRef<string | null>(null);
+  const submitting = useRef(false);
   const run = candidate.research?.run_id;
   async function retry() {
-    if (!run || !id(run)) return;
+    if (!run || !id(run) || submitting.current) return;
+    submitting.current = true;
+    requestKey.current ??= crypto.randomUUID();
     setBusy(true);
     setError('');
     try {
-      await request(origin, `/investigations/${encodeURIComponent(run)}/resume`, {
+      await request(origin, `/investigations/${encodeURIComponent(run)}/resume`, token, {
         method: 'POST',
-        headers: { 'Idempotency-Key': crypto.randomUUID() },
+        headers: { 'Idempotency-Key': requestKey.current },
       });
       onChanged();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Retry unavailable.');
     } finally {
+      submitting.current = false;
       setBusy(false);
     }
   }

@@ -7,16 +7,18 @@ import type { ScoutingCase } from '@/lib/scouting';
 export function InvestigationProgress({
   research,
   origin,
+  token,
 }: {
   research: NonNullable<ScoutingCase['research']>;
   origin: string;
+  token: string | null;
 }) {
   const run = research.run_id;
   const active = ['queued', 'running'].includes(research.status);
   const events = useQuery({
-    queryKey: ['investigation-events', origin, run],
-    queryFn: () => fetchInvestigationEvents(origin, run!),
-    enabled: Boolean(run),
+    queryKey: ['investigation-events', origin, run, token],
+    queryFn: () => fetchInvestigationEvents(origin, run!, token!),
+    enabled: Boolean(run && token),
     retry: false,
     refetchInterval: active ? 3000 : 30000,
     refetchIntervalInBackground: false,
@@ -47,6 +49,10 @@ export function InvestigationProgress({
       )}
       {!run ? (
         <p className="text-muted mt-2 text-xs">Run details unavailable.</p>
+      ) : !token ? (
+        <p className="text-muted mt-2 text-xs">
+          Sign in as a case administrator to view run activity.
+        </p>
       ) : events.isPending ? (
         <p className="text-muted mt-2 text-xs">Loading run activity…</p>
       ) : events.isError ? (

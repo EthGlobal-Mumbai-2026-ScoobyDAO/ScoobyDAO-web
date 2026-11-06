@@ -39,6 +39,7 @@ export function parseInvestigationEvents(value: unknown, runId: string): Investi
 export async function fetchInvestigationEvents(
   origin: string,
   runId: string,
+  token?: string,
 ): Promise<InvestigationEvent[]> {
   if (scoutingApiOrigin(origin) !== origin || !safeId.test(runId))
     throw new Error('Invalid investigation endpoint');
@@ -46,6 +47,7 @@ export async function fetchInvestigationEvents(
     cache: 'no-store',
     redirect: 'error',
     credentials: 'omit',
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     signal: AbortSignal.timeout(10000),
   });
   if (!response.ok) throw new Error('Investigation events unavailable');

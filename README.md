@@ -10,7 +10,7 @@ The live default is the deployed **RiskFi V2** demo (report #1 on Ethereum Sepol
 
 Interfaces: [`INTERFACES.md`](INTERFACES.md) (v3). Decisions, gaps and requests to the other repos: [`NOTES.md`](NOTES.md) → "V2 live integration (Nov 2026)". Plan: [`docs/v2-integration-plan.md`](docs/v2-integration-plan.md).
 
-The scouting and historical diagnostic queue is documented in [HANDOFF-SCOUTING.md](HANDOFF-SCOUTING.md). Local admin session and report-review integration remain in progress. Configure `NEXT_PUBLIC_SCOUTING_API_URL` and `NEXT_PUBLIC_REPORT_API_URL` at build time to trusted HTTPS backend root origins for production, with matching backend CORS and release/access policy. Blank values leave scouting unavailable and the report library empty. Use loopback HTTP only for local testing; never deploy a localhost origin to remote users.
+The scouting and historical diagnostic queue is documented in [HANDOFF-SCOUTING.md](HANDOFF-SCOUTING.md). Configure `NEXT_PUBLIC_SCOUTING_API_URL` and `NEXT_PUBLIC_REPORT_API_URL` at build time to trusted HTTPS backend root origins for production, with matching backend CORS and release/access policy. Blank values leave scouting unavailable and the report library empty. Use loopback HTTP only for local testing; never deploy a localhost origin to remote users. Administrator checkpoint controls default off: set `NEXT_PUBLIC_ADMIN_CHECKPOINTS_ENABLED=true` only after verifying that the deployed backend enforces private draft access, the public gate, exact-origin CORS, scoped sessions and same-session World confirmation. This browser setting is not an authorization boundary; the backend must enforce these protections independently. Report review and publication remain separate actions.
 
 ## Run it
 

@@ -1,5 +1,5 @@
 'use client';
-import { useState, useSyncExternalStore } from 'react';
+import { useCallback, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { InvestigationProgress } from './InvestigationProgress';
 import { DiagnosticsBoard } from './DiagnosticsBoard';
@@ -18,6 +18,9 @@ import {
   type EvidenceReason,
 } from '@/lib/scouting';
 import { CasesBoard } from './CasesBoard';
+import { CaseWorldAction, RetryInvestigation } from './CaseWorldAction';
+import { useAdminSession } from '@/components/AdminSession';
+import { useProtocol } from '@/protocol/hooks';
 
 const adapter = scoutingOrigin ? createScoutingAdapter(scoutingOrigin) : null;
 const subscribeClock = (notify: () => void) => {
@@ -28,6 +31,7 @@ const clockSnapshot = () => Math.floor(Date.now() / 1000) * 1000;
 const serverClock = () => 0;
 
 export function ScoutingBoard() {
+  const { protocol } = useProtocol();
   const [legacyOpen, setLegacyOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'attention' | 'research' | 'monitored'>('all');
@@ -45,6 +49,8 @@ export function ScoutingBoard() {
         : 60_000,
   });
   const result = query.data;
+  const { refetch } = query;
+  const refresh = useCallback(() => void refetch(), [refetch]);
   const all = result?.cases ?? [];
   const freshCases = sortScoutingCases(all);
   const q = search.trim().toLowerCase();
@@ -76,8 +82,10 @@ export function ScoutingBoard() {
         </p>
       )}
       <p className="border-line text-muted mb-6 rounded-xl border p-3 text-xs" role="note">
-        Local admin prototype: admin sessions and private draft access controls are not yet
-        connected.
+        Administrator actions require a configured, authorized service.
+        <Link href="/admin" className="ml-1 underline">
+          Administrator sign-in
+        </Link>
       </p>
       <header>
         <p className="text-beam-ink text-sm font-semibold">SCOUTING</p>
@@ -87,6 +95,23 @@ export function ScoutingBoard() {
           timing matter; a candidate is not an approved report.
         </p>
       </header>
+      {protocol.kind === 'v2' && (
+        <section
+          className="border-line bg-surface mt-6 rounded-xl border p-4"
+          aria-label="Live onchain market"
+        >
+          <h2 className="font-semibold">Live onchain market</h2>
+          <p className="text-muted mt-1 text-sm">
+            Demo report #1 on Ethereum Sepolia is separate from the scouting queue.
+          </p>
+          <Link
+            href="/onchain/1"
+            className="text-beam-ink mt-2 inline-block text-sm font-semibold underline"
+          >
+            Open the live market →
+          </Link>
+        </section>
+      )}
       <div className="mt-8 space-y-4">
         <label className="relative block">
           <span className="sr-only">Search scouting by token, address or candidate ID</span>
@@ -198,6 +223,7 @@ export function ScoutingBoard() {
             items={filtered}
             now={now}
             actionable={result.schema_version === 'scouting-case-list/2'}
+            onChanged={refresh}
           />
         </>
       )}
@@ -236,12 +262,14 @@ function Lane({
   items,
   now,
   actionable,
+  onChanged,
 }: {
   title: string;
   subtitle: string;
   items: ScoutingCase[];
   now: number;
   actionable: boolean;
+  onChanged: () => void;
 }) {
   if (!items.length) return null;
   return (
@@ -252,7 +280,12 @@ function Lane({
         <ul className="grid gap-x-6 gap-y-9 sm:grid-cols-2 lg:grid-cols-3">
           {items.map((item) => (
             <li key={item.candidate_id}>
-              <CandidateCard candidate={item} now={now} actionable={actionable} />
+              <CandidateCard
+                candidate={item}
+                now={now}
+                actionable={actionable}
+                onChanged={onChanged}
+              />
             </li>
           ))}
         </ul>
@@ -279,11 +312,20 @@ function CandidateCard({
   candidate: c,
   now,
   actionable,
+  onChanged,
 }: {
   candidate: ScoutingCase;
   now: number;
   actionable: boolean;
+  onChanged: () => void;
 }) {
+  const { token, view } = useAdminSession();
+  const caseToken =
+    process.env.NEXT_PUBLIC_ADMIN_CHECKPOINTS_ENABLED === 'true' &&
+    view?.state === 'active' &&
+    view.scopes?.includes('case_investigation')
+      ? token
+      : null;
   const showServerStatus = c.status_label.toLowerCase() !== c.lane.replaceAll('_', ' ');
   const laneLabel =
     c.lane === 'research_running' && c.research?.status === 'queued'
@@ -395,7 +437,7 @@ function CandidateCard({
         scoutingOrigin &&
         c.research &&
         ['world_id_human', 'policy_qualified_local'].includes(c.research.authorization || '') && (
-          <InvestigationProgress research={c.research} origin={scoutingOrigin} />
+          <InvestigationProgress research={c.research} origin={scoutingOrigin} token={caseToken} />
         )}
       {!actionable && c.human_action_required && (
         <p className="text-muted mt-3 text-xs">
@@ -403,17 +445,49 @@ function CandidateCard({
         </p>
       )}
       {actionable &&
+        !caseToken &&
         (c.human_action_required ||
           (c.lane === 'monitoring' && c.continuation.availability === 'available')) && (
           <p className="text-muted mt-3 text-xs">
-            Administrator sign-in is not connected; World ID confirmation cannot be started here.
+            Case confirmation is unavailable until administrator authorization is connected.
           </p>
         )}
-      {actionable && c.research && ['blocked', 'failed'].includes(c.research.status) && (
-        <p className="text-muted mt-3 text-xs">
-          Retry requires an authenticated administrator session.
-        </p>
-      )}
+      {actionable &&
+        !caseToken &&
+        c.research &&
+        ['blocked', 'failed'].includes(c.research.status) && (
+          <p className="text-muted mt-3 text-xs">
+            Retry requires an authenticated administrator session.
+          </p>
+        )}
+      {actionable &&
+        caseToken &&
+        scoutingOrigin &&
+        (c.human_action_required ||
+          (c.lane === 'monitoring' && c.continuation.availability === 'available')) && (
+          <CaseWorldAction
+            key={caseToken + c.snapshot_digest}
+            candidate={c}
+            origin={scoutingOrigin}
+            token={caseToken}
+            now={now}
+            onChanged={onChanged}
+          />
+        )}
+      {actionable &&
+        caseToken &&
+        scoutingOrigin &&
+        c.research &&
+        ['blocked', 'failed'].includes(c.research.status) && (
+          <RetryInvestigation
+            key={caseToken + c.snapshot_digest}
+            candidate={c}
+            origin={scoutingOrigin}
+            token={caseToken}
+            now={now}
+            onChanged={onChanged}
+          />
+        )}
       {actionable &&
         c.research?.report_id &&
         c.research.report_version &&
