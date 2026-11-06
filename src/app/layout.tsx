@@ -43,6 +43,15 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         </a>
         <Providers>
           <NavBar />
+          {process.env.NEXT_PUBLIC_USE_FIXTURES === 'true' && (
+            <aside
+              role="note"
+              className="border-line bg-surface text-muted border-b px-4 py-3 text-center text-sm"
+            >
+              Demo mode — Cases, approvals and markets are simulated. Research reports load
+              separately and remain drafts.
+            </aside>
+          )}
           <div id="main">{children}</div>
         </Providers>
         <GrainOverlay />
