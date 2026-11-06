@@ -1,5 +1,6 @@
 export type ReportAsset = { url: string; sha256: string };
 export type ReportEntry = {
+  localPreviewBase?: string;
   id: string;
   apiOrigin: string;
   title: string;

@@ -113,13 +113,37 @@ export async function loadNativeReport(entry: ReportEntry): Promise<NativeReport
   if (entry.packageUnavailable) throw new Error('Report package unavailable');
   let assetBase: string;
   let reportUrl: string;
-  if (entry.packageUrl) {
+  if (entry.localPreviewBase) {
+    const u = new URL(entry.localPreviewBase);
+    if (
+      process.env.NEXT_PUBLIC_LOCAL_REFERENCE_PREVIEW !== 'true' ||
+      typeof window === 'undefined' ||
+      !['localhost', '127.0.0.1'].includes(window.location.hostname) ||
+      u.protocol !== 'http:' ||
+      u.hostname !== '127.0.0.1' ||
+      u.port !== '60990' ||
+      !/^\/preview\/(shib|fet|spx|yfi|grt|metis)$/.test(u.pathname) ||
+      u.username ||
+      u.password ||
+      u.search ||
+      u.hash ||
+      entry.apiOrigin !== u.origin
+    )
+      throw new Error('Unsafe local preview');
+    reportUrl = `${entry.localPreviewBase}/files/report.json`;
+    assetBase = `${entry.localPreviewBase}/files/`;
+  } else if (entry.packageUrl) {
     const proxied = entry.apiOrigin === '/api/research';
     const packageAddress = new URL(entry.packageUrl, 'https://local.invalid');
     if (
       (!proxied && reportApiBase(entry.apiOrigin) !== entry.apiOrigin) ||
-      (proxied ? packageAddress.origin !== 'https://local.invalid' || !entry.packageUrl.startsWith('/api/research/') : packageAddress.origin !== entry.apiOrigin) ||
-      !new RegExp(`^${proxied ? '/api/research' : ''}/packages/[a-f0-9]{64}$`).test(packageAddress.pathname) ||
+      (proxied
+        ? packageAddress.origin !== 'https://local.invalid' ||
+          !entry.packageUrl.startsWith('/api/research/')
+        : packageAddress.origin !== entry.apiOrigin) ||
+      !new RegExp(`^${proxied ? '/api/research' : ''}/packages/[a-f0-9]{64}$`).test(
+        packageAddress.pathname,
+      ) ||
       packageAddress.username ||
       packageAddress.password ||
       packageAddress.search ||

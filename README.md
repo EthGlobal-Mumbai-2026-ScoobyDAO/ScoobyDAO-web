@@ -14,6 +14,8 @@ The scouting and historical diagnostic queue is documented in [HANDOFF-SCOUTING.
 
 For a local pitch rehearsal, `NEXT_PUBLIC_LOCAL_PITCH_EXAMPLES=true` enables historical diagnostic cards only on localhost or 127.0.0.1, using reports the configured service already permits. The flag does not grant access to drafts; use an appropriately isolated local service and configure its CORS for the preview origin. The cards do not evaluate the proposed trailing-30-day activity threshold.
 
+The separate local six-reference review at `/reference-preview` requires `NEXT_PUBLIC_LOCAL_REFERENCE_PREVIEW=true` and the isolated, read-only preview service at `127.0.0.1:60990`; it is disabled outside loopback. Its case links and report bytes come from that service and are hash-checked. This is a local review of unapproved historical replays, not a production report-access mechanism.
+
 ## Run it
 
 ```bash

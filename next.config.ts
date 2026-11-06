@@ -2,6 +2,7 @@ import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  allowedDevOrigins: ['127.0.0.1'],
   // Browser requests stay same-origin; the deployed backend does not enable CORS.
   async rewrites() {
     const backend = process.env.NEXT_PUBLIC_BACKEND_API_URL?.replace(/\/$/, '');

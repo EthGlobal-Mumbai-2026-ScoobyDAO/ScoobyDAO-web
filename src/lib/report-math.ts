@@ -9,8 +9,8 @@ export function reportMath(report: Report) {
     const m = technical?.measurements.find((item) => item.id === id && item.unit === unit);
     return m && typeof m.value === 'number' && Number.isFinite(m.value) ? m.value : null;
   };
-  const closes = technical?.series.find((s) => s.id === 'observed_daily_closes');
-  const returns = technical?.series.find((s) => s.id === 'observed_daily_returns');
+  const closes = technical?.series.find((s) => s.id === 'observed_daily_closes') ?? technical?.series.find((s) => s.id === 'graph_token_daily_price_usd');
+  const returns = technical?.series.find((s) => s.id === 'observed_daily_returns') ?? technical?.series.find((s) => s.id === 'graph_token_daily_returns');
   const points = (closes?.points ?? [])
     .filter(
       (p): p is { time: string; value: number } =>

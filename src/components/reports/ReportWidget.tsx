@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { loadNativeReport, PILLARS, type NativeReport } from '@/lib/report-widget';
 import { verifyAsset, type ReportEntry } from '@/lib/reports';
 import { reportMath } from '@/lib/report-math';
+import { parseReconstructions } from '@/lib/reconstructions';
 
 export function ReportWidget({ entry }: { entry: ReportEntry }) {
   const [index, setIndex] = useState(0);
@@ -121,7 +122,7 @@ export function ReportWidget({ entry }: { entry: ReportEntry }) {
             </button>
           </div>
         </div>
-        <EvidenceMath report={report} pillar={key} onSelect={setEvidenceId} />
+        <EvidenceMath report={report} pillar={key} assetBase={assetBase} onSelect={setEvidenceId} />
         <div className="mt-6 grid gap-4 md:grid-cols-2">
           <div className="bg-surface-raised min-w-0 rounded-xl p-4">
             <h4 className="text-beam-ink text-xs font-semibold uppercase">Insight</h4>
@@ -146,7 +147,7 @@ export function ReportWidget({ entry }: { entry: ReportEntry }) {
         {pillar.series.map((series) => (
           <SeriesChart key={series.id} series={series} onSelect={setEvidenceId} />
         ))}
-        <details className="border-line mt-6 border-t pt-4" open>
+        <details className="border-line mt-6 border-t pt-4">
           <summary className="cursor-pointer font-semibold">
             View full analysis, measurements and claims
           </summary>
@@ -196,29 +197,49 @@ export function ReportWidget({ entry }: { entry: ReportEntry }) {
               <p className="text-muted">No measurements supplied.</p>
             )}
             <h4 className="font-semibold">Claims and counterevidence</h4>
+            {key === 'statistical_risk' &&
+              pillar.claims.some(
+                (c) =>
+                  c.id === 'legacy-risk_assessment-interpretation' ||
+                  c.id === 'legacy-risk_assessment-risk_level',
+              ) && (
+                <p className="text-muted text-sm">
+                  The original risk label and loss interpretation are available in the source
+                  evidence. They are uncalibrated and do not establish a maximum loss.
+                </p>
+              )}
             {pillar.claims.length ? (
-              pillar.claims.map((c) => (
-                <div key={c.id} className="border-line rounded-lg border p-3 text-sm">
-                  <p className="font-semibold">
-                    {c.id} · {c.kind}
-                  </p>
-                  <p className="mt-1">{c.statement}</p>
-                  <p className="text-muted mt-2">Supporting evidence</p>
-                  <CitationLinks ids={c.supporting_evidence_ids} onSelect={setEvidenceId} />
-                  <p className="text-muted mt-2">Counterevidence</p>
-                  <CitationLinks ids={c.counterevidence_ids} onSelect={setEvidenceId} />
-                  {c.contradiction_claim_ids?.length ? (
-                    <p className="text-muted mt-2">
-                      Contradicting claims: {c.contradiction_claim_ids.join(', ')}
+              pillar.claims
+                .filter(
+                  (c) =>
+                    key !== 'statistical_risk' ||
+                    ![
+                      'legacy-risk_assessment-interpretation',
+                      'legacy-risk_assessment-risk_level',
+                    ].includes(c.id),
+                )
+                .map((c) => (
+                  <div key={c.id} className="border-line rounded-lg border p-3 text-sm">
+                    <p className="font-semibold">
+                      {c.id} · {c.kind}
                     </p>
-                  ) : null}
-                  {c.uncertainties?.map((u, i) => (
-                    <p key={i} className="text-muted mt-1">
-                      Uncertainty: {u}
-                    </p>
-                  ))}
-                </div>
-              ))
+                    <p className="mt-1">{c.statement}</p>
+                    <p className="text-muted mt-2">Supporting evidence</p>
+                    <CitationLinks ids={c.supporting_evidence_ids} onSelect={setEvidenceId} />
+                    <p className="text-muted mt-2">Counterevidence</p>
+                    <CitationLinks ids={c.counterevidence_ids} onSelect={setEvidenceId} />
+                    {c.contradiction_claim_ids?.length ? (
+                      <p className="text-muted mt-2">
+                        Contradicting claims: {c.contradiction_claim_ids.join(', ')}
+                      </p>
+                    ) : null}
+                    {c.uncertainties?.map((u, i) => (
+                      <p key={i} className="text-muted mt-1">
+                        Uncertainty: {u}
+                      </p>
+                    ))}
+                  </div>
+                ))
             ) : (
               <p className="text-muted">No claims supplied.</p>
             )}
@@ -292,10 +313,12 @@ export function ReportWidget({ entry }: { entry: ReportEntry }) {
 function EvidenceMath({
   report,
   pillar,
+  assetBase,
   onSelect,
 }: {
   report: NativeReport['report'];
   pillar: string;
+  assetBase: string;
   onSelect: (id: string) => void;
 }) {
   const math = reportMath(report);
@@ -312,6 +335,63 @@ function EvidenceMath({
       ? new Date(value).toISOString().replace('T', ' ').slice(0, 16) + ' UTC'
       : 'time not supplied';
   };
+  if (
+    pillar === 'statistical_risk' &&
+    report.evidence.some((e) => e.id === 'graph_model_risk') &&
+    report.evidence.some((e) => e.id === 'graph_model_reconstructions')
+  ) {
+    const values = report.pillars.statistical_risk.measurements;
+    const read = (id: string) =>
+      values.find(
+        (m) =>
+          m.id === id &&
+          m.evidence_ids.includes('legacy_metrics') &&
+          typeof m.value === 'number' &&
+          Number.isFinite(m.value),
+      );
+    const risk = read('legacy_var_metrics_var_95');
+    const horizon = read('legacy_var_metrics_time_horizon_days');
+    const confidence = read('legacy_var_metrics_confidence_level');
+    const reconstructions = read('legacy_vae_specific_metrics_number_of_recreations');
+    if (
+      risk &&
+      horizon?.value === 4 &&
+      confidence?.value === 0.95 &&
+      reconstructions?.value === 50 &&
+      typeof risk.value === 'number'
+    )
+      return (
+        <section
+          className="border-line mt-6 rounded-xl border p-4"
+          aria-label="Historical VAE risk output"
+        >
+          <h4 className="font-semibold">Original VAE output · historical example</h4>
+          <p className="mt-2 text-sm">
+            Reported 95% VaR: <strong>{risk.value}%</strong> over a{' '}
+            <strong>four-day horizon</strong>, from <strong>50 reconstructions</strong>.
+          </p>
+          <p className="text-muted mt-2 text-sm">
+            An in-sample model estimate, not a calibrated forecast, guaranteed maximum loss, or
+            evidence of fraud. Graph inputs describe indexed token-level USD data, not an executable
+            pool quote. The original legacy “max drawdown” field is the minimum reconstructed daily
+            return, not peak-to-trough drawdown.
+          </p>
+          <CitationLinks
+            ids={[
+              'legacy_metrics',
+              'graph_model_risk',
+              'graph_model_manifest',
+              'graph_model_reconstructions',
+            ]}
+            onSelect={onSelect}
+          />
+          <ReconstructionChart
+            source={report.evidence.find((e) => e.id === 'graph_model_reconstructions')}
+            assetBase={assetBase}
+          />
+        </section>
+      );
+  }
   if (
     pillar === 'microstructure' &&
     (numeric(math.liquidity?.value) || numeric(math.volume?.value))
@@ -436,6 +516,9 @@ function EvidenceMath({
         aria-label="Observed price calculation"
       >
         <h4 className="font-semibold">Observed prices: calculation and coverage</h4>
+        <p className="text-muted mt-1 text-sm">
+          Source method: {math.closes?.method ?? 'not supplied'}.
+        </p>
         <p className="mt-2 text-sm">
           First: <strong>{usd(math.first.value)}</strong> on {day(math.first.time)}. Last:{' '}
           <strong>{usd(math.last.value)}</strong> on {day(math.last.time)}.
@@ -464,6 +547,98 @@ function EvidenceMath({
   }
   return null;
 }
+function ReconstructionChart({
+  source,
+  assetBase,
+}: {
+  source: NativeReport['report']['evidence'][number] | undefined;
+  assetBase: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const data = useQuery({
+    queryKey: ['vae-reconstructions', assetBase, source?.sha256],
+    enabled: open && !!source,
+    retry: false,
+    queryFn: async () =>
+      parseReconstructions(
+        await (await verifyAsset({ url: assetBase + source!.path, sha256: source!.sha256 })).text(),
+      ),
+  });
+  const rows = data.data;
+  const indices = [0, 12, 24, 36, 49];
+  const values = rows?.flatMap((row) => indices.map((i) => row.values[i] * 100)) ?? [];
+  const min = Math.min(...values),
+    max = Math.max(...values);
+  const first = rows ? Date.parse(rows[0].day + 'T00:00:00Z') : 0;
+  const last = rows ? Date.parse(rows[rows.length - 1].day + 'T00:00:00Z') : 0;
+  return (
+    <div className="border-line mt-4 border-t pt-4">
+      <button
+        type="button"
+        className="text-beam-ink text-sm font-semibold underline"
+        onClick={() => setOpen((v) => !v)}
+      >
+        {open ? 'Hide reconstruction chart' : 'Show reconstruction chart'}
+      </button>
+      {open && data.isPending && (
+        <p role="status" className="mt-2 text-sm">
+          Checking reconstruction evidence…
+        </p>
+      )}
+      {open && data.isError && (
+        <p role="alert" className="mt-2 text-sm">
+          Reconstruction evidence is unavailable, invalid or did not match its hash.
+        </p>
+      )}
+      {open && rows && (
+        <div className="mt-3">
+          <p className="text-sm font-semibold">
+            Five of 50 original reconstructed daily-return series
+          </p>
+          <p className="text-muted mt-1 text-xs">
+            Fixed examples 1, 13, 25, 37 and 50; each is a model reconstruction, not observed
+            returns or a future price path. Simple-return fractions are multiplied by 100 for this
+            chart.
+          </p>
+          <svg
+            viewBox="0 0 600 180"
+            role="img"
+            aria-label={`Five original reconstructed daily-return series, ${rows.length} dates, shown as percentages`}
+            className="mt-3 h-auto w-full"
+          >
+            <line x1="40" y1="145" x2="570" y2="145" stroke="currentColor" opacity=".4" />
+            {indices.map((index, j) => (
+              <path
+                key={index}
+                fill="none"
+                stroke={['#f9c74f', '#4ecdc4', '#f9844a', '#8ab4f8', '#ce93d8'][j]}
+                strokeWidth="1.5"
+                opacity=".8"
+                d={rows
+                  .map((row, i) => {
+                    const t = Date.parse(row.day + 'T00:00:00Z');
+                    const x = 40 + (last === first ? 265 : ((t - first) / (last - first)) * 530);
+                    const y =
+                      145 -
+                      (max === min ? 55 : ((row.values[index] * 100 - min) / (max - min)) * 110);
+                    const previous = i ? Date.parse(rows[i - 1].day + 'T00:00:00Z') : 0;
+                    return `${i && t - previous === 86400000 ? 'L' : 'M'}${x.toFixed(2)},${y.toFixed(2)}`;
+                  })
+                  .join(' ')}
+              />
+            ))}
+          </svg>
+          <p className="text-muted text-xs">
+            Vertical scale {min.toFixed(2)}% to {max.toFixed(2)}%; horizontal scale {rows[0].day} to{' '}
+            {rows[rows.length - 1].day} (supplied calendar dates). Gaps are not filled. The original
+            file and all 50 series are available through the reconstruction evidence link above.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function InputRefs({ ids, report }: { ids?: string[]; report: NativeReport['report'] }) {
   if (!ids?.length) return null;
   const inputs = Object.values(report.pillars).flatMap((pillar) => [
@@ -479,6 +654,14 @@ function InputRefs({ ids, report }: { ids?: string[]; report: NativeReport['repo
         return (
           <details key={id} className="text-sm">
             <summary className="text-beam-ink cursor-pointer">Input: {id}</summary>
+            {[
+              'legacy-risk_assessment-interpretation',
+              'legacy-risk_assessment-risk_level',
+            ].includes(id) && (
+              <p className="text-muted mt-1">
+                Original model text is uncalibrated and does not establish a maximum loss.
+              </p>
+            )}
             <p className="text-muted mt-1 break-words">
               {'statement' in item
                 ? item.statement
@@ -588,14 +771,25 @@ function SeriesChart({
   onSelect: (id: string) => void;
   series: NativeReport['report']['pillars'][string]['series'][number];
 }) {
-  const points = series.points.filter(
-    (p) =>
-      typeof p.value === 'number' &&
-      Number.isFinite(p.value) &&
-      typeof p.time === 'string' &&
-      /(?:Z|[+-]\d\d:\d\d)$/.test(p.time) &&
-      Number.isFinite(Date.parse(p.time)),
-  );
+  const legacyDates = series.id.startsWith('legacy_');
+  const points = series.points
+    .map((p) => ({
+      ...p,
+      time:
+        (/^graph_token_daily_(?:price_usd|returns)$/.test(series.id) &&
+          /^\d{4}-\d{2}-\d{2}$/.test(p.time)) ||
+        (legacyDates && /^\d{4}-\d{2}-\d{2}T00:00:00$/.test(p.time))
+          ? `${p.time.slice(0, 10)}T00:00:00Z`
+          : p.time,
+    }))
+    .filter(
+      (p) =>
+        typeof p.value === 'number' &&
+        Number.isFinite(p.value) &&
+        typeof p.time === 'string' &&
+        /(?:Z|[+-]\d\d:\d\d)$/.test(p.time) &&
+        Number.isFinite(Date.parse(p.time)),
+    );
   const times = points.map((p) => Date.parse(p.time));
   const values = points.map((p) => p.value as number);
   const minT = Math.min(...times),
@@ -642,8 +836,9 @@ function SeriesChart({
           <p className="text-muted text-xs">
             Vertical scale: {axisValue(minV)} to {axisValue(maxV)} {series.unit ?? '(unit unknown)'}
             . Horizontal scale: {new Date(minT).toISOString().slice(0, 10)} to{' '}
-            {new Date(maxT).toISOString().slice(0, 10)} UTC. Observed points only; gaps are not
-            filled or connected.
+            {new Date(maxT).toISOString().slice(0, 10)}{' '}
+            {legacyDates ? '(supplied calendar dates; timezone not specified)' : 'UTC'}. Observed
+            points only; gaps are not filled or connected.
           </p>
         </>
       ) : (
