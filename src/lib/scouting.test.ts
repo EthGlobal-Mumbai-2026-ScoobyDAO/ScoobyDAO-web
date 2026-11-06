@@ -155,6 +155,28 @@ describe('scouting adapter', () => {
     };
     const v2 = { ...snapshot([a]), schema_version: 'scouting-case-list/2' };
     expect(parseScoutingSnapshot(v2).cases[0].research?.report_id).toBe('report');
+    expect(
+      parseScoutingSnapshot({
+        ...v2,
+        cases: [
+          {
+            ...a,
+            research: { ...a.research, budget: { max_source_requests: 0, max_model_calls: 1 } },
+          },
+        ],
+      }).cases[0].research?.budget?.max_model_calls,
+    ).toBe(1);
+    expect(() =>
+      parseScoutingSnapshot({
+        ...v2,
+        cases: [
+          {
+            ...a,
+            research: { ...a.research, budget: { max_source_requests: 0, max_model_calls: 2 } },
+          },
+        ],
+      }),
+    ).toThrow('research');
     expect(() =>
       parseScoutingSnapshot({ ...v2, cases: [{ ...a, scouting_clues: undefined }] }),
     ).toThrow('Missing v2');

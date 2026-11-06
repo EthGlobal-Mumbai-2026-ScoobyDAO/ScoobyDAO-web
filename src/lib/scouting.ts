@@ -252,7 +252,9 @@ export function parseScoutingSnapshot(data: unknown): ScoutingSnapshot {
           ? item.research.authorization === 'unverified_legacy'
           : record(item.research.budget) &&
             item.research.budget.max_source_requests === 0 &&
-            item.research.budget.max_model_calls === 0) ||
+            (item.research.budget.max_model_calls === 0 ||
+              (data.schema_version === 'scouting-case-list/2' &&
+                item.research.budget.max_model_calls === 1))) ||
         (data.schema_version === 'scouting-case-list/2' &&
           !['policy_qualified_local', 'world_id_human', 'unverified_legacy'].includes(
             item.research.authorization as string,

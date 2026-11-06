@@ -51,3 +51,94 @@ export async function fetchInvestigationEvents(
   if (!response.ok) throw new Error('Investigation events unavailable');
   return parseInvestigationEvents(await response.json(), runId);
 }
+/** Format only the backend's allowlisted structured model-stage fields. */
+export function eventDescription(event: InvestigationEvent): string {
+  if (!event.kind.startsWith('model_stage_')) return event.detail;
+  try {
+    const value: unknown = JSON.parse(event.detail);
+    if (!record(value)) throw new Error('Invalid model stage');
+    const parts: string[] = [];
+    if (
+      typeof value.stage === 'string' &&
+      ['reasoning', 'pillar', 'conclusion'].includes(value.stage)
+    )
+      parts.push(
+        value.stage === 'conclusion'
+          ? 'final synthesis'
+          : value.stage === 'reasoning'
+            ? 'shared five-pillar synthesis'
+            : 'pillar',
+      );
+    if (
+      typeof value.pillar === 'string' &&
+      [
+        'microstructure',
+        'onchain',
+        'fundamentals',
+        'statistical_risk',
+        'technical_health',
+      ].includes(value.pillar)
+    )
+      parts.push(value.pillar.replaceAll('_', ' '));
+    if (
+      typeof value.state === 'string' &&
+      [
+        'started',
+        'completed',
+        'failed',
+        'cancelled',
+        'unavailable',
+        'resumed',
+        'analyzed',
+        'validated_shared_output',
+        'proposed',
+      ].includes(value.state)
+    )
+      parts.push(
+        value.shared_request === true && value.state === 'started'
+          ? 'included in one shared model request'
+          : value.state === 'validated_shared_output'
+            ? 'shared output validated'
+            : value.state,
+      );
+    if (value.stage === 'reasoning')
+      parts.push('one model invocation for all pillars and final synthesis');
+    if (value.model === 'gpt-6.1-terra') parts.push('model: gpt-6.1-terra');
+    for (const [key, label] of [
+      ['budget_calls', 'model call budget'],
+      ['attempts_used', 'attempts used'],
+      ['max_output_tokens', 'maximum output tokens'],
+      ['max_context_chars', 'maximum context characters'],
+    ] as const) {
+      const n = value[key];
+      if (typeof n === 'number' && Number.isSafeInteger(n) && n >= 0 && n <= 1_000_000)
+        parts.push(`${label}: ${n}`);
+    }
+    if (record(value.usage))
+      for (const [key, label] of [
+        ['prompt_tokens', 'input tokens'],
+        ['completion_tokens', 'output tokens'],
+        ['total_tokens', 'total tokens'],
+      ] as const) {
+        const n = value.usage[key];
+        if (typeof n === 'number' && Number.isSafeInteger(n) && n >= 0 && n <= 1_000_000)
+          parts.push(`${label}: ${n}`);
+      }
+    const reasons: Record<string, string> = {
+      context_or_evidence_invalid: 'Evidence or context invalid',
+      missing_openai_key: 'Model credentials unavailable',
+      provider_or_validation_failure: 'Model request or validation failed',
+      client_retries_not_disabled: 'Model client retry policy is not configured safely',
+      refused: 'Model refused the request',
+      truncated: 'Model response was truncated',
+      provider_error: 'Model provider request failed',
+      validation_failed: 'Model output failed validation',
+      cancelled: 'Cancelled',
+    };
+    if (typeof value.reason === 'string' && reasons[value.reason])
+      parts.push(reasons[value.reason]);
+    return parts.length ? parts.join(' · ') : 'Stage details unavailable.';
+  } catch {
+    return 'Stage details unavailable.';
+  }
+}

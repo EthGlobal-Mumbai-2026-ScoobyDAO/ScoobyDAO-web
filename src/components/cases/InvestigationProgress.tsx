@@ -1,6 +1,6 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
-import { fetchInvestigationEvents } from '@/lib/investigationEvents';
+import { eventDescription, fetchInvestigationEvents } from '@/lib/investigationEvents';
 import type { ScoutingCase } from '@/lib/scouting';
 
 /** Shows backend-emitted status only; the timeline does not simulate model activity. */
@@ -27,6 +27,12 @@ export function InvestigationProgress({
       <p className="mt-1 text-sm">
         Status: <strong>{research.status.replaceAll('_', ' ')}</strong>
       </p>
+      {research.budget && (
+        <p className="text-muted mt-1 text-xs">
+          Authorized budget: {research.budget.max_source_requests} source requests ·{' '}
+          {research.budget.max_model_calls} model calls
+        </p>
+      )}
       {research.reason && <p className="text-muted mt-1 text-xs">{research.reason}</p>}
       {research.pillars.length > 0 && (
         <ul className="mt-2 space-y-1 text-xs" aria-label="Pillar status">
@@ -60,7 +66,13 @@ export function InvestigationProgress({
           <ol className="mt-2 space-y-2 text-xs">
             {events.data.map((event) => (
               <li key={event.seq}>
-                <strong>{event.kind.replaceAll('_', ' ')}:</strong> {event.detail}{' '}
+                <strong>
+                  {event.kind.startsWith('model_stage_')
+                    ? 'Model activity'
+                    : event.kind.replaceAll('_', ' ')}
+                  :
+                </strong>{' '}
+                {eventDescription(event)}{' '}
                 <span className="text-muted">
                   · {new Date(event.created * 1000).toLocaleString()}
                 </span>
