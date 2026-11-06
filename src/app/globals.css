@@ -35,6 +35,13 @@
   --on-beam: var(--night-900);
   --focus: var(--beam-400);
 
+  /* Chart series (reference reader), validated with the dataviz palette check against --surface in each theme. */
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+
   color-scheme: dark;
 }
 
@@ -52,6 +59,12 @@
   --mask-ink: #9c2d0f;
   --ghost-ink: #5a45c9;
   --focus: #8a5a00;
+
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
 
   color-scheme: light;
 }
