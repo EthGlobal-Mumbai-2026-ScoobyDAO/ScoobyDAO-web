@@ -1,10 +1,9 @@
 'use client';
-import { useCallback, useState, useSyncExternalStore } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
-import { CaseWorldAction, RetryInvestigation } from './CaseWorldAction';
 import { InvestigationProgress } from './InvestigationProgress';
 import { DiagnosticsBoard } from './DiagnosticsBoard';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
 import { Identicon } from '@/components/Identicon';
 import { chainName } from '@/lib/explorer';
@@ -285,10 +284,6 @@ function CandidateCard({
   now: number;
   actionable: boolean;
 }) {
-  const queryClient = useQueryClient();
-  const onChanged = useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey: ['scouting-cases', scoutingOrigin] });
-  }, [queryClient]);
   const showServerStatus = c.status_label.toLowerCase() !== c.lane.replaceAll('_', ' ');
   const laneLabel =
     c.lane === 'research_running' && c.research?.status === 'queued'
@@ -409,22 +404,16 @@ function CandidateCard({
       )}
       {actionable &&
         (c.human_action_required ||
-          (c.lane === 'monitoring' && c.continuation.availability === 'available')) &&
-        scoutingOrigin && (
-          <CaseWorldAction candidate={c} origin={scoutingOrigin} onChanged={onChanged} now={now} />
+          (c.lane === 'monitoring' && c.continuation.availability === 'available')) && (
+          <p className="text-muted mt-3 text-xs">
+            Administrator sign-in is not connected; World ID confirmation cannot be started here.
+          </p>
         )}
-      {actionable &&
-        scoutingOrigin &&
-        c.research &&
-        ['blocked', 'failed'].includes(c.research.status) &&
-        ['world_id_human', 'policy_qualified_local'].includes(c.research.authorization || '') && (
-          <RetryInvestigation
-            candidate={c}
-            origin={scoutingOrigin}
-            onChanged={onChanged}
-            now={now}
-          />
-        )}
+      {actionable && c.research && ['blocked', 'failed'].includes(c.research.status) && (
+        <p className="text-muted mt-3 text-xs">
+          Retry requires an authenticated administrator session.
+        </p>
+      )}
       {actionable &&
         c.research?.report_id &&
         c.research.report_version &&
