@@ -4,13 +4,13 @@ import { useQuery } from '@tanstack/react-query';
 import { fetchAgentActivity } from '@/lib/agentActivity';
 import { reportApiBase } from '@/lib/reports';
 
-const configured = process.env.NEXT_PUBLIC_REPORT_API_URL;
+const configured = process.env.NEXT_PUBLIC_REPORT_API_URL === undefined ? 'https://scoobydao-backend.onrender.com' : process.env.NEXT_PUBLIC_REPORT_API_URL;
 const base = reportApiBase(configured);
 
 export function AgentActivity() {
   const query = useQuery({
     queryKey: ['agent-activity', base],
-    queryFn: () => fetchAgentActivity(base!),
+    queryFn: () => fetchAgentActivity('/api/research'),
     enabled: Boolean(base),
     retry: false,
     refetchInterval: 15000,

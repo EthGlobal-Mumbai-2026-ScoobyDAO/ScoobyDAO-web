@@ -5,9 +5,16 @@ const nextConfig: NextConfig = {
   // Browser requests stay same-origin; the deployed backend does not enable CORS.
   async rewrites() {
     const backend = process.env.NEXT_PUBLIC_BACKEND_API_URL?.replace(/\/$/, '');
-    return backend
-      ? [{ source: '/api/backend/:path*', destination: `${backend}/:path*` }]
-      : [];
+    const research = (process.env.NEXT_PUBLIC_REPORT_API_URL === undefined ? 'https://scoobydao-backend.onrender.com' : process.env.NEXT_PUBLIC_REPORT_API_URL).replace(/\/$/, '');
+    let validResearch = false;
+    try {
+      const url = new URL(research);
+      validResearch = url.protocol === 'https:' && url.origin === research && !url.username && !url.password && url.pathname === '/' && !url.search && !url.hash;
+    } catch { /* no research proxy for an invalid origin */ }
+    return [
+      ...(backend ? [{ source: '/api/backend/:path*', destination: `${backend}/:path*` }] : []),
+      ...(validResearch ? [{ source: '/api/research/:path*', destination: `${research}/:path*` }] : []),
+    ];
   },
   // Old route names → current routes (NOTES.md "Revamp (Nov 2026)").
   async redirects() {

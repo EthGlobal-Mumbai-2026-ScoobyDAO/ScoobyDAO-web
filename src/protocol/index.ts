@@ -26,7 +26,7 @@ export {
 export { FIXTURE_ACCOUNT, HELD_MESSAGE_ID, subscribeFixture, warpFixture } from './fixture';
 export { decodeEffects, withKnownErrors } from './effects';
 export { deploymentQuery, writeBlockReason, type DeploymentCheckItem, type DeploymentReport } from './deployment';
-export { V2_INFO, isV2Example, isSameAddress } from './v2';
+export { V2_INFO, V2_FLEX_INFO, isV2Example, isSameAddress } from './v2';
 export { sepolia as deployed, arbitrumSepolia as deployedArb, ccipV1Deployed } from '@/contracts/addresses';
 
 /**

@@ -270,3 +270,7 @@ Problem: on reload the 2D placeholder Sniff showed first and the 3D one swapped 
 - glTF loader (drei `useGLTF`/`useAnimations`) split into `SniffModel.tsx`, fetched only when `manifest.json` says `sniff: true`.
 - Measured on the prod build at 1440×900: 3D Sniff visible 370–530 ms after navigation; 2D figure opacity stayed 0 in every sampled frame; flashlight sweep 8.3 ms p50 / 9.0 ms p95 frames; Lighthouse mobile 100 / desktop 96 (TBT 30 / 170 ms).
 - The dev server (`npm run dev`) compiles chunks on first request, so the first 3D load there is much slower than production.
+
+## Dynamic V2 markets and research API (2026-11-06)
+
+The user's requested per-report flow extends the original one-series V2 handoff. `src/contracts/v2/index.ts` now accepts a validated runtime bundle built from the deployed `V2PoolCatalog`; the original handoff addresses and ABIs remain the reference for report #1. New infrastructure ABIs and deployment addresses are stored under `src/contracts/market-infrastructure`. A published report is listed from its registry immediately; its vault, v4 hook, liquidity, and CCIP sender need separate publisher wallet transactions before those functions are available. The frontend does not infer backend approval from research metadata. The research API and `/web/v1` currently return empty report lists. Browser CORS was absent for the research API, so Next.js proxies it through `/api/research`.

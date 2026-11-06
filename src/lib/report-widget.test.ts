@@ -143,6 +143,9 @@ describe('native report package', () => {
       }),
     );
     expect((await loadNativeReport(entry)).report.report_id).toBe('r');
+    entry.apiOrigin = '/api/research';
+    entry.packageUrl = `/api/research/packages/${packageId}`;
+    expect((await loadNativeReport(entry)).report.report_id).toBe('r');
   });
   it('does not fall back when the backend explicitly marks a package unavailable', async () => {
     const entry = fixture();

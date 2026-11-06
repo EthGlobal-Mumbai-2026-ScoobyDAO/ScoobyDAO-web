@@ -126,7 +126,7 @@ export async function verifyAsset(item: ReportAsset): Promise<Blob> {
   });
 }
 export function backendReportAdapter(base: string): ReportAdapter {
-  if (reportApiBase(base) !== base) throw new Error('Invalid report API origin');
+  if (base !== '/api/research' && reportApiBase(base) !== base) throw new Error('Invalid report API origin');
   async function list(): Promise<ReportEntry[]> {
     const items = await json(`${base}/reports`);
     if (!Array.isArray(items)) throw new Error('Invalid report list');
@@ -205,7 +205,7 @@ export function backendReportAdapter(base: string): ReportAdapter {
     },
   };
 }
-const configured = process.env.NEXT_PUBLIC_REPORT_API_URL;
+const configured = process.env.NEXT_PUBLIC_REPORT_API_URL === undefined ? 'https://scoobydao-backend.onrender.com' : process.env.NEXT_PUBLIC_REPORT_API_URL;
 const base = reportApiBase(configured);
 const emptyAdapter: ReportAdapter = {
   async list() {
@@ -224,7 +224,7 @@ const invalidAdapter: ReportAdapter = {
   },
 };
 export const defaultReportAdapter: ReportAdapter = base
-  ? backendReportAdapter(base)
+  ? backendReportAdapter('/api/research')
   : configured
     ? invalidAdapter
     : emptyAdapter;

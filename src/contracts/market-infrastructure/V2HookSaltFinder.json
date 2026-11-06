@@ -1,0 +1,61 @@
+[
+  {
+    "type": "function",
+    "name": "find",
+    "inputs": [
+      {
+        "name": "factory",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "manager",
+        "type": "address",
+        "internalType": "contract IPoolManager"
+      },
+      {
+        "name": "usd",
+        "type": "address",
+        "internalType": "contract IERC20"
+      },
+      {
+        "name": "yt",
+        "type": "address",
+        "internalType": "contract StakerYieldToken"
+      },
+      {
+        "name": "maturity",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "start",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "attempts",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "salt",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "predicted",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "found",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "pure"
+  }
+]

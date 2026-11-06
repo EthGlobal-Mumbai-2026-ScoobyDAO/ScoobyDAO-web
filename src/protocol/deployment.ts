@@ -1,7 +1,8 @@
 import { encodeAbiParameters, isAddressEqual, keccak256, type Address, type Hex } from 'viem';
-import { allContracts, ARB_SEPOLIA_ID, SEPOLIA_ID, v2, type V2ChainId } from '@/contracts/v2';
+import { allContracts, ARB_SEPOLIA_ID, SEPOLIA_ID, v2, v2Flexible, type V2ChainId, type V2Bundle } from '@/contracts/v2';
 import { clientFor, multicallLoose, type ReadCall, type ReadResult } from './clients';
 import { read } from './v2contracts';
+import { makeV2Handles } from './v2contracts';
 
 // Once-per-session check that the chain matches the handoff bundle before any V2 write is allowed:
 // code at every bundle address, and the wiring between vault, hook, routers, receiver and sender.
@@ -214,6 +215,80 @@ export const deploymentQuery = {
   gcTime: Infinity,
   retry: 1,
 };
+
+/** The accelerated deployment has different addresses and a separate registry. */
+export const flexibleDeploymentQuery = {
+  queryKey: ['deployment', v2Flexible.version] as const,
+  queryFn: async (): Promise<DeploymentReport> => {
+    const eth = clientFor(SEPOLIA_ID);
+    const arb = clientFor(ARB_SEPOLIA_ID);
+    const h = makeV2Handles(v2Flexible);
+    const checks: DeploymentCheckItem[] = [];
+    for (const [name, contract] of Object.entries(h)) {
+      const client = contract.chainId === SEPOLIA_ID ? eth : arb;
+      const code = await client.getCode({ address: contract.address }).catch(() => undefined);
+      checks.push({ id: `code.${name}`, label: `${name} has deployed code`, chainId: contract.chainId, ok: !!code && code !== '0x' });
+    }
+    const readEqual = async (id: string, name: keyof typeof h, fn: string, expected: string | bigint) => {
+      const contract = h[name];
+      const client = contract.chainId === SEPOLIA_ID ? eth : arb;
+      try {
+        const actual = await client.readContract({ address: contract.address, abi: contract.abi, functionName: fn } as never);
+        const ok = String(actual).toLowerCase() === String(expected).toLowerCase();
+        checks.push({ id, label: id, chainId: contract.chainId, ok, actual: ok ? undefined : String(actual), expected: ok ? undefined : String(expected) });
+      } catch (e) {
+        checks.push({ id, label: id, chainId: contract.chainId, ok: false, actual: e instanceof Error ? e.message : String(e), expected: String(expected) });
+      }
+    };
+    await readEqual('vault.reportId', 'vault', 'reportId', v2Flexible.reportId);
+    await readEqual('vault.registry', 'vault', 'registry', v2Flexible.sepolia.ReportRegistry);
+    await readEqual('vault.yt', 'vault', 'yt', v2Flexible.sepolia.StakerYieldToken);
+    await readEqual('hook.yt', 'hook', 'yt', v2Flexible.sepolia.StakerYieldToken);
+    await readEqual('hook.poolKeyHash', 'hook', 'poolKeyHash', v2Flexible.poolKeyHash);
+    await readEqual('receiver.vault', 'receiver', 'vault', v2Flexible.sepolia.RiskFiStakeVaultV2);
+    await readEqual('sender.destinationReceiver', 'sender', 'destinationReceiver', v2Flexible.sepolia.CCIPStakeReceiverV2);
+    return { ok: checks.every(c => c.ok), bundle: v2Flexible.version, checkedAt: Date.now(), checks };
+  },
+  staleTime: Infinity,
+  gcTime: Infinity,
+  retry: 1,
+};
+
+/** Validate each activated report's local contracts before its write plans run. */
+export function deploymentQueryFor(bundle: V2Bundle) {
+  if (bundle.version === v2.version) return deploymentQuery;
+  if (bundle.version === v2Flexible.version) return flexibleDeploymentQuery;
+  return {
+    queryKey: ['deployment', bundle.version] as const,
+    queryFn: async (): Promise<DeploymentReport> => {
+      const client = clientFor(SEPOLIA_ID);
+      const checks: DeploymentCheckItem[] = [];
+      for (const [name, address] of Object.entries(bundle.sepolia)) {
+        const code = await client.getCode({ address });
+        checks.push({ id: `code.${name}`, label: `${name} has deployed code`, chainId: SEPOLIA_ID, ok: !!code && code !== '0x' });
+      }
+      if (bundle.arbitrumSepolia.CCIPStakeSenderV2 !== '0x0000000000000000000000000000000000000000') {
+        const sender = bundle.arbitrumSepolia.CCIPStakeSenderV2;
+        const code = await clientFor(ARB_SEPOLIA_ID).getCode({ address: sender });
+        checks.push({ id: 'code.sender', label: 'Arbitrum CCIP sender has deployed code', chainId: ARB_SEPOLIA_ID, ok: !!code && code !== '0x' });
+      }
+      const h = makeV2Handles(bundle);
+      for (const [name, fn, expected] of [
+        ['vault', 'reportId', bundle.reportId], ['vault', 'registry', bundle.sepolia.ReportRegistry],
+        ['vault', 'yt', bundle.sepolia.StakerYieldToken], ['hook', 'yt', bundle.sepolia.StakerYieldToken],
+        ['hook', 'poolKeyHash', bundle.poolKeyHash], ['receiver', 'vault', bundle.sepolia.RiskFiStakeVaultV2],
+        ...(bundle.arbitrumSepolia.CCIPStakeSenderV2 !== '0x0000000000000000000000000000000000000000' ? [['receiver', 'sourceSender', bundle.arbitrumSepolia.CCIPStakeSenderV2] as const] : []),
+      ] as const) {
+        try {
+          const contract = h[name];
+          const actual = await client.readContract({ address: contract.address, abi: contract.abi, functionName: fn } as never);
+          checks.push({ id: `${name}.${fn}`, label: `${name}.${fn}`, chainId: SEPOLIA_ID, ok: String(actual).toLowerCase() === String(expected).toLowerCase() });
+        } catch { checks.push({ id: `${name}.${fn}`, label: `${name}.${fn}`, chainId: SEPOLIA_ID, ok: false }); }
+      }
+      return { ok: checks.every(x => x.ok), bundle: bundle.version, checkedAt: Date.now(), checks };
+    }, staleTime: Infinity, gcTime: Infinity, retry: 1,
+  };
+}
 
 /** Why V2 writes are blocked for this report, or undefined when the deployment check passed. */
 export function writeBlockReason(report: DeploymentReport | undefined, error?: unknown): string | undefined {

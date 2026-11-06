@@ -114,11 +114,12 @@ export async function loadNativeReport(entry: ReportEntry): Promise<NativeReport
   let assetBase: string;
   let reportUrl: string;
   if (entry.packageUrl) {
-    const packageAddress = new URL(entry.packageUrl);
+    const proxied = entry.apiOrigin === '/api/research';
+    const packageAddress = new URL(entry.packageUrl, 'https://local.invalid');
     if (
-      reportApiBase(entry.apiOrigin) !== entry.apiOrigin ||
-      packageAddress.origin !== entry.apiOrigin ||
-      !/^\/packages\/[a-f0-9]{64}$/.test(packageAddress.pathname) ||
+      (!proxied && reportApiBase(entry.apiOrigin) !== entry.apiOrigin) ||
+      (proxied ? packageAddress.origin !== 'https://local.invalid' || !entry.packageUrl.startsWith('/api/research/') : packageAddress.origin !== entry.apiOrigin) ||
+      !new RegExp(`^${proxied ? '/api/research' : ''}/packages/[a-f0-9]{64}$`).test(packageAddress.pathname) ||
       packageAddress.username ||
       packageAddress.password ||
       packageAddress.search ||

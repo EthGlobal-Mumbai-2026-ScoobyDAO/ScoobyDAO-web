@@ -6,6 +6,8 @@ import { createContext, useCallback, useContext, useMemo, useState, type ReactNo
 import type { Hex, PublicClient } from 'viem';
 import { getAccount, getPublicClient, simulateContract, switchChain, waitForTransactionReceipt, writeContract } from 'wagmi/actions';
 import { decodeEffects, deploymentQuery, selectProtocol, withKnownErrors, writeBlockReason, type ContractCall, type TxPlan } from '@/protocol';
+import { deploymentQueryFor } from '@/protocol/deployment';
+import type { V2Bundle } from '@/contracts/v2';
 import { fakeTxHash } from '@/protocol/fixture';
 import { revertReason } from './errors';
 import { chainName, explorer, explorerName } from './explorer';
@@ -21,7 +23,7 @@ const write = writeContract as unknown as (c: typeof wagmiConfig, p: Loose) => P
 /** The request with every known custom error added, so nested reverts (TokenCallFailed, InvalidRouter…) decode. */
 const decodable = (req: ContractCall) => ({ ...req, abi: withKnownErrors(req.abi) });
 
-function makeDeps(qc: QueryClient): RunDeps {
+function makeDeps(qc: QueryClient, bundle?: V2Bundle): RunDeps {
   return {
     currentChainId: () => getAccount(wagmiConfig).chainId,
     switchChain: async (chainId) => {
@@ -55,9 +57,9 @@ function makeDeps(qc: QueryClient): RunDeps {
     chainName,
     // V2 writes wait for (and require) a passing deployment check.
     gate: async () => {
-      if (selectProtocol().kind !== 'v2') return undefined;
+      if (!bundle && selectProtocol().kind !== 'v2') return undefined;
       try {
-        return writeBlockReason(await qc.fetchQuery(deploymentQuery));
+        return writeBlockReason(await qc.fetchQuery(bundle ? deploymentQueryFor(bundle) : deploymentQuery));
       } catch (e) {
         return writeBlockReason(undefined, e);
       }
@@ -71,11 +73,11 @@ interface Toast extends StepProgress {
 export type RunPlan = (plan: TxPlan, onProgress?: (p: StepProgress) => void) => Promise<RunResult>;
 const Ctx = createContext<RunPlan | null>(null);
 
-export function TxProvider({ children }: { children: ReactNode }) {
+export function TxProvider({ children, bundle }: { children: ReactNode; deployment?: 'default' | 'flexible'; bundle?: V2Bundle }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const qc = useQueryClient();
 
-  const deps = useMemo(() => makeDeps(qc), [qc]);
+  const deps = useMemo(() => makeDeps(qc, bundle), [qc, bundle]);
 
   const run = useCallback<RunPlan>(
     async (plan, onProgress) => {
