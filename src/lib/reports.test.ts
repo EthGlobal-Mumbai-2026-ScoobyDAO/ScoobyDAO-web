@@ -102,6 +102,49 @@ describe('configured report API', () => {
       'Reports API unavailable',
     );
   });
+  it('preserves actual provenance, admission and all five reported pillar states', async () => {
+    const pillars = Object.fromEntries(
+      ['microstructure', 'onchain', 'fundamentals', 'statistical_risk', 'technical_health'].map(
+        (key) => [key, { status: key === 'statistical_risk' ? 'unavailable' : 'partial' }],
+      ),
+    );
+    const item = {
+      report_id: 'historical',
+      report_version: 'v1',
+      candidate_id: '1:abc',
+      report_sha256: 'a'.repeat(64),
+      identity: { symbol: 'X' },
+      provenance: 'user_requested_historical_diagnostic',
+      diagnostic: {
+        description: 'Historical test',
+        model_status: 'partial',
+        case_admitted: false,
+        world_verified: false,
+      },
+      mode: 'historical',
+      observation_times: [],
+      selection: {
+        kind: 'diagnostic_exception',
+        authentication: 'unverified local operator',
+        admission_qualified: false,
+      },
+      review: { status: 'pending' },
+      pillars,
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(new Response(JSON.stringify([item])))
+        .mockResolvedValueOnce(new Response(JSON.stringify({ ...item, artifacts: {} }))),
+    );
+    const [row] = await backendReportAdapter('http://localhost:8000').list();
+    expect(row.sourceContext).toContain('historical diagnostic');
+    expect(row.admission).toContain('unverified local operator');
+    expect(row.diagnostic).toContain('not case-admitted · World ID not verified');
+    expect(row.coverage).toHaveLength(5);
+    expect(row.coverage?.find((x) => x.pillar === 'statistical_risk')?.status).toBe('unavailable');
+  });
   it('rejects a mismatched report when that report is opened', async () => {
     const item = {
       report_id: 'r',

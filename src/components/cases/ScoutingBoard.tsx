@@ -3,6 +3,7 @@ import { useCallback, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { CaseWorldAction, RetryInvestigation } from './CaseWorldAction';
 import { InvestigationProgress } from './InvestigationProgress';
+import { DiagnosticsBoard } from './DiagnosticsBoard';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
 import { Identicon } from '@/components/Identicon';
@@ -201,6 +202,7 @@ export function ScoutingBoard() {
           />
         </>
       )}
+      {scoutingOrigin && <DiagnosticsBoard origin={scoutingOrigin} />}
       <details
         className="border-line bg-surface mt-10 rounded-xl border"
         onToggle={(e) => setLegacyOpen(e.currentTarget.open)}

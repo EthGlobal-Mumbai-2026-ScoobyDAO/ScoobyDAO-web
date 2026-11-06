@@ -46,7 +46,7 @@ export function ReportWidget({ entry }: { entry: ReportEntry }) {
     setEvidenceId(null);
   };
   return (
-    <section className="mt-8" aria-labelledby="research-heading">
+    <section className="mt-8 min-w-0 [overflow-wrap:anywhere]" aria-labelledby="research-heading">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-beam-ink text-sm font-semibold">FIVE PILLARS</p>

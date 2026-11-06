@@ -23,6 +23,8 @@ export function Reports({
     queryFn: () =>
       id ? adapter.get(id).then((report) => (report ? [report] : [])) : adapter.list(),
     retry: false,
+    refetchInterval: 15000,
+    refetchIntervalInBackground: false,
   });
   const state = { loading: query.isPending, error: query.isError, reports: query.data ?? [] };
   const report = state.reports[0];
@@ -84,9 +86,25 @@ export function Reports({
               </p>
             )}
             <p className="text-muted mt-1 text-xs">{item.observed}</p>
-            <p className="text-muted mt-1 text-xs">
-              Pillar coverage is shown in the report; a library summary is not supplied.
-            </p>
+            {item.fetched && <p className="text-muted mt-1 text-xs">{item.fetched}</p>}
+            {item.sourceContext && <p className="text-muted mt-1 text-xs">{item.sourceContext}</p>}
+            {item.diagnostic && <p className="mt-1 text-xs font-semibold">{item.diagnostic}</p>}
+            {item.admission && <p className="text-muted mt-1 text-xs">{item.admission}</p>}
+            {item.runStatus && (
+              <p className="text-muted mt-1 text-xs">Investigation: {item.runStatus}</p>
+            )}
+            {item.coverage ? (
+              <p className="text-muted mt-1 text-xs">
+                Pillars:{' '}
+                {item.coverage
+                  .map((p) => `${p.pillar.replaceAll('_', ' ')}: ${p.status}`)
+                  .join(' · ')}
+              </p>
+            ) : (
+              <p className="text-muted mt-1 text-xs">
+                Pillar coverage is shown in the report; a library summary is not supplied.
+              </p>
+            )}
             {item.listUnavailable ? (
               <p role="status" className="text-mask-ink mt-4 text-sm">
                 This report is unavailable or its details are invalid. Other reports remain
@@ -118,6 +136,11 @@ export function Reports({
             <p className="text-beam-ink text-sm font-semibold">{report.context}</p>
             <h2 className="mt-2 text-2xl font-semibold">{report.title}</h2>
             <p className="mt-2">{report.review}</p>
+            {report.diagnostic && <p className="mt-2 text-sm font-semibold">{report.diagnostic}</p>}
+            {report.sourceContext && (
+              <p className="text-muted mt-2 text-sm">{report.sourceContext}</p>
+            )}
+            {report.admission && <p className="text-muted mt-2 text-xs">{report.admission}</p>}
             <p className="text-muted mt-2 text-sm">{report.observed}</p>
             <dl className="text-muted mt-4 grid gap-2 text-xs">
               <div>

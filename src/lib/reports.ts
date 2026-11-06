@@ -11,6 +11,14 @@ export type ReportEntry = {
   observed: string;
   review: string;
   listUnavailable?: boolean;
+  admission?: string;
+  diagnostic?: string;
+  sourceContext?: string;
+  fetched?: string;
+  runStatus?: string;
+  caseId?: string;
+  runId?: string;
+  coverage?: { pillar: string; status: string }[];
   packageUrl?: string;
   packageUnavailable?: boolean;
   html: ReportAsset | null;
@@ -28,9 +36,26 @@ type Metadata = {
   candidate_id: string;
   report_sha256: string;
   provenance?: string;
+  diagnostic?: {
+    description?: string;
+    model_status?: string;
+    case_admitted?: boolean;
+    world_verified?: boolean;
+  } | null;
+  mode?: string;
+  case_id?: string | null;
+  run_id?: string;
+  run_status?: string;
+  fetch_times?: string[];
+  pillars?: Record<string, { status: string }> | null;
   identity: { symbol: string };
   observation_times: string[];
-  selection: { kind: string; reason?: string; admission_qualified: boolean | null };
+  selection: {
+    kind: string;
+    reason?: string;
+    authentication?: string;
+    admission_qualified: boolean | null;
+  };
   review: { status: string };
   package?: { availability: string; package_sha256: string | null; url: string | null };
   artifacts?: Record<
@@ -127,6 +152,15 @@ export async function verifyAsset(item: ReportAsset): Promise<Blob> {
     type: response.headers.get('content-type') ?? 'application/octet-stream',
   });
 }
+function summarizeTimes(label: string, times: string[]): string {
+  if (!times.length) return `${label}: unavailable.`;
+  if (times.length === 1) return `${label}: ${times[0]}`;
+  const parsed = times.map((value) => ({ value, epoch: Date.parse(value) }));
+  if (parsed.some((time) => !Number.isFinite(time.epoch)))
+    return `${label}: ${times.length} timestamps supplied; details available in evidence.`;
+  parsed.sort((a, b) => a.epoch - b.epoch);
+  return `${label}: ${times.length} timestamps, ${parsed[0].value} to ${parsed[parsed.length - 1].value}`;
+}
 export function backendReportAdapter(base: string): ReportAdapter {
   if (reportApiBase(base) !== base) throw new Error('Invalid report API origin');
   async function metadata(): Promise<unknown[]> {
@@ -150,10 +184,42 @@ export function backendReportAdapter(base: string): ReportAdapter {
           value.selection.admission_qualified === false)
           ? 'Labeled reference · integration only · not gate-qualified'
           : 'Research draft · qualification unverified',
-      observed: value.observation_times.length
-        ? `Source observations: ${value.observation_times.join(', ')}`
-        : 'Observation time unavailable.',
+      observed: summarizeTimes('Source observations', value.observation_times),
       review: `Review: ${value.review.status} · local operator identity unverified; no authenticated sign-off.`,
+      diagnostic:
+        value.provenance === 'user_requested_historical_diagnostic' &&
+        value.diagnostic?.case_admitted === false &&
+        value.diagnostic?.world_verified === false
+          ? `User-requested historical diagnostic · not case-admitted · World ID not verified${typeof value.diagnostic.model_status === 'string' ? ` · model status: ${value.diagnostic.model_status}` : ''}`
+          : undefined,
+      admission: `Admission: ${value.selection.kind.replaceAll('_', ' ')} · authentication: ${typeof value.selection.authentication === 'string' ? value.selection.authentication : 'not supplied'}`,
+      fetched:
+        Array.isArray(value.fetch_times) &&
+        value.fetch_times.every((time) => typeof time === 'string') &&
+        value.fetch_times.length
+          ? summarizeTimes('Source fetches', value.fetch_times)
+          : undefined,
+      sourceContext:
+        typeof value.provenance === 'string'
+          ? `Provenance: ${value.provenance.replaceAll('_', ' ')}${typeof value.mode === 'string' ? ` · mode: ${value.mode}` : ''}`
+          : undefined,
+      runStatus: typeof value.run_status === 'string' ? value.run_status : undefined,
+      caseId: typeof value.case_id === 'string' ? value.case_id : undefined,
+      runId: typeof value.run_id === 'string' ? value.run_id : undefined,
+      coverage:
+        value.pillars &&
+        ['microstructure', 'onchain', 'fundamentals', 'statistical_risk', 'technical_health'].every(
+          (key) => typeof value.pillars?.[key]?.status === 'string',
+        )
+          ? [
+              'microstructure',
+              'onchain',
+              'fundamentals',
+              'statistical_risk',
+              'technical_health',
+            ].map((pillar) => ({ pillar, status: value.pillars![pillar].status }))
+          : undefined,
+
       html: null,
       markdown: null,
       pdf: null,
