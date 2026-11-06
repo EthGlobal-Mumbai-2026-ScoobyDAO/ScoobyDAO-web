@@ -5,6 +5,8 @@
 // The six pairs are pinned here exactly as in the contract table. A case item or reader response whose binding
 // differs from this table is shown as a binding mismatch, never rendered as one of the six.
 
+import type { CaseStatus } from './status';
+
 export interface ReferencePair {
   symbol: string;
   candidate_id: string;
@@ -113,6 +115,7 @@ export interface ReferenceCase {
   routing: string | null;
   uncertainties: string[];
   expiresAt: string | null;
+  fetchedAt: string | null;
   /** Links exactly as the backend listed them that also match the pinned pair; mismatches are listed separately. */
   reports: ReferenceReportLink[];
   mismatched: ReferenceReportLink[];
@@ -165,6 +168,7 @@ export function toReferenceCase(item: PublicCaseItem): ReferenceCase | null {
       ? item.uncertainties.filter((u): u is string => typeof u === 'string')
       : [],
     expiresAt: typeof item.expires_at === 'string' ? item.expires_at : null,
+    fetchedAt: typeof item.fetched_at === 'string' ? item.fetched_at : null,
     reports: listed.filter(matches),
     mismatched: listed.filter((r) => !matches(r)),
   };
@@ -193,6 +197,45 @@ export function allowedCaseActions(item: PublicCaseItem): CaseAction[] {
   if (isReferenceItem(item)) return [];
   return [];
 }
+
+// ---------------------------------------------------------------- docket card context
+
+// Contract traits the scout's summary names. Every trait comes from the summary text; nothing is added.
+const FLAGGED: [RegExp, string][] = [
+  [/hidden owner/i, 'Hidden owner'],
+  [/owner balance control/i, 'Owner balance control'],
+  [/\bmint/i, 'Minting'],
+  [/\bpause/i, 'Pause'],
+  [/blacklist/i, 'Blacklist'],
+];
+const CLEAR: [RegExp, string][] = [
+  [/\bno honeypot/i, 'No honeypot'],
+  [/zero owner/i, 'Zero owner'],
+  [/\bno [^.;]*sell-all restriction/i, 'No sell-all restriction'],
+];
+
+/** What the scout flagged and what it found clear, read from the case summary. */
+export function scoutFindings(summary: string | null): { flagged: string[]; clear: string[] } {
+  const s = summary ?? '';
+  return {
+    flagged: FLAGGED.filter(([re]) => re.test(s)).map(([, t]) => t),
+    clear: CLEAR.filter(([re]) => re.test(s)).map(([, t]) => t),
+  };
+}
+
+/** Board phase for a reference case, from its report's review state only. */
+export function referenceStatus(c: Pick<ReferenceCase, 'reports'>): CaseStatus {
+  const state = c.reports[0]?.review_state;
+  if (state === 'pending_review' || state === 'awaiting_confirmation') return 'awaiting_approval';
+  if (state === 'rejected') return 'denied';
+  return 'draft';
+}
+
+/** Open questions for the card: the backend's uncertainties without the reference-table prefix. */
+export const openQuestions = (c: Pick<ReferenceCase, 'uncertainties'>) =>
+  c.uncertainties
+    .map((u) => u.replace(/^historical reference;\s*/i, ''))
+    .map((u) => u.charAt(0).toUpperCase() + u.slice(1));
 
 // ---------------------------------------------------------------- review state wording
 

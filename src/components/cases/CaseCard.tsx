@@ -11,7 +11,7 @@ import { nextDeadline } from '@/protocol';
 import type { CaseRow } from './useCaseRows';
 
 /** Deterministic tilt per card so the board looks pinned by hand, not random on each render. */
-function tilt(id: string) {
+export function tilt(id: string) {
   let h = 0;
   for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) | 0;
   return ((Math.abs(h) % 7) - 3) * 0.45;

@@ -10,6 +10,8 @@ import {
   REFERENCE_PAIRS,
   allowedCaseActions,
   referenceReaderHref,
+  referenceStatus,
+  scoutFindings,
   snapshotExpired,
   toReferenceCase,
   type PublicCaseItem,
@@ -96,11 +98,11 @@ describe('six reference pairs', () => {
         <ReferenceCaseCard c={c} now={Date.parse('2026-11-07T00:00:00Z')} />,
       );
       expect(html).toContain(`href="${href}"`);
-      expect(html).toContain('Historical reference — unreviewed');
-      expect(html).toContain('Synthetic summary for');
-      expect(html).toContain('Synthetic routing text.');
-      expect(html).toContain('Snapshot expired');
+      expect(html).toContain('Awaiting approval');
+      expect(html).toContain('Open questions (1)');
       expect(html).toContain('Read report');
+      // The docket card carries no reference or snapshot boilerplate.
+      expect(html).not.toMatch(/Historical reference|Synthetic routing text|Snapshot expired/);
     },
   );
 
@@ -159,6 +161,31 @@ describe('six reference pairs', () => {
         `href="${referenceReaderHref(c.reports[0])}"`,
       ]);
     }
+  });
+
+  it('reads flags and clear checks from the scout summary only', () => {
+    expect(
+      scoutFindings(
+        'Provider reports hidden owner, pause and minting; these are unverified, and provider reports no honeypot.',
+      ),
+    ).toEqual({ flagged: ['Hidden owner', 'Minting', 'Pause'], clear: ['No honeypot'] });
+    expect(
+      scoutFindings('Provider reports blacklist, but also zero owner, no honeypot and no sell-all restriction.'),
+    ).toEqual({ flagged: ['Blacklist'], clear: ['No honeypot', 'Zero owner', 'No sell-all restriction'] });
+    expect(
+      scoutFindings(
+        'Provider reports hidden owner and minting, not a finding of misuse; no honeypot or sell-all restriction reported.',
+      ),
+    ).toEqual({ flagged: ['Hidden owner', 'Minting'], clear: ['No honeypot', 'No sell-all restriction'] });
+    expect(scoutFindings(null)).toEqual({ flagged: [], clear: [] });
+  });
+
+  it('maps the report review state to a board phase', () => {
+    const link = (review_state: string) => ({ reports: [{ review_state }] }) as Parameters<typeof referenceStatus>[0];
+    expect(referenceStatus(link('pending_review'))).toBe('awaiting_approval');
+    expect(referenceStatus(link('awaiting_confirmation'))).toBe('awaiting_approval');
+    expect(referenceStatus(link('rejected'))).toBe('denied');
+    expect(referenceStatus({ reports: [] })).toBe('draft');
   });
 
   it('treats a missing, invalid or past expiry as expired', () => {

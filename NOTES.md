@@ -287,3 +287,12 @@ Problem: on reload the 2D placeholder Sniff showed first and the 3D one swapped 
 ## Dynamic V2 markets and research API (2026-11-06)
 
 The user's requested per-report flow extends the original one-series V2 handoff. `src/contracts/v2/index.ts` now accepts a validated runtime bundle built from the deployed `V2PoolCatalog`; the original handoff addresses and ABIs remain the reference for report #1. New infrastructure ABIs and deployment addresses are stored under `src/contracts/market-infrastructure`. A published report is listed from its registry immediately; its vault, v4 hook, liquidity, and CCIP sender need separate publisher wallet transactions before those functions are available. The frontend does not infer backend approval from research metadata. The research API and `/web/v1` currently return empty report lists. Browser CORS was absent for the research API, so Next.js proxies it through `/api/research`.
+
+## One case docket (2026-11-07)
+
+The separate "Historical reference cases" section is gone. The six pinned cases from `GET /scouting/cases` now sit in the main case board docket, next to backend reports, and share its search, chain and phase filters.
+
+- **Card context** comes only from the public case item: the scout's summary is split into "Sniff flagged" traits (hidden owner, owner balance control, minting, pause, blacklist) and "Checked clear" traits (no honeypot, zero owner, no sell-all restriction). Matching uses the summary text alone (`scoutFindings` in `src/lib/reference.ts`); a card with no traits says the scout raised no contract flags. Cards show "From token-security provider data" and the scouting time (`fetched_at`).
+- **Phase** comes from the report's review state (`referenceStatus`): `pending_review` and `awaiting_confirmation` count as Awaiting approval, `rejected` as Denied, anything else as Draft.
+- Uncertainties are shown as "Open questions", minus the reference-table prefix. The routing text, "Historical reference — unreviewed" label and snapshot-expiry line are no longer shown on the board.
+- Unchanged: pinned case/report binding, link withholding on mismatch, no agent, World-attempt or onchain actions on these cards, and the World ID-gated reader. Report #1 keeps its required "Demo report #1 (onchain)" label (CLAUDE.md rule 11).

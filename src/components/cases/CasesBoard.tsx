@@ -7,7 +7,9 @@ import { STATUS_META } from '@/components/StatusChip';
 import { chainName } from '@/lib/explorer';
 import { CASE_STATUSES, type CaseStatus } from '@/lib/status';
 import { useChainTime, useProtocol } from '@/protocol/hooks';
-import { ReferenceCases } from '@/components/reference/ReferenceCases';
+import { Banner } from '@/components/Banner';
+import { ReferenceCaseCard, useReferenceCases } from '@/components/reference/ReferenceCases';
+import { referenceStatus } from '@/lib/reference';
 import { CaseCard } from './CaseCard';
 import { LiveMarketCard } from './LiveMarketCard';
 import { useCaseRows } from './useCaseRows';
@@ -21,11 +23,19 @@ export function CasesBoard() {
   const { reports, rows, markets, marketsLoading, marketsError } = useCaseRows();
   const { protocol } = useProtocol();
   const now = useChainTime();
+  const scouted = useReferenceCases();
+  const refs = scouted.data?.refs ?? [];
 
   const [status, setStatus] = useState<'all' | CaseStatus>('all');
   const [chain, setChain] = useState<'all' | number>('all');
   const [query, setQuery] = useState('');
-  const chains = [...new Set(rows.map((r) => r.chainId).filter((c): c is number => !!c))];
+  const chains = [
+    ...new Set(
+      [...rows.map((r) => r.chainId), ...refs.map((c) => c.item.identity?.chain_id)].filter(
+        (c): c is number => !!c,
+      ),
+    ),
+  ];
 
   const q = query.trim().toLowerCase();
   const shown = rows.filter(
@@ -38,6 +48,19 @@ export function CasesBoard() {
         row.report?.id.toLowerCase().includes(q) ||
         row.onchainId?.toString() === q.replace('#', '')),
   );
+  // Scouted cases share the docket and its filters.
+  const shownRefs = refs.filter(
+    (c) =>
+      (status === 'all' || referenceStatus(c) === status) &&
+      (chain === 'all' || c.item.identity?.chain_id === chain) &&
+      (!q ||
+        (c.item.identity?.symbol ?? c.pair.symbol).toLowerCase().includes(q) ||
+        (c.item.identity?.address ?? '').toLowerCase().includes(q) ||
+        c.reports.some((r) => r.report_id.toLowerCase().includes(q))),
+  );
+  const total = rows.length + refs.length;
+  const shownTotal = shown.length + shownRefs.length;
+  const loading = reports.isLoading && scouted.isLoading;
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
@@ -56,8 +79,6 @@ export function CasesBoard() {
           <LiveMarketCard markets={markets} loading={marketsLoading} error={marketsError} now={now} />
         </div>
       )}
-
-      <ReferenceCases />
 
       <div className="mt-8 space-y-4">
         <div className="flex flex-wrap items-center gap-3">
@@ -98,7 +119,11 @@ export function CasesBoard() {
           className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0"
         >
           {STATUS_FILTERS.map((f) => {
-            const n = f.key === 'all' ? rows.length : rows.filter((r) => r.status === f.key).length;
+            const n =
+              f.key === 'all'
+                ? total
+                : rows.filter((r) => r.status === f.key).length +
+                  refs.filter((c) => referenceStatus(c) === f.key).length;
             return (
               <button
                 key={f.key}
@@ -117,9 +142,16 @@ export function CasesBoard() {
 
       <section aria-labelledby="cases-h" className="cork mt-8 rounded-2xl p-5 sm:p-8">
         <h2 id="cases-h" className="sr-only">
-          Cases ({shown.length})
+          Cases ({shownTotal})
         </h2>
-        {reports.isLoading ? (
+        {(reports.isError || scouted.isError) && total > 0 && (
+          <div className="mb-6">
+            <Banner tone="warning" title="Some case files can’t load right now">
+              {[reports.error?.message, scouted.error?.message].filter(Boolean).join(' · ')}
+            </Banner>
+          </div>
+        )}
+        {loading ? (
           <div
             className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3"
             aria-busy="true"
@@ -129,15 +161,15 @@ export function CasesBoard() {
               <div key={i} className="sweep h-56" />
             ))}
           </div>
-        ) : reports.isError ? (
+        ) : total === 0 && reports.isError ? (
           <EmptyState pose="confused" title="Research API unavailable">
             {reports.error.message}. Backend case files can&apos;t load right now; onchain staking, trading, CCIP and claims are unaffected.
           </EmptyState>
-        ) : rows.length === 0 ? (
+        ) : total === 0 ? (
           <EmptyState pose="asleep" title="No cases yet">
             Sniff hasn&apos;t filed anything. New reports appear here as the agents finish them.
           </EmptyState>
-        ) : shown.length === 0 ? (
+        ) : shownTotal === 0 ? (
           <EmptyState
             pose="confused"
             title="No cases match"
@@ -162,6 +194,11 @@ export function CasesBoard() {
             {shown.map((row) => (
               <li key={row.key}>
                 <CaseCard row={row} now={now} />
+              </li>
+            ))}
+            {shownRefs.map((c) => (
+              <li key={c.pair.case_id}>
+                <ReferenceCaseCard c={c} now={now} />
               </li>
             ))}
           </ul>
