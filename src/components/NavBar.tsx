@@ -18,6 +18,7 @@ const LINKS: NavItem[] = [
   ...(selectProtocol().kind === 'v2' ? [{ href: LIVE_MARKET, label: 'Live market' }] : []),
   { href: '/reports', label: 'Reports' },
   { href: '/me', label: 'My positions' },
+  { href: '/admin', label: 'Review desk' },
   ...(env.operatorView ? [{ href: '/operator', label: 'Operator' }] : []),
   { href: '/#how-it-works', label: 'How it works', section: 'how-it-works' },
 ];
@@ -64,7 +65,9 @@ export function NavBar() {
                     ? pathname.startsWith('/reports')
                     : l.href === '/me' || l.href === '/operator'
                       ? pathname === l.href
-                      : false;
+                      : l.href === '/admin'
+                        ? pathname.startsWith('/admin')
+                        : false;
             return (
               <li key={l.href}>
                 <NavLink
