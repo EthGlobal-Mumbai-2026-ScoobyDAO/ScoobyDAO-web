@@ -110,6 +110,25 @@ describe('review desk client', () => {
     expect(backendUrl('/web/v1/x')).toBe('http://127.0.0.1:8000/web/v1/x');
   });
 
+  it('routes protected files through the same-origin proxy without sending credentials elsewhere', () => {
+    const path = '/web/v1/admin/reviews/r/v1/files/index.html';
+    expect(backendUrl(path, '/api/backend')).toBe(
+      '/api/backend/admin/reviews/r/v1/files/index.html',
+    );
+    expect(backendUrl(path, 'https://backend.example/web/v1')).toBe(
+      'https://backend.example/web/v1/admin/reviews/r/v1/files/index.html',
+    );
+    for (const unsafe of [
+      'https://evil.example/file',
+      '//evil.example/file',
+      '/web/v1/../escape',
+      '/web/v1/%2e%2e/escape',
+      '/web/v1/admin/x?redirect=evil',
+    ]) {
+      expect(() => backendUrl(unsafe, '/api/backend')).toThrow();
+    }
+  });
+
   it('publication sign-off calls carry the review desk session', async () => {
     adminToken.set(TOKEN);
     reply = () => jsonResponse({ detail: 'admin scope publication required' }, 403);

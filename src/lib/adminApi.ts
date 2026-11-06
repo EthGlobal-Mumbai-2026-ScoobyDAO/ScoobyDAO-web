@@ -145,9 +145,34 @@ export interface ReviewArtifacts {
 
 // ---------------------------------------------------------------- transport
 
-/** Backend paths such as /web/v1/admin/… resolve against the API origin. */
-export function backendUrl(path: string): string {
-  return new URL(path, new URL(env.apiUrl).origin).toString();
+/** Map backend-relative paths through the configured API base, including the same-origin proxy. */
+export function backendUrl(path: string, apiBase = env.apiUrl): string {
+  if (
+    !path.startsWith('/web/v1/') ||
+    /[?#\\]/.test(path) ||
+    /%(?:2e|2f|5c)/i.test(path) ||
+    path.split('/').some((part) => part === '.' || part === '..')
+  )
+    throw new Error('Invalid report file path');
+  if (apiBase.startsWith('/')) {
+    if (
+      !/^\/(?!\/)[A-Za-z0-9/_-]+$/.test(apiBase) ||
+      apiBase.split('/').some((part) => part === '..')
+    )
+      throw new Error('Invalid API base');
+  } else {
+    const base = new URL(apiBase);
+    if (
+      !['https:', 'http:'].includes(base.protocol) ||
+      base.username ||
+      base.password ||
+      base.search ||
+      base.hash ||
+      base.pathname !== '/web/v1'
+    )
+      throw new Error('Invalid API base');
+  }
+  return apiBase + path.slice('/web/v1'.length);
 }
 
 async function call(path: string, init: RequestInit = {}): Promise<Response> {
@@ -227,7 +252,11 @@ export const adminApi = {
   },
   /** Fetches a rendered file with the session header (a plain link cannot send it) and returns its bytes. */
   async file(url: string): Promise<Blob> {
-    const res = await fetch(backendUrl(url), { headers: adminAuthHeader(), cache: 'no-store' });
+    const res = await fetch(backendUrl(url), {
+      headers: adminAuthHeader(),
+      cache: 'no-store',
+      redirect: 'error',
+    });
     if (!res.ok)
       throw new ApiError(res.status, `Couldn't load ${url.split('/').pop()} (${res.status})`);
     return res.blob();
