@@ -2,10 +2,20 @@ export type ScoutLane =
   'human_review_required' | 'research_running' | 'auto_qualified' | 'monitoring' | 'unavailable';
 export type EvidenceReason = {
   group_id: string;
+  name?: string;
+  measurements?: { label?: string; value?: string | number | null; unit?: string }[];
   description: string;
   verification_status: 'triggered' | 'not_triggered' | 'unknown' | 'held';
   evidence_ids: string[];
   observed_at: string | null;
+};
+export type ScoutingClue = {
+  kind: 'discovery_trigger' | 'provider_claim';
+  description: string;
+  evidence_id: string | null;
+  observed_at: string | null;
+  fetched_at: string | null;
+  verification: 'unverified_provider_lead' | 'unverified_provider_claim';
 };
 export type ScoutingCase = {
   case_id: string;
@@ -22,6 +32,9 @@ export type ScoutingCase = {
   verified_triggered_count: number;
   status_label: string;
   summary: string;
+  scouting_clues?: ScoutingClue[];
+  routing_rationale?: string;
+  evidence_freshness?: 'fresh' | 'stale' | 'unknown';
   uncertainties: string[];
   observed_at: string | null;
   fetched_at: string | null;
@@ -155,10 +168,43 @@ export function parseScoutingSnapshot(data: unknown): ScoutingSnapshot {
       !Array.isArray(item.reasons)
     )
       throw new Error('Invalid scouting state');
+    if (
+      (item.routing_rationale !== undefined && !text(item.routing_rationale)) ||
+      (item.evidence_freshness !== undefined &&
+        !['fresh', 'stale', 'unknown'].includes(item.evidence_freshness as string)) ||
+      (item.scouting_clues !== undefined &&
+        (!Array.isArray(item.scouting_clues) ||
+          item.scouting_clues.some(
+            (clue) =>
+              !record(clue) ||
+              !['discovery_trigger', 'provider_claim'].includes(clue.kind as string) ||
+              !text(clue.description) ||
+              !maybeText(clue.evidence_id) ||
+              !maybeTime(clue.observed_at) ||
+              !maybeTime(clue.fetched_at) ||
+              !['unverified_provider_lead', 'unverified_provider_claim'].includes(
+                clue.verification as string,
+              ),
+          )))
+    )
+      throw new Error('Invalid scouting context');
     for (const e of item.reasons)
       if (
         !record(e) ||
         !text(e.group_id) ||
+        (e.name !== undefined && !text(e.name)) ||
+        (e.measurements !== undefined &&
+          (!Array.isArray(e.measurements) ||
+            e.measurements.some(
+              (m) =>
+                !record(m) ||
+                (m.label !== undefined && typeof m.label !== 'string') ||
+                (m.unit !== undefined && typeof m.unit !== 'string') ||
+                (m.value !== undefined &&
+                  m.value !== null &&
+                  typeof m.value !== 'string' &&
+                  typeof m.value !== 'number'),
+            ))) ||
         !text(e.description) ||
         !['triggered', 'not_triggered', 'unknown', 'held'].includes(
           e.verification_status as string,

@@ -1,6 +1,8 @@
 'use client';
 import { useState, useSyncExternalStore } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Search } from 'lucide-react';
+import { Identicon } from '@/components/Identicon';
 import { chainName } from '@/lib/explorer';
 import {
   createScoutingAdapter,
@@ -24,6 +26,8 @@ const serverClock = () => 0;
 
 export function ScoutingBoard() {
   const [legacyOpen, setLegacyOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState<'all' | 'attention' | 'research' | 'monitored'>('all');
   const now = useSyncExternalStore(subscribeClock, clockSnapshot, serverClock);
   const query = useQuery({
     queryKey: ['scouting-cases', scoutingOrigin],
@@ -35,11 +39,20 @@ export function ScoutingBoard() {
   const result = query.data;
   const all = result?.cases ?? [];
   const freshCases = sortScoutingCases(all);
-  const attention = freshCases.filter((c) => c.lane === 'human_review_required');
-  const research = freshCases.filter(
-    (c) => c.lane === 'research_running' || c.lane === 'auto_qualified',
+  const q = search.trim().toLowerCase();
+  const matching = freshCases.filter(
+    (c) =>
+      !q ||
+      c.candidate_id.toLowerCase().includes(q) ||
+      (c.identity.symbol ?? '').toLowerCase().includes(q),
   );
-  const monitored = freshCases.filter((c) => c.lane === 'monitoring' || c.lane === 'unavailable');
+  const filtered = matching.filter(
+    (c) =>
+      filter === 'all' ||
+      (filter === 'attention' && c.lane === 'human_review_required') ||
+      (filter === 'research' && (c.lane === 'research_running' || c.lane === 'auto_qualified')) ||
+      (filter === 'monitored' && (c.lane === 'monitoring' || c.lane === 'unavailable')),
+  );
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
       <header>
@@ -50,6 +63,48 @@ export function ScoutingBoard() {
           timing matter; a candidate is not an approved report.
         </p>
       </header>
+      <div className="mt-8 space-y-4">
+        <label className="relative block">
+          <span className="sr-only">Search scouting by token, address or candidate ID</span>
+          <Search
+            size={16}
+            className="text-muted pointer-events-none absolute top-1/2 left-3 -translate-y-1/2"
+            aria-hidden
+          />
+          <input
+            type="search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Token, address or candidate ID"
+            className="num border-line focus:border-beam w-full rounded-xl border bg-[color-mix(in_srgb,var(--bg)_60%,transparent)] py-2.5 pr-3 pl-9 text-sm outline-none"
+          />
+        </label>
+        <div
+          role="radiogroup"
+          aria-label="Filter scouting phase"
+          className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0"
+        >
+          {(
+            [
+              ['all', 'All'],
+              ['attention', 'Needs attention'],
+              ['research', 'Research'],
+              ['monitored', 'Monitored'],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              role="radio"
+              aria-checked={filter === value}
+              onClick={() => setFilter(value)}
+              className={`shrink-0 rounded-full border px-3 py-1.5 text-sm whitespace-nowrap ${filter === value ? 'border-beam text-text bg-[color-mix(in_srgb,var(--beam-400)_14%,transparent)]' : 'border-line text-muted hover:text-text'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
       {!adapter && (
         <div role="status" className="border-line bg-surface mt-7 rounded-xl border p-5">
           <h2 className="font-semibold">Scouting unavailable</h2>
@@ -107,22 +162,16 @@ export function ScoutingBoard() {
               </p>
             </div>
           )}
+          {all.length > 0 && matching.length === 0 && (
+            <p className="text-muted mt-6">No scouting candidates match this search.</p>
+          )}
+          {matching.length > 0 && filtered.length === 0 && (
+            <p className="text-muted mt-6">No candidates in this phase.</p>
+          )}
           <Lane
-            title="Needs human attention"
-            subtitle="Ordered by the backend’s declared priority; review is not report sign-off."
-            items={attention}
-            now={now}
-          />
-          <Lane
-            title="Qualified or research in progress"
-            subtitle="Automatic qualification starts bounded research, not publication or human approval."
-            items={research}
-            now={now}
-          />
-          <Lane
-            title="Monitored"
-            subtitle="Leads remain under observation or have unavailable workflow state."
-            items={monitored}
+            title="Scouting queue"
+            subtitle="Ranked by the backend's investigation priority."
+            items={filtered}
             now={now}
           />
         </>
@@ -181,13 +230,15 @@ function Lane({
     <section className="mt-8" aria-label={title}>
       <h2 className="text-2xl font-semibold">{title}</h2>
       <p className="text-muted mt-1 text-sm">{subtitle}</p>
-      <ul className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {items.map((item) => (
-          <li key={item.candidate_id}>
-            <CandidateCard candidate={item} now={now} />
-          </li>
-        ))}
-      </ul>
+      <div className="cork mt-4 rounded-2xl p-5 sm:p-8">
+        <ul className="grid gap-x-6 gap-y-9 sm:grid-cols-2 lg:grid-cols-3">
+          {items.map((item) => (
+            <li key={item.candidate_id}>
+              <CandidateCard candidate={item} now={now} />
+            </li>
+          ))}
+        </ul>
+      </div>
     </section>
   );
 }
@@ -210,26 +261,105 @@ function CandidateCard({ candidate: c, now }: { candidate: ScoutingCase; now: nu
     c.lane === 'research_running' && c.research?.status === 'queued'
       ? 'Research queued'
       : LANE_LABELS[c.lane];
+  const triggered = c.reasons.filter((reason) => reason.verification_status === 'triggered');
+  const missing = c.reasons.filter(
+    (reason) => reason.verification_status === 'unknown' || reason.verification_status === 'held',
+  );
+  const specificGaps = missing
+    .filter((reason) => reason.description !== 'No validated metric-specific verifier is enabled.')
+    .slice(0, 2);
+  const clues = [...(c.scouting_clues ?? [])].sort(
+    (a, b) => Number(b.kind === 'provider_claim') - Number(a.kind === 'provider_claim'),
+  );
+  const nextReason = c.routing_rationale || 'Routing rationale not supplied in this snapshot.';
   return (
-    <article className="border-line bg-surface flex h-full min-w-0 flex-col rounded-2xl border p-5 [overflow-wrap:anywhere]">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="border-line text-beam-ink rounded-full border px-2 py-1 text-xs font-semibold">
-          {laneLabel}
-          {showServerStatus ? ` · ${c.status_label}` : ''}
-        </span>
+    <article className="paper-plain relative flex h-full min-w-0 flex-col p-4 pt-7 [overflow-wrap:anywhere]">
+      <span
+        aria-hidden
+        className="bg-mask absolute -top-2 left-1/2 h-4 w-4 -translate-x-1/2 rounded-full shadow-[inset_-2px_-2px_0_rgb(0_0_0/0.25),0_2px_3px_rgb(0_0_0/0.4)]"
+      />
+      <div className="flex items-start gap-3">
+        <Identicon address={c.identity.address} size={52} />
+        <div className="min-w-0">
+          <h3 className="text-lg font-semibold">{c.identity.symbol?.trim() || 'Symbol unknown'}</h3>
+          <p className="text-muted mt-0.5 text-xs">
+            {chainName(c.identity.chain_id)} ·{' '}
+            <span className="break-all">{c.identity.address}</span>
+          </p>
+          <span className="border-line text-beam-ink mt-2 inline-block rounded-full border px-2 py-1 text-xs font-semibold">
+            {laneLabel}
+            {showServerStatus ? ` · ${c.status_label}` : ''}
+          </span>
+        </div>
       </div>
-      <h3 className="mt-4 text-xl font-semibold">
-        {c.identity.symbol?.trim() || 'Symbol unknown'}
-      </h3>
       {now > 0 && Date.parse(c.expires_at) <= now && (
-        <p className="text-mask-ink mt-2 text-xs font-semibold">
+        <p className="text-mask-ink mt-3 text-xs font-semibold">
           Snapshot expired — refresh before acting.
         </p>
       )}
-      <p className="text-muted mt-1 text-sm">
-        {chainName(c.identity.chain_id)} · <span className="break-all">{c.identity.address}</span>
-      </p>
-      <p className="mt-4 leading-relaxed">{c.summary}</p>
+      <div className="border-line mt-4 border-t pt-3">
+        <h4 className="text-muted text-xs font-semibold uppercase">Why scouted</h4>
+        {clues.length ? (
+          clues.map((clue, i) => (
+            <div key={i} className="mt-2 text-sm">
+              <p className="text-xs font-semibold">
+                {clue.verification === 'unverified_provider_claim'
+                  ? 'Unverified provider claim'
+                  : 'Unverified provider lead'}
+              </p>
+              <p>{clue.description}</p>
+              <p className="text-muted mt-1 text-xs">
+                Source: {clue.evidence_id ?? 'unavailable'} · Observed:{' '}
+                {formatTime(clue.observed_at)} · Fetched: {formatTime(clue.fetched_at)}
+              </p>
+            </div>
+          ))
+        ) : (
+          <p className="mt-1 text-sm">Original scouting trigger not supplied in this snapshot.</p>
+        )}
+      </div>
+      <div className="border-line mt-3 border-t pt-3">
+        <h4 className="text-muted text-xs font-semibold uppercase">What the checks found</h4>
+        <p className="mt-1 text-sm">
+          {c.verified_triggered_count} backend-reported fresh verified concern{' '}
+          {c.verified_triggered_count === 1 ? 'group' : 'groups'}.{' '}
+          {c.verified_triggered_count === 0 && 'None verified does not mean no concerns.'}
+        </p>
+        {triggered.map((reason, i) => (
+          <p key={`${reason.group_id}-${i}`} className="mt-1 text-sm">
+            <strong>{reason.group_id} · triggered:</strong> {reason.description}
+            {reason.evidence_ids.length > 0 && (
+              <span className="text-muted"> · Sources: {reason.evidence_ids.join(', ')}</span>
+            )}
+          </p>
+        ))}
+        {c.evidence_freshness && (
+          <p className="text-muted mt-1 text-xs">
+            Backend-reported evidence freshness: {c.evidence_freshness}
+          </p>
+        )}
+        {specificGaps.map((reason, i) => (
+          <p key={`${reason.group_id}-${i}`} className="text-muted mt-1 text-xs">
+            {reason.group_id} · {REASON_LABELS[reason.verification_status]}: {reason.description}
+          </p>
+        ))}
+        <p className="text-muted mt-2 text-xs">
+          {missing.filter((r) => r.verification_status === 'unknown').length} unknown ·{' '}
+          {missing.filter((r) => r.verification_status === 'held').length} held
+        </p>
+      </div>
+      <div className="border-line mt-3 border-t pt-3">
+        <h4 className="text-muted text-xs font-semibold uppercase">Next step / why waiting</h4>
+        <p className="mt-1 text-sm">
+          {laneLabel}. {nextReason}
+        </p>
+        {c.research && (
+          <p className="text-muted mt-1 text-xs">
+            Research status: {c.research.status}
+            {c.research.run_id ? ` · run ${c.research.run_id}` : ''}
+          </p>
+        )}
+      </div>
       <dl className="text-muted mt-4 space-y-1 text-xs">
         <div>
           <dt className="inline font-semibold">Observed: </dt>
@@ -244,55 +374,37 @@ function CandidateCard({ candidate: c, now }: { candidate: ScoutingCase; now: nu
           </dd>
         </div>
       </dl>
-      <div className="mt-5">
-        <h4 className="text-sm font-semibold">Evidence reasons</h4>
-        <p className="text-muted mt-1 text-xs">
-          Backend-reported fresh verified concern groups: {c.verified_triggered_count}
-          {c.verified_triggered_count === 0 && ' · No verified groups does not mean no concerns.'}
-        </p>
+      <details className="border-line mt-4 border-t pt-3">
+        <summary className="text-beam-ink cursor-pointer text-sm font-semibold">
+          Evidence and uncertainty
+        </summary>
+        <p className="text-muted mt-2 text-xs">{c.summary}</p>
         <ReasonList reasons={c.reasons} now={now} />
-      </div>
-      <div className="mt-4">
-        <h4 className="text-sm font-semibold">Uncertainty</h4>
-        {c.uncertainties.length ? (
-          <ul className="text-muted mt-2 list-disc space-y-1 pl-5 text-sm">
+        {c.uncertainties.length > 0 && (
+          <ul className="text-muted mt-3 list-disc space-y-1 pl-5 text-xs">
             {c.uncertainties.map((u, i) => (
               <li key={i}>{u}</li>
             ))}
           </ul>
-        ) : (
-          <p className="text-muted mt-2 text-sm">No uncertainty details supplied.</p>
         )}
-      </div>
-      {c.research && (
-        <div className="text-muted mt-4 text-sm break-words">
-          <p>
-            Research: {c.research.status}
-            {c.research.run_id ? ` · run ${c.research.run_id}` : ''}
-          </p>
-          {c.research.reason && <p className="mt-1">{c.research.reason}</p>}
-          {c.research.pillars.length > 0 && (
-            <details className="mt-2">
-              <summary className="cursor-pointer">Pillar states</summary>
-              <ul className="mt-2 space-y-1">
-                {c.research.pillars.map((pillar) => (
-                  <li key={pillar.pillar}>
-                    {pillar.pillar}: {pillar.status} · {pillar.detail}
-                  </li>
-                ))}
-              </ul>
-            </details>
-          )}
-        </div>
-      )}
+        {c.research?.pillars.length ? (
+          <ul className="text-muted mt-3 space-y-1 text-xs">
+            {c.research.pillars.map((p) => (
+              <li key={p.pillar}>
+                {p.pillar}: {p.status} · {p.detail}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </details>
       {c.human_action_required && (
-        <div className="border-line mt-5 border-t pt-4">
+        <div className="border-line mt-4 border-t pt-3">
           <button
             type="button"
             disabled
             className="border-line rounded-lg border px-3 py-2 text-sm opacity-60"
           >
-            Continue to human verification
+            Go for investigation
           </button>
           <p className="text-muted mt-2 text-xs">
             The authenticated verifier is not connected.{' '}
@@ -319,6 +431,12 @@ function ReasonList({ reasons, now }: { reasons: EvidenceReason[]; now: number }
             {e.group_id} · {REASON_LABELS[e.verification_status]}
           </p>
           <p className="mt-1">{e.description}</p>
+          {e.measurements?.map((m, j) => (
+            <p key={j} className="mt-1 text-xs">
+              {m.label || 'Value'}: {m.value ?? 'unknown'}
+              {m.unit ? ` ${m.unit}` : ''}
+            </p>
+          ))}
           <p className="text-muted mt-1 text-xs break-words">
             Observed {formatTime(e.observed_at)} · {sourceAge(e.observed_at, now)} · Sources:{' '}
             {e.evidence_ids.length ? e.evidence_ids.join(', ') : 'unavailable'}

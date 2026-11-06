@@ -100,6 +100,40 @@ describe('scouting adapter', () => {
       'Unsupported',
     );
   });
+  it('accepts source-backed optional context while rejecting malformed clues', () => {
+    const a = makeCase('1', 1);
+    a.scouting_clues = [
+      {
+        kind: 'provider_claim',
+        description: 'Unverified test claim',
+        evidence_id: 'source',
+        observed_at: null,
+        fetched_at: null,
+        verification: 'unverified_provider_claim',
+      },
+    ];
+    a.routing_rationale = 'More evidence needed';
+    a.evidence_freshness = 'unknown';
+    a.reasons[0].measurements = [{ label: 'Test', value: '5', unit: '%' }];
+    expect(parseScoutingSnapshot(snapshot([a])).cases[0].scouting_clues?.[0].description).toBe(
+      'Unverified test claim',
+    );
+    expect(() =>
+      parseScoutingSnapshot(
+        snapshot([
+          {
+            ...a,
+            scouting_clues: [{ ...a.scouting_clues![0], verification: 'verified' }],
+          } as unknown as ScoutingCase,
+        ]),
+      ),
+    ).toThrow('Invalid scouting context');
+    expect(() =>
+      parseScoutingSnapshot(
+        snapshot([{ ...a, evidence_freshness: 'current' } as unknown as ScoutingCase]),
+      ),
+    ).toThrow('Invalid scouting context');
+  });
   it('uses backend priority with deterministic ties, without mutating the response', () => {
     const input = [makeCase('2', 1), makeCase('1', 1), makeCase('3', 0)];
     expect(sortScoutingCases(input).map((x) => x.identity.symbol)).toEqual([
