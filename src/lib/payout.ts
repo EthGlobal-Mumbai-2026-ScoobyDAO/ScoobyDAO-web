@@ -42,6 +42,18 @@ export function scaledPaid(nominal: bigint, principalAvailable: bigint, totalPri
   return (nominal * principalAvailable) / totalPrincipal;
 }
 
+/**
+ * What claimPrincipal pays: the nominal payout scaled by principalAvailable / (totalYes + totalNo).
+ * principalAvailable is capped at the total, so without a simulated loss this is the nominal amount.
+ * Pass the vault's principalAvailable after finalization, or the projected value before it.
+ */
+export function estimatePaid(outcome: 'yes' | 'no' | 'void', side: Side, amount: bigint, totals: Totals, principalAvailable?: bigint): bigint {
+  const nominal = payoutFor(outcome, side, amount, totals);
+  const total = totals.yes + totals.no;
+  if (principalAvailable === undefined || total === 0n) return nominal;
+  return scaledPaid(nominal, principalAvailable < total ? principalAvailable : total, total);
+}
+
 export interface PayoutPreview {
   totalsAfter: Totals;
   ifYes: bigint;
@@ -54,19 +66,24 @@ export interface PayoutPreview {
   perUnitIfWin: bigint;
 }
 
-/** Preview for a new stake: current totals plus your stake. */
-export function previewStake(totals: Totals, side: Side, stake: bigint): PayoutPreview {
+/**
+ * Preview for a new stake: current totals plus your stake. `projectedPrincipal` (V2: vault dUSD minus
+ * REP supply, capped at the totals) scales every figure when a simulated loss reduced principal; your
+ * new stake adds its own collateral to it.
+ */
+export function previewStake(totals: Totals, side: Side, stake: bigint, projectedPrincipal?: bigint): PayoutPreview {
   const totalsAfter = {
     yes: totals.yes + (side === 'yes' ? stake : 0n),
     no: totals.no + (side === 'no' ? stake : 0n),
   };
-  const ifYes = payoutFor('yes', side, stake, totalsAfter);
-  const ifNo = payoutFor('no', side, stake, totalsAfter);
+  const principal = projectedPrincipal === undefined ? undefined : projectedPrincipal + stake;
+  const ifYes = estimatePaid('yes', side, stake, totalsAfter, principal);
+  const ifNo = estimatePaid('no', side, stake, totalsAfter, principal);
   return {
     totalsAfter,
     ifYes,
     ifNo,
-    ifVoid: stake,
+    ifVoid: estimatePaid('void', side, stake, totalsAfter, principal),
     feeIfYes: totalsAfter.no === 0n || totalsAfter.yes === 0n ? 0n : feeOf(totalsAfter.no),
     feeIfNo: totalsAfter.no === 0n || totalsAfter.yes === 0n ? 0n : feeOf(totalsAfter.yes),
     perUnitIfWin: payoutFor(side, side, 1_000_000n, totalsAfter),

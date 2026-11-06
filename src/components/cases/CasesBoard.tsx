@@ -6,8 +6,9 @@ import { EmptyState } from '@/components/EmptyState';
 import { STATUS_META } from '@/components/StatusChip';
 import { chainName } from '@/lib/explorer';
 import { CASE_STATUSES, type CaseStatus } from '@/lib/status';
-import { useChainTime } from '@/protocol/hooks';
+import { useChainTime, useProtocol } from '@/protocol/hooks';
 import { CaseCard } from './CaseCard';
+import { LiveMarketCard } from './LiveMarketCard';
 import { useCaseRows } from './useCaseRows';
 
 const STATUS_FILTERS: { key: 'all' | CaseStatus; label: string }[] = [
@@ -16,7 +17,8 @@ const STATUS_FILTERS: { key: 'all' | CaseStatus; label: string }[] = [
 ];
 
 export function CasesBoard() {
-  const { reports, rows } = useCaseRows();
+  const { reports, rows, markets, marketsLoading, marketsError } = useCaseRows();
+  const { protocol } = useProtocol();
   const now = useChainTime();
 
   const [status, setStatus] = useState<'all' | CaseStatus>('all');
@@ -47,6 +49,12 @@ export function CasesBoard() {
           </p>
         </div>
       </header>
+
+      {protocol.kind === 'v2' && (
+        <div className="mt-8">
+          <LiveMarketCard markets={markets} loading={marketsLoading} error={marketsError} now={now} />
+        </div>
+      )}
 
       <div className="mt-8 space-y-4">
         <div className="flex flex-wrap items-center gap-3">
@@ -119,8 +127,8 @@ export function CasesBoard() {
             ))}
           </div>
         ) : reports.isError ? (
-          <EmptyState pose="confused" title="Couldn't reach the case files">
-            {reports.error.message}
+          <EmptyState pose="confused" title="Research API unavailable">
+            {reports.error.message}. Backend case files can&apos;t load right now; onchain staking, trading, CCIP and claims are unaffected.
           </EmptyState>
         ) : rows.length === 0 ? (
           <EmptyState pose="asleep" title="No cases yet">

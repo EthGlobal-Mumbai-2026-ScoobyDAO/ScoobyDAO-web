@@ -3,13 +3,13 @@ import { fakeTxHash, publishFixture, setFixtureSeriesHashes } from '@/protocol/f
 import { env } from './env';
 import { parseApproval, parseReport, parseReports, ShapeError } from './guards';
 import { toBytes32 } from './hash';
-import type { Approval, RepAuthorizeResponse, ReportV02, WebReport } from './types';
+import type { Approval, ReportV02, ReputationBadgeAuthorizeResponse, WebReport } from './types';
 
 // Typed client for ScoobyDAO-backend /web/v1 (publication/web_adapter.py). Display only:
 // nothing here, or in the UI, decides that a report is approved.
 //   GET  /health · GET /reports · GET /reports/:id · GET /reports/:id/raw
 //   POST /reports/:id/approve · GET /approvals/:id
-//   POST /rep/authorize  (proposed, not implemented by the backend yet)
+//   POST /reputation-badge/authorize  (V1 World ID badge; proposed, not implemented by the backend)
 
 export class ApiError extends Error {
   constructor(
@@ -23,32 +23,17 @@ export class ApiError extends Error {
 
 // ---------------------------------------------------------------- mode switch
 
-let modePromise: Promise<boolean> | null = null;
-const MODE_KEY = 'unmasked:api-mode';
-
-/** True when NEXT_PUBLIC_USE_FIXTURES=true or /health is unreachable (cached 60 s per tab). */
+/**
+ * Fixture backend data only with NEXT_PUBLIC_USE_FIXTURES=true. An unreachable or incompatible
+ * backend is an error on the backend-sourced pages ("Research API unavailable"), never a silent
+ * switch to fixtures, and it never affects the chain protocol (src/protocol/index.ts).
+ */
 export function usingFixtures(): Promise<boolean> {
-  if (env.forceFixtures) return Promise.resolve(true);
-  if (typeof window === 'undefined') return Promise.resolve(false);
-  try {
-    const c = JSON.parse(window.sessionStorage.getItem(MODE_KEY) ?? 'null') as { f: boolean; at: number } | null;
-    if (c && Date.now() - c.at < 60_000) return Promise.resolve(c.f);
-  } catch {
-    /* storage unavailable */
-  }
-  modePromise ??= fetch(`${env.apiUrl}/health`, { signal: AbortSignal.timeout(2500), cache: 'no-store' })
-    .then(async (r) => !(r.ok && (await r.json())?.ok === true))
-    .catch(() => true)
-    .then((f) => {
-      try {
-        window.sessionStorage.setItem(MODE_KEY, JSON.stringify({ f, at: Date.now() }));
-      } catch {
-        /* ignore */
-      }
-      return f;
-    });
-  return modePromise;
+  return Promise.resolve(env.forceFixtures);
 }
+
+/** Network-level failure (backend down, CORS, DNS), as opposed to an HTTP error from a running backend. */
+export const isUnreachable = (e: unknown) => e instanceof TypeError || (e instanceof DOMException && e.name === 'TimeoutError');
 
 async function http(path: string, init?: RequestInit): Promise<Response> {
   const res = await fetch(`${env.apiUrl}${path}`, {
@@ -205,7 +190,7 @@ const fixtureApi = {
     await delay(120);
     return fxApproval(id);
   },
-  async authorizeRep(body: { reportId: string; recipient: string; proof: unknown }): Promise<RepAuthorizeResponse> {
+  async authorizeReputationBadge(body: { reportId: string; recipient: string; proof: unknown }): Promise<ReputationBadgeAuthorizeResponse> {
     await delay(700);
     if (!body.proof) throw new ApiError(400, 'cancelled');
     const seen = fxRep.get(body.reportId);
@@ -243,7 +228,8 @@ const liveApi: typeof fixtureApi = {
   },
   requestApproval: async (id) => parseApproval(await json(`/reports/${enc(id)}/approve`, { method: 'POST' })),
   getApproval: async (id) => parseApproval(await json(`/approvals/${enc(id)}`)),
-  authorizeRep: async (body) => (await json('/rep/authorize', { method: 'POST', body: JSON.stringify(body) })) as RepAuthorizeResponse,
+  authorizeReputationBadge: async (body) =>
+    (await json('/reputation-badge/authorize', { method: 'POST', body: JSON.stringify(body) })) as ReputationBadgeAuthorizeResponse,
 };
 
 type Api = typeof fixtureApi;

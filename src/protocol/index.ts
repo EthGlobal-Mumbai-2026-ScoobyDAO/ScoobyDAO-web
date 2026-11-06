@@ -1,4 +1,3 @@
-import { v1Deployed, v2Deployed } from '@/contracts/addresses';
 import { env } from '@/lib/env';
 import { fixture } from './fixture';
 import type { Protocol } from './types';
@@ -14,26 +13,30 @@ export {
   ccipPending,
   ccipStatus,
   isSlow,
+  isSlowStake,
   loadTracked,
+  newRemoteAttempt,
   saveTracked,
+  randomNonce,
+  withFeeBuffer,
+  CCIP_GAS_LIMIT,
   CCIP_SLOW_MINUTES,
   type TrackedCcip,
 } from './ccip';
 export { FIXTURE_ACCOUNT, HELD_MESSAGE_ID, subscribeFixture, warpFixture } from './fixture';
-export { decodeEffects } from './effects';
-export { sepolia as deployed, arbitrumSepolia as deployedArb, ccipV1Deployed, ccipV2Deployed } from '@/contracts/addresses';
-
-/** Which contracts a live session talks to. */
-export const liveDeployed = env.protocol === 'v2' ? v2Deployed : v1Deployed;
+export { decodeEffects, withKnownErrors } from './effects';
+export { deploymentQuery, writeBlockReason, type DeploymentCheckItem, type DeploymentReport } from './deployment';
+export { V2_INFO, isV2Example, isSameAddress } from './v2';
+export { sepolia as deployed, arbitrumSepolia as deployedArb, ccipV1Deployed } from '@/contracts/addresses';
 
 /**
- * Fixture chain when NEXT_PUBLIC_USE_FIXTURES=true, when the selected protocol's addresses are
- * missing, or when the backend itself is in fixture mode (so fixture reports never point at
- * real report ids).
+ * The chain protocol comes only from NEXT_PUBLIC_CHAIN_MODE (live | fixture, default live) and
+ * NEXT_PUBLIC_PROTOCOL (v2 | v1, default v2). Backend availability never changes it: a failing
+ * /health only affects backend-sourced pages, never staking, trading, CCIP or claims.
  */
-export function selectProtocol(apiFixtures: boolean): Protocol {
-  if (env.forceFixtures || apiFixtures || !liveDeployed) return fixture;
-  return env.protocol === 'v2' ? v2 : v1;
+export function selectProtocol(): Protocol {
+  if (env.chainMode === 'fixture') return fixture;
+  return env.protocol === 'v1' ? v1 : v2;
 }
 
 export const fixtureProtocol = fixture;

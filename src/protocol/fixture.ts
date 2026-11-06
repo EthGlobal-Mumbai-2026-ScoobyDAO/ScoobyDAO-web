@@ -334,7 +334,8 @@ export const fixture: Protocol & { account: Address } = {
       lpClaimable: 0n,
       pendingCcip,
       redeemable: outcome ? payoutFor(outcome, 'yes', p.yes, m.totals) + payoutFor(outcome, 'no', p.no, m.totals) : undefined,
-      repBadge: p.badge,
+      reputationBadge: p.badge,
+      repReceipt: 0n,
       dusdBalance: x.dusd,
       allowance: allowanceOf(account, SEPOLIA, FIXTURE_ADDR.VoteMarket),
       remote: { dusdBalance: x.dusdArb, allowance: allowanceOf(account, ARB, FIXTURE_ADDR.CCIPStakeSender), ethBalance: 10n ** 17n },
@@ -539,10 +540,10 @@ export const fixture: Protocol & { account: Address } = {
     ];
   },
 
-  async claimRep(a) {
+  async claimReputationBadge(a) {
     return [
       {
-        label: 'Claim REP badge',
+        label: 'Claim reputation badge (World ID, V1)',
         chainId: SEPOLIA,
         fixture: () => {
           const s = get(BigInt(a.reportId));

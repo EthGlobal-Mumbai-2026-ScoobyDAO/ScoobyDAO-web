@@ -1,8 +1,9 @@
 import { getAddress, type Address } from 'viem';
 import testnets from './testnets.json';
 
-// Typed view of ../SmartContracts/deployments/testnets.json (copied by `npm run sync:contracts`).
+// V1 only: typed view of ../SmartContracts/deployments/testnets.json (copied by `npm run sync:contracts`).
 // Any contract not in the file is `undefined`; features that need it show "Not deployed yet".
+// V2 addresses come only from the handoff bundle in ./v2 (npm run sync:v2), never from this file.
 
 export const SEPOLIA_ID = 11155111 as const;
 export const ARB_SEPOLIA_ID = 421614 as const;
@@ -35,19 +36,12 @@ export const sepolia = {
   // Not in testnets.json yet: written by DeployYieldHook.s.sol after a report locks.
   YieldMarketHook: pick(eth, 'YieldMarketHook'),
   YieldSwapRouter: pick(eth, 'YieldSwapRouter'),
-  // V2 (local only, deployment paused). Keys follow the contract names.
-  RiskFiStakeVaultV2: pick(eth, 'RiskFiStakeVaultV2'),
-  YieldCurveHookV2: pick(eth, 'YieldCurveHookV2'),
-  StakeAndSellRouterV2: pick(eth, 'StakeAndSellRouterV2'),
-  YieldSwapRouterV2: pick(eth, 'YieldSwapRouterV2') ?? pick(eth, 'YieldSwapRouter'),
-  CCIPStakeReceiverV2: pick(eth, 'CCIPStakeReceiverV2'),
 } as const;
 
-/** CCIP source chain. */
+/** V1 CCIP source chain. */
 export const arbitrumSepolia = {
   DemoUSD: pick(arb, 'DemoUSD'),
   CCIPStakeSender: pick(arb, 'CCIPStakeSender'),
-  CCIPStakeSenderV2: pick(arb, 'CCIPStakeSenderV2'),
 } as const;
 
 /** The minimum set the V1 adapter needs to read live. */
@@ -58,9 +52,7 @@ export const v1Deployed = !!(
   sepolia.VotingPositionToken &&
   sepolia.Settlement
 );
-export const v2Deployed = !!(sepolia.RiskFiStakeVaultV2 && sepolia.ReportRegistry && sepolia.DemoUSD);
 export const ccipV1Deployed = !!(arbitrumSepolia.CCIPStakeSender && arbitrumSepolia.DemoUSD && sepolia.CCIPStakeReceiver);
-export const ccipV2Deployed = !!(arbitrumSepolia.CCIPStakeSenderV2 && arbitrumSepolia.DemoUSD && sepolia.CCIPStakeReceiverV2);
 
 export const deploymentTxs = {
   poolConfigurationTx: (eth as unknown as Record<string, string | undefined>)?.poolConfigurationTx,

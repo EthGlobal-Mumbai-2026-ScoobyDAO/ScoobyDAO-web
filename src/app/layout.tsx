@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Bungee, Inter, JetBrains_Mono } from 'next/font/google';
 import type { ReactNode } from 'react';
+import { DeploymentCheckBanner } from '@/components/DeploymentCheck';
 import { FixtureModeBanner } from '@/components/FixtureModeBanner';
 import { GrainOverlay } from '@/components/GrainOverlay';
 import { NavBar } from '@/components/NavBar';
@@ -45,6 +46,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <Providers>
           <NavBar />
           <FixtureModeBanner />
+          <DeploymentCheckBanner />
           <div id="main">{children}</div>
         </Providers>
         <GrainOverlay />

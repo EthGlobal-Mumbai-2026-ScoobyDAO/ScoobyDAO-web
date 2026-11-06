@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { distributable, feeOf, payoutFor, previewStake, scaledPaid, yesShare } from './payout';
+import { distributable, estimatePaid, feeOf, payoutFor, previewStake, scaledPaid, yesShare } from './payout';
 
 const U = 1_000_000n;
 
@@ -79,5 +79,29 @@ describe('previewStake', () => {
   it('share of stakes is a split, not a probability', () => {
     expect(yesShare({ yes: 80n, no: 20n })).toBe(0.8);
     expect(yesShare({ yes: 0n, no: 0n })).toBeUndefined();
+  });
+});
+
+describe('principal scaling (V2 claimPrincipal: paid = nominal × principalAvailable / totalPrincipal)', () => {
+  const t = { yes: 100n * U, no: 15n * U };
+  it('no loss: paid equals the nominal payout', () => {
+    expect(estimatePaid('yes', 'yes', 10n * U, t, 115n * U)).toBe(11_200_000n);
+    expect(estimatePaid('yes', 'yes', 10n * U, t)).toBe(11_200_000n);
+  });
+  it('a simulated loss scales winners and Void refunds pro rata (floors like Solidity)', () => {
+    expect(estimatePaid('yes', 'yes', 10n * U, t, 92n * U)).toBe((11_200_000n * 92n * U) / (115n * U));
+    expect(estimatePaid('void', 'no', 15n * U, t, 92n * U)).toBe(12_000_000n);
+    expect(estimatePaid('yes', 'no', 15n * U, t, 92n * U)).toBe(0n);
+  });
+  it('principalAvailable is capped at the totals', () => {
+    expect(estimatePaid('void', 'yes', 10n * U, t, 500n * U)).toBe(10n * U);
+  });
+  it('previewStake adds the new stake to both the totals and the projected principal', () => {
+    // 100/15 staked, 10 dUSD lost → 105 left; staking 10 Yes → totals 110/15, principal 115 of 125.
+    const p = previewStake(t, 'yes', 10n * U, 105n * U);
+    const nominal = payoutFor('yes', 'yes', 10n * U, p.totalsAfter);
+    expect(p.ifYes).toBe((nominal * 115n) / 125n);
+    expect(p.ifVoid).toBe((10n * U * 115n) / 125n);
+    expect(previewStake(t, 'yes', 10n * U, 115n * U).ifYes).toBe(nominal);
   });
 });

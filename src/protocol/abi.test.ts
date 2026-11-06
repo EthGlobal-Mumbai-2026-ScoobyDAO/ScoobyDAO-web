@@ -3,9 +3,9 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as abis from '@/contracts/generated';
 
-// Fails if a generated ABI lacks any function or event the adapters call. It scans the adapter
-// sources for functionName / eventName / call(..., abi, 'fn') / V('fn') and checks each name
-// against the ABIs that file imports.
+// V1 only: fails if a generated ABI lacks any function or event the V1 adapter calls. It scans the
+// adapter source for functionName / eventName / call(..., abi, 'fn') and checks each name against
+// the ABIs that file imports. V2 ABIs come from the handoff bundle and are covered by v2abi.test.ts.
 type Item = { type: string; name?: string };
 const ABIS = abis as unknown as Record<string, Item[]>;
 const dir = path.resolve(import.meta.dirname);
@@ -26,7 +26,7 @@ function usage(file: string) {
 
 const has = (names: string[], kind: string, name: string) => names.some((k) => ABIS[k].some((i) => i.type === kind && i.name === name));
 
-describe.each(['v1.ts', 'v2.ts'])('%s uses only functions present in the generated ABIs', (file) => {
+describe.each(['v1.ts'])('%s uses only functions present in the generated ABIs', (file) => {
   const u = usage(file);
   it('finds calls to check', () => expect(u.fns.size).toBeGreaterThan(10));
   it.each([...u.fns])('function %s', (fn) => expect(has(u.imported, 'function', fn)).toBe(true));
@@ -48,11 +48,8 @@ describe('key signatures match the contracts', () => {
     expect(i.map((x) => x.type)).toEqual(['tuple', 'uint256', 'bytes']);
     expect(i[0].components!.map((c) => c.name)).toEqual(['protocolVersion', 'reportId', 'yes', 'recipient', 'nonce', 'deadline', 'minAmount']);
   });
-  it('CCIPStakeSenderV2 uses StakeIntentV2 (sourceAccount, uint8 version)', () => {
-    const c = fn('ccipStakeSenderV2Abi', 'stakeRemote').inputs[0].components!;
-    expect(c.map((x) => x.name)).toEqual(['protocolVersion', 'reportId', 'yes', 'sourceAccount', 'recipient', 'nonce', 'deadline', 'minAmount']);
-    expect(c[0].type).toBe('uint8');
-  });
+  it('generated.ts carries no V2 ABIs (they come only from the bundle)', () =>
+    expect(Object.keys(ABIS).filter((k) => /V2Abi$/.test(k))).toEqual([]));
   it('YieldSwapRouter.swapExactInput(PoolKey,bool,uint256,uint256,uint64)', () =>
     expect(fn('yieldSwapRouterAbi', 'swapExactInput').inputs.map((i) => i.type)).toEqual(['tuple', 'bool', 'uint256', 'uint256', 'uint64']));
   it('Settlement.decisions returns the Decision struct fields in order', () => {

@@ -13,13 +13,15 @@ import { ClaimCard } from '@/components/report/ClaimCard';
 import { ReportViewer, Section } from '@/components/report/ReportViewer';
 import { StatusChip } from '@/components/StatusChip';
 import { TxLink } from '@/components/TxLink';
-import { api, ApiError, type ReportWithRaw } from '@/lib/api';
+import { api, ApiError, isUnreachable, type ReportWithRaw } from '@/lib/api';
+import { env } from '@/lib/env';
 import { formatDate, formatUsdc } from '@/lib/format';
 import { useReport } from '@/lib/queries';
 import { caseStatusOf, type CaseStatus } from '@/lib/status';
 import { nextDeadline, type MarketView } from '@/protocol';
-import { useChainTime, useMarket } from '@/protocol/hooks';
+import { useChainTime, useMarket, useProtocol } from '@/protocol/hooks';
 import { HashCheck } from './HashCheck';
+import { useVerifiedPublication, type Publication } from './usePublication';
 
 const FILE_STAMP: Partial<Record<CaseStatus, { text: string; cls: string }>> = {
   draft: { text: 'Classified', cls: 'text-ghost-ink' },
@@ -34,8 +36,16 @@ const FILE_STAMP: Partial<Record<CaseStatus, { text: string; cls: string }>> = {
 export function CaseFile({ id }: { id: string }) {
   const report = useReport(id, { pollMs: 4000 });
   const r = report.data;
-  const onchainId = r?.onchainReportId ? BigInt(r.onchainReportId) : undefined;
-  const market = useMarket(onchainId);
+  const { protocol } = useProtocol();
+  const v2 = protocol.kind === 'v2';
+  // V1 / fixture: the backend's onchain id names the market directly (a fixture backend only on the
+  // fixture chain). V2: only a publication verified against the registry's claim hash links onchain.
+  const linkable = !v2 && (!env.forceFixtures || protocol.kind === 'fixture');
+  const onchainId = linkable && r?.onchainReportId ? BigInt(r.onchainReportId) : undefined;
+  const legacy = useMarket(onchainId);
+  const publication = useVerifiedPublication(v2 ? r : undefined);
+  const verified = publication.state === 'verified' ? publication.market : undefined;
+  const market = { data: v2 ? verified : legacy.data, isLoading: legacy.isLoading, error: legacy.error };
 
   if (report.isError) {
     const nf = report.error instanceof ApiError && report.error.status === 404;
@@ -55,8 +65,8 @@ export function CaseFile({ id }: { id: string }) {
             There&apos;s no case file with the id <span className="num">{id}</span>.
           </EmptyState>
         ) : (
-          <Banner tone="danger" title="Couldn't load this case file">
-            {report.error.message}
+          <Banner tone="danger" title={isUnreachable(report.error) ? 'Research API unavailable' : "Couldn't load this case file"}>
+            {report.error.message}. Onchain staking, trading, CCIP and claims are unaffected.
           </Banner>
         )}
       </main>
@@ -102,6 +112,7 @@ export function CaseFile({ id }: { id: string }) {
                   reportSha256={r.reportSha256}
                   claimManifest={r.claimManifest}
                   claimHash={r.claimHash}
+                  claimHashAlg={r.claimHashAlg}
                   onchain={market.data ? { reportHash: market.data.reportHash, claimHash: market.data.claimHash } : undefined}
                 />
               </Section>
@@ -110,7 +121,9 @@ export function CaseFile({ id }: { id: string }) {
         </article>
 
         <aside className="space-y-4 lg:sticky lg:top-24 lg:self-start" aria-label="Case status">
-          {onchainId !== undefined ? (
+          {v2 && (r.status === 'published' || r.onchainReportId) ? (
+            <PublicationRail publication={publication} report={r} />
+          ) : onchainId !== undefined ? (
             <MarketRail id={onchainId} market={market.data} loading={market.isLoading} error={market.error?.message} tx={r.txHash} />
           ) : (
             <ApprovalRail report={r} />
@@ -133,7 +146,7 @@ function MarketRail({ id, market: m, loading, error, tx }: { id: bigint; market?
         <p className="font-display text-2xl">#{id.toString()}</p>
         {tx && (
           <p className="text-sm">
-            Published in <TxLink value={tx} simulated={m.demoClock} />
+            Published in <TxLink value={tx} chainId={11155111} simulated={m.demoClock} />
           </p>
         )}
       </div>
@@ -159,6 +172,56 @@ function MarketRail({ id, market: m, loading, error, tx }: { id: bigint; market?
           <Gavel size={16} aria-hidden /> Result &amp; claims
         </Link>
       </nav>
+    </div>
+  );
+}
+
+/** V2: "Published onchain as report #N" only after the claim hash matched the registry; no link otherwise. */
+function PublicationRail({ publication: p, report }: { publication: Publication; report: ReportWithRaw }) {
+  const claimed = report.onchainReportId ? `#${report.onchainReportId}` : undefined;
+  if (p.state === 'checking')
+    return <div className="sweep h-48" aria-busy="true" aria-label="Verifying the onchain record" />;
+  if (p.state === 'verified') {
+    const m = p.market;
+    return (
+      <div className="glass space-y-4 p-5">
+        <p className="text-muted text-sm">Verified onchain</p>
+        <p className="font-display text-2xl">Published onchain as report #{p.id.toString()}</p>
+        <p className="text-sm">
+          Publish tx <TxLink value={p.tx} chainId={11155111} />
+        </p>
+        <p className="text-muted text-xs">
+          The registry&apos;s claimHash equals the claim hash recomputed here ({p.check.alg}
+          {p.check.declared ? ', stated by the backend' : ', inferred'}).
+        </p>
+        {m.series ? (
+          <>
+            <StatusChip status={m.phase} size="lg" />
+            <Link href={`/onchain/${p.id}`} className="bg-beam text-on-beam block rounded-xl px-4 py-2.5 text-center font-semibold hover:brightness-105">
+              Open the live market
+            </Link>
+          </>
+        ) : (
+          <>
+            <p className="text-sm">Published onchain — no market deployed for this report yet.</p>
+            <Link href={`/onchain/${p.id}`} className="text-beam-ink text-sm underline">
+              See the registry record
+            </Link>
+          </>
+        )}
+      </div>
+    );
+  }
+  return (
+    <div className="glass space-y-3 p-5">
+      <StatusChip status={caseStatusOf(report)} size="lg" />
+      <p className="text-sm">
+        {p.state === 'none'
+          ? 'The backend lists this report as published but hasn’t sent an onchain report id and publish transaction, so no onchain link is shown.'
+          : p.state === 'unreadable'
+            ? `The backend says report ${claimed}, but it couldn't be read from the V2 ReportRegistry (${p.error.split('\n')[0]}). No onchain link is shown.`
+            : `The backend says report ${claimed}, but the registry's claim hash doesn't match this claim manifest (${p.check.declared ? p.check.alg : 'keccak256 and SHA-256 tried'}). No onchain link is shown.`}
+      </p>
     </div>
   );
 }

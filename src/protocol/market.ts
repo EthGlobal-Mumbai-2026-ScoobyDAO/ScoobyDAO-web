@@ -65,16 +65,105 @@ export function impliedAprFromPrice(spotWad: bigint | undefined, secondsLeft: nu
   return (spotWad * YEAR) / BigInt(secondsLeft);
 }
 
-export type MarketBlock = 'not_deployed' | 'no_router' | 'not_configured' | 'matured' | 'not_locked' | null;
+export type MarketBlock = 'not_deployed' | 'no_router' | 'not_configured' | 'matured' | 'not_locked' | 'no_series' | null;
 
-/** Why swaps are disabled, or null when open. YieldMarketHook.beforeSwap requires now < maturity. */
+/**
+ * Why swaps are disabled, or null when open. The hooks require now < maturity. V1 issues YT only at
+ * lock ('not_locked'); V2 mints YT on every stake, so its market is open before lock too.
+ */
 export function marketBlock(
-  m: { market?: { router?: string; configured: boolean; maturity: number }; maturity: number; lockTime: number },
+  m: { market?: { router?: string; configured: boolean; maturity: number }; maturity: number; lockTime: number; series?: boolean },
   now: number,
 ): MarketBlock {
+  if (m.series === false) return 'no_series';
   if (!m.market) return now < m.lockTime ? 'not_locked' : 'not_deployed';
   if (!m.market.router) return 'no_router';
   if (!m.market.configured) return 'not_configured';
   if (now >= (m.market.maturity || m.maturity)) return 'matured';
   return null;
+}
+
+// ------------------------------------------------------------------ V2 hook-owned LP
+
+export interface LpPool {
+  supply: bigint;
+  usdcReserve: bigint;
+  ytReserve: bigint;
+}
+
+const ceilDiv = (a: bigint, b: bigint) => (a + b - 1n) / b;
+
+/** YieldCurveHookV2._sqrt (Babylonian, floors). */
+export function isqrt(x: bigint): bigint {
+  if (x === 0n) return 0n;
+  let z = (x + 1n) / 2n;
+  let y = x;
+  while (z < y) {
+    y = z;
+    z = (x / z + z) / 2n;
+  }
+  return y;
+}
+
+/**
+ * Shares YieldCurveHookV2.addLiquidity would mint, or undefined when it would revert. After the
+ * first LP the deposit must match the reserves exactly: usdc·supply/usdcReserve == yt·supply/ytReserve.
+ */
+export function lpSharesFor(usdc: bigint, yt: bigint, pool: LpPool): bigint | undefined {
+  if (usdc <= 0n || yt <= 0n) return undefined;
+  if (pool.supply === 0n) {
+    const s = isqrt(usdc * yt);
+    return s > 0n ? s : undefined;
+  }
+  if (pool.usdcReserve === 0n || pool.ytReserve === 0n) return undefined;
+  const byUsdc = (usdc * pool.supply) / pool.usdcReserve;
+  const byYt = (yt * pool.supply) / pool.ytReserve;
+  return byUsdc === byYt && byUsdc > 0n ? byUsdc : undefined;
+}
+
+/**
+ * Exact (dUSD, YT) amounts from one input: the share count nearest the input that both sides can
+ * hit exactly, using the smallest amount of each token. Undefined when nothing matches (or before
+ * the first LP, when any ratio is accepted).
+ */
+export function pairLiquidity(anchor: 'usdc' | 'yt', amount: bigint, pool: LpPool): { usdc: bigint; yt: bigint; shares: bigint } | undefined {
+  if (amount <= 0n || pool.supply === 0n || pool.usdcReserve === 0n || pool.ytReserve === 0n) return undefined;
+  const target = (amount * pool.supply) / (anchor === 'usdc' ? pool.usdcReserve : pool.ytReserve);
+  for (const d of [0n, -1n, 1n, -2n, 2n, -3n, 3n]) {
+    const s = target + d;
+    if (s <= 0n) continue;
+    const usdc = ceilDiv(s * pool.usdcReserve, pool.supply);
+    const yt = ceilDiv(s * pool.ytReserve, pool.supply);
+    if (lpSharesFor(usdc, yt, pool) === s) return { usdc, yt, shares: s };
+  }
+  return undefined;
+}
+
+/** removeLiquidity outputs: reserve·shares/supply for each token (floors like the hook). */
+export function lpRemoveOut(shares: bigint, pool: LpPool): { usdc: bigint; yt: bigint } {
+  if (pool.supply === 0n || shares <= 0n) return { usdc: 0n, yt: 0n };
+  return { usdc: (pool.usdcReserve * shares) / pool.supply, yt: (pool.ytReserve * shares) / pool.supply };
+}
+
+/** YT pending for an account: unclaimedUSDC + balance·(globalIndex − paidIndex)/1e18 (integer math). */
+export function pendingYtYield(p: { unclaimed: bigint; balance: bigint; globalIndex: bigint; paidIndex: bigint }): bigint {
+  const delta = p.globalIndex > p.paidIndex ? p.globalIndex - p.paidIndex : 0n;
+  return p.unclaimed + (p.balance * delta) / WAD;
+}
+
+/**
+ * What hook.claimLPYield() would pay now: the stored unclaimed amount plus the account's share of
+ * yield the hook's YT has earned but not yet checkpointed. An estimate until the next checkpoint.
+ */
+export function pendingLpYield(p: {
+  unclaimed: bigint;
+  shares: bigint;
+  supply: bigint;
+  lpYieldPerShare: bigint;
+  paidLPIndex: bigint;
+  hookYtPending: bigint;
+}): bigint {
+  const perShare = p.lpYieldPerShare + (p.supply > 0n ? (p.hookYtPending * WAD) / p.supply : 0n);
+  const delta = perShare > p.paidLPIndex ? perShare - p.paidLPIndex : 0n;
+  return p.unclaimed + (p.shares * delta) / WAD;
 }

@@ -1,393 +1,791 @@
-import { maxUint256, zeroAddress, type Abi, type Address, type Hex } from 'viem';
+import { formatEther, formatUnits, isAddressEqual, zeroAddress, type Address, type Hex, type Log, type PublicClient } from 'viem';
+import { ARB_SEPOLIA_ID, SEPOLIA_ID, v2 as bundle } from '@/contracts/v2';
+import { env } from '@/lib/env';
+import { estimatePaid } from '@/lib/payout';
+import { approvalStep, type Token } from './approvals';
 import {
-  ARB_SEPOLIA_ID,
-  arbitrumSepolia as arb,
-  ccipStakeReceiverV2Abi,
-  ccipStakeSenderV2Abi,
-  demoUsdAbi,
-  reportRegistryAbi,
-  riskFiStakeVaultV2Abi,
-  SEPOLIA_ID,
-  sepolia as eth,
-  stakeAndSellRouterV2Abi,
-  stakerYieldTokenAbi,
-  yieldCurveHookV2Abi,
-  yieldLpShareAbi,
-  yieldSwapRouterAbi,
-} from '@/contracts';
-import { payoutFor } from '@/lib/payout';
-import { basicExtraArgsV3, buildIntentV2, ccipStatus, loadTracked, withFeeBuffer, type CcipLogs } from './ccip';
-import { arbClient, recentFrom, sepoliaClient } from './clients';
-import { yieldPoolKey, zeroForOneFor } from './market';
-import { derivePhase, outcomeFromEnum } from './phase';
-import { ProtocolRevert, type CcipStake, type ContractCall, type Decision, type MarketPool, type Protocol, type TxPlan } from './types';
+  basicExtraArgsV3,
+  buildIntentV2,
+  decodeReceiverOutcome,
+  decodeSent,
+  deriveV2CcipStatus,
+  loadTracked,
+  newRemoteAttempt,
+  unusedNonce,
+  withFeeBuffer,
+  type ReceiverOutcome,
+  type SentEvent,
+} from './ccip';
+import { fetchCcipMessage, type CcipApiResult } from './ccipApi';
+import { arbClient, estimateBlockAt, getLogsChunked, LOG_WINDOW, multicallLoose, sepoliaClient, type ReadCall, type ReadResult } from './clients';
+import { lpSharesFor, pendingLpYield, pendingYtYield, SWAP_DEADLINE_SECONDS, zeroForOneFor } from './market';
+import { derivePhase, outcomeFromEnum, outcomeToEnum } from './phase';
+import {
+  ProtocolRevert,
+  type ApproveOpts,
+  type CcipStake,
+  type ContractCall,
+  type Decision,
+  type MarketPool,
+  type MarketView,
+  type Outcome,
+  type PositionView,
+  type Protocol,
+  type RemoteAttempt,
+  type Trade,
+  type TxEffect,
+  type TxStep,
+} from './types';
+import { dusdReceived, eventTopic, logsOf, read, V2, write } from './v2contracts';
 
-// Live adapter for the V2 contracts (src/v2/*). Local only today: every address is read from
-// testnets.json, and missing ones throw "not deployed yet". One vault = one report series.
+// Live adapter for the deployed V2 demo (Ethereum Sepolia + Arbitrum Sepolia). Every address,
+// ABI and the pool key come from the handoff bundle via ./v2contracts. One vault serves one report
+// (vault.reportId()); a report published in the registry without a vault has no market.
+// Writes simulate first, then estimate gas with a margin (src/lib/tx.tsx); quotes, fees and CCIP
+// nonces are re-read in `prepare` right before the wallet prompt.
 
-const req = <T>(v: T | undefined, what: string): T => {
-  if (!v) throw new ProtocolRevert(`${what} is not deployed yet`);
-  return v;
+export interface V2Deps {
+  eth: () => PublicClient;
+  arb: () => PublicClient;
+  fetchCcip: (messageId: Hex) => Promise<CcipApiResult>;
+}
+
+type Report = {
+  reportHash: Hex;
+  claimHash: Hex;
+  reviewer: Address;
+  resolver: Address;
+  adjudicator: Address;
+  lockTime: bigint;
+  crossChainCutoff: bigint;
+  resultDeadline: bigint;
+  challengePeriod: bigint;
 };
-const call = (address: Address, abi: Abi, functionName: string, args: readonly unknown[] = [], value?: bigint): ContractCall => ({
-  address,
-  abi,
-  functionName,
-  args,
-  ...(value !== undefined ? { value } : {}),
-});
-const vault = () => req(eth.RiskFiStakeVaultV2, 'RiskFiStakeVaultV2');
-const V = (functionName: string, args: readonly unknown[] = []) =>
-  ({ address: vault(), abi: riskFiStakeVaultV2Abi, functionName, args }) as const;
 
-async function vaultYt(): Promise<Address | undefined> {
-  const yt = (await sepoliaClient().readContract(V('yt') as never)) as Address;
-  return yt === zeroAddress ? undefined : yt;
+const ZERO32 = `0x${'0'.repeat(64)}` as Hex;
+const DECIMALS = 6;
+const fmt = (v: bigint) => formatUnits(v, DECIMALS);
+const side = (yes: boolean) => (yes ? 'Yes' : 'No');
+
+const DUSD: Token = { address: V2.dusd.address, abi: V2.dusd.abi, symbol: 'dUSD', decimals: DECIMALS };
+const DUSD_ARB: Token = { address: V2.dusdArb.address, abi: V2.dusdArb.abi, symbol: 'dUSD', decimals: DECIMALS };
+const YT: Token = { address: V2.yt.address, abi: V2.yt.abi, symbol: 'YT', decimals: DECIMALS };
+const REP_TOKEN: Token = { address: V2.rep.address, abi: V2.rep.abi, symbol: 'REP', decimals: DECIMALS };
+const LP_TOKEN: Token = { address: V2.lp.address, abi: V2.lp.abi, symbol: 'RF-YLP', decimals: DECIMALS };
+
+async function readOne<T>(client: PublicClient, call: ReadCall): Promise<T> {
+  return (await client.readContract(call as never)) as T;
 }
 
-async function seriesId(): Promise<bigint> {
-  return (await sepoliaClient().readContract(V('reportId') as never)) as bigint;
+async function readNamed<K extends string>(client: PublicClient, calls: Record<K, ReadCall>, blockNumber?: bigint): Promise<Record<K, ReadResult>> {
+  const keys = Object.keys(calls) as K[];
+  const res = await multicallLoose(client, keys.map((k) => calls[k]), blockNumber);
+  return Object.fromEntries(keys.map((k, i) => [k, res[i]])) as Record<K, ReadResult>;
 }
 
-async function assertSeries(id: bigint) {
-  if ((await seriesId()) !== id) throw new ProtocolRevert(`The V2 vault serves report #${await seriesId()}, not #${id}`);
-}
+const need = <T>(r: ReadResult, what: string): T => {
+  if (!r.ok) throw new ProtocolRevert(`Couldn't read ${what} on Ethereum Sepolia: ${r.error}`);
+  return r.result as T;
+};
+const maybe = <T>(r: ReadResult): T | undefined => (r.ok ? (r.result as T) : undefined);
 
-async function pool(): Promise<MarketPool | undefined> {
-  const hook = eth.YieldCurveHookV2;
-  const yt = await vaultYt();
-  if (!hook || !yt || !eth.DemoUSD) return undefined;
-  const c = sepoliaClient();
-  const H = (functionName: string) => ({ address: hook, abi: yieldCurveHookV2Abi, functionName }) as const;
-  const [spot, rate, tau, usdcR, ytR, fee, maturity, keyHash] = (await c.multicall({
-    allowFailure: true,
-    contracts: ['spotPriceWad', 'impliedRateWad', 'timeRemainingWad', 'usdcReserve', 'ytReserve', 'feePips', 'maturity', 'poolKeyHash'].map(H) as never,
-  })) as { result?: unknown }[];
-  return {
-    hook,
-    router: eth.YieldSwapRouterV2,
-    poolKey: yieldPoolKey(eth.DemoUSD, yt, hook),
-    spotPriceWad: spot.result as bigint | undefined,
-    impliedRateWad: rate.result as bigint | undefined,
-    timeRemainingWad: tau.result as bigint | undefined,
-    reserves: { usdc: (usdcR.result as bigint) ?? 0n, yt: (ytR.result as bigint) ?? 0n },
-    feePips: Number(fee.result ?? 0),
-    maturity: Number(maturity.result ?? 0),
-    configured: keyHash.result !== undefined && keyHash.result !== `0x${'0'.repeat(64)}`,
-  };
-}
+export function createV2(deps: V2Deps): Protocol & { kind: 'v2' } {
+  const eth = () => deps.eth();
+  const arb = () => deps.arb();
 
-const allowance = async (chain: 'eth' | 'arb', token: Address, owner: Address, spender: Address) =>
-  (await (chain === 'eth' ? sepoliaClient() : arbClient()).readContract({
-    address: token,
-    abi: demoUsdAbi,
-    functionName: 'allowance',
-    args: [owner, spender],
-  })) as bigint;
-const approve = (chainId: number, token: Address, spender: Address, label = 'Approve dUSD') => ({
-  label,
-  chainId,
-  request: call(token, demoUsdAbi as Abi, 'approve', [spender, maxUint256]),
-});
+  async function seriesId(): Promise<bigint> {
+    return readOne<bigint>(eth(), read('vault', 'reportId'));
+  }
 
-export const v2: Protocol = {
-  kind: 'v2',
-  dusd: eth.DemoUSD,
+  /** Never send a stake or claim for an id the vault doesn't serve (vault.reportId()). */
+  async function assertSeries(id: bigint) {
+    const served = await seriesId();
+    if (served !== id) throw new ProtocolRevert(`No market is deployed for report #${id}: the V2 vault serves report #${served} only.`);
+  }
 
-  async listPublished() {
-    const id = await seriesId();
-    return id > 0n ? [id] : [];
-  },
+  async function requireBalance(client: PublicClient, token: Token, owner: Address, amount: bigint, where: string) {
+    if (amount <= 0n) throw new ProtocolRevert('Enter an amount above 0.');
+    const bal = await readOne<bigint>(client, { address: token.address, abi: token.abi, functionName: 'balanceOf', args: [owner] });
+    if (bal < amount) throw new ProtocolRevert(`Insufficient ${token.symbol} on ${where}: you have ${fmt(bal)}, this needs ${fmt(amount)}.`);
+  }
 
-  async chainTime() {
-    return Number((await sepoliaClient().getBlock()).timestamp);
-  },
+  const approve = (token: Token, owner: Address, spender: Address, spenderLabel: string, amount: bigint, opts?: ApproveOpts, chainId: number = SEPOLIA_ID) =>
+    approvalStep({ client: chainId === ARB_SEPOLIA_ID ? arb() : eth(), chainId, token, owner, spender, spenderLabel, amount, opts });
 
-  async getMarket(id) {
-    await assertSeries(id);
-    const c = sepoliaClient();
-    const block = await c.getBlock();
-    const res = (await c.multicall({
-      blockNumber: block.number,
-      allowFailure: false,
-      contracts: [
-        { address: req(eth.ReportRegistry, 'ReportRegistry'), abi: reportRegistryAbi, functionName: 'getReport', args: [id] },
-        V('totalYes'),
-        V('totalNo'),
-        V('proposed'),
-        V('finalOutcome'),
-        V('evidenceHash'),
-        V('proposedAt'),
-        V('finalizedAt'),
-        V('challenged'),
-        V('maturity'),
-      ] as never,
-    })) as unknown[];
-    const r = res[0] as { reportHash: Hex; claimHash: Hex; reviewer: Address; resolver: Address; adjudicator: Address; lockTime: bigint; crossChainCutoff: bigint; resultDeadline: bigint; challengePeriod: bigint };
-    const [totalYes, totalNo, proposed, finalOutcome, evidenceHash, proposedAt, finalizedAt, challenged, maturity] = res.slice(1) as [
-      bigint, bigint, number, number, Hex, bigint, bigint, boolean, bigint,
-    ];
-    const decision: Decision | undefined =
-      proposedAt > 0n || finalizedAt > 0n
-        ? {
-            proposed: outcomeFromEnum(proposed),
-            outcome: outcomeFromEnum(finalOutcome),
-            evidenceHash,
-            proposedAt: Number(proposedAt),
-            challenged,
-            finalizedAt: finalizedAt > 0n ? Number(finalizedAt) : undefined,
-          }
-        : undefined;
-    const now = Number(block.timestamp);
-    const lockTime = Number(r.lockTime);
-    const crossChainCutoff = Number(r.crossChainCutoff);
-    let remoteCutoff: number | undefined;
-    if (arb.CCIPStakeSenderV2)
-      remoteCutoff = Number(
-        await arbClient()
-          .readContract({ address: arb.CCIPStakeSenderV2, abi: ccipStakeSenderV2Abi, functionName: 'reportCutoff', args: [id] })
-          .catch(() => 0n),
-      );
-    const yt = await vaultYt();
+  const step = (label: string, request: ContractCall, extra: Partial<TxStep> = {}, chainId: number = SEPOLIA_ID): TxStep => ({ label, chainId, request, ...extra });
+
+  async function latestTime(client: PublicClient): Promise<bigint> {
+    return (await client.getBlock()).timestamp;
+  }
+
+  async function lpPool() {
+    const r = await readNamed(eth(), { supply: read('lp', 'totalSupply'), usdcReserve: read('hook', 'usdcReserve'), ytReserve: read('hook', 'ytReserve') });
     return {
-      reportId: id,
-      reportHash: r.reportHash,
-      claimHash: r.claimHash,
-      reviewer: r.reviewer,
-      resolver: r.resolver,
-      adjudicator: r.adjudicator,
-      lockTime,
-      crossChainCutoff,
-      resultDeadline: Number(r.resultDeadline),
-      challengePeriod: Number(r.challengePeriod),
-      maturity: Number(maturity),
-      totals: { yes: totalYes, no: totalNo },
-      // V2 has no lock() call: stakes close at lockTime and YT exists from the first stake.
-      locked: now >= lockTime,
-      phase: derivePhase({ now, lockTime, crossChainCutoff, decision }),
-      chainTime: now,
-      blockNumber: block.number,
-      decision,
-      yt: yt ? { address: yt } : undefined,
-      market: await pool().catch(() => undefined),
-      remoteCutoff,
+      supply: need<bigint>(r.supply, 'RF-YLP totalSupply'),
+      usdcReserve: need<bigint>(r.usdcReserve, 'hook.usdcReserve'),
+      ytReserve: need<bigint>(r.ytReserve, 'hook.ytReserve'),
     };
-  },
+  }
 
-  async getPosition(id, account) {
-    await assertSeries(id);
-    const c = sepoliaClient();
-    const dusd = req(eth.DemoUSD, 'DemoUSD');
-    const [yes, no, bal, alw] = (await c.multicall({
-      allowFailure: false,
-      contracts: [
-        V('positionOf', [account, true]),
-        V('positionOf', [account, false]),
-        { address: dusd, abi: demoUsdAbi, functionName: 'balanceOf', args: [account] },
-        { address: dusd, abi: demoUsdAbi, functionName: 'allowance', args: [account, vault()] },
-      ] as never,
-    })) as bigint[];
-    let yt = 0n;
-    let ytClaimable = 0n;
-    const ytAddr = await vaultYt();
-    if (ytAddr) {
-      const [b, idx, paid, unclaimed] = (await c.multicall({
-        allowFailure: false,
-        contracts: [
-          { address: ytAddr, abi: stakerYieldTokenAbi, functionName: 'balanceOf', args: [account] },
-          { address: ytAddr, abi: stakerYieldTokenAbi, functionName: 'globalIndex' },
-          { address: ytAddr, abi: stakerYieldTokenAbi, functionName: 'paidIndex', args: [account] },
-          { address: ytAddr, abi: stakerYieldTokenAbi, functionName: 'unclaimedUSDC', args: [account] },
-        ],
-      })) as unknown as bigint[];
-      yt = b;
-      ytClaimable = unclaimed + (b * (idx - paid)) / 10n ** 18n;
-    }
-    let lpShares = 0n;
-    let lpClaimable = 0n;
-    if (eth.YieldCurveHookV2) {
-      const hook = eth.YieldCurveHookV2;
-      const shares = (await c.readContract({ address: hook, abi: yieldCurveHookV2Abi, functionName: 'shares' })) as Address;
-      if (shares !== zeroAddress) {
-        const [s, per, paid, un] = (await c.multicall({
-          allowFailure: false,
-          contracts: [
-            { address: shares, abi: yieldLpShareAbi, functionName: 'balanceOf', args: [account] },
-            { address: hook, abi: yieldCurveHookV2Abi, functionName: 'lpYieldPerShare' },
-            { address: hook, abi: yieldCurveHookV2Abi, functionName: 'paidLPIndex', args: [account] },
-            { address: hook, abi: yieldCurveHookV2Abi, functionName: 'unclaimedLPYield', args: [account] },
-          ],
-        })) as unknown as bigint[];
-        lpShares = s;
-        lpClaimable = un + (s * (per - paid)) / 10n ** 18n;
+  async function quoteHook(dir: 'buy' | 'sell', amount: bigint): Promise<bigint> {
+    return readOne<bigint>(eth(), read('hook', dir === 'buy' ? 'quoteBuy' : 'quoteSell', [amount]));
+  }
+
+  // ------------------------------------------------------------------------------ CCIP tracker
+
+  async function trackCcip(messageId: Hex): Promise<CcipStake | undefined> {
+    const c = eth();
+    const key = messageId.toLowerCase();
+    const isExample = key === bundle.exampleCCIP.messageId.toLowerCase();
+    const tracked = loadTracked().find((t) => t.messageId.toLowerCase() === key);
+    const api = await deps.fetchCcip(messageId);
+    const apiMsg = api.ok ? api.message : undefined;
+
+    // Source: decode Sent from the Arbitrum Sepolia receipt (the authoritative intent details).
+    const sourceTx = tracked?.sourceTx ?? apiMsg?.sendTransactionHash ?? (isExample ? bundle.exampleCCIP.sourceTx : undefined);
+    let sent: SentEvent | undefined;
+    let sourceConfirmed = false;
+    if (sourceTx) {
+      const rcpt = await arb()
+        .getTransactionReceipt({ hash: sourceTx })
+        .catch(() => undefined);
+      if (rcpt?.status === 'success') {
+        sourceConfirmed = true;
+        sent = decodeSent(rcpt.logs, V2.sender.address, messageId);
       }
     }
-    const m = await v2.getMarket(id);
-    const outcome = m.decision?.outcome;
-    const tracked = loadTracked().filter((t) => t.reportId === id.toString());
-    const pendingCcip = (await Promise.all(tracked.map((t) => v2.trackCcip(t.messageId).catch(() => undefined)))).filter(
-      (s): s is CcipStake => !!s && s.status !== 'credited' && s.status !== 'recovered',
-    );
-    return {
-      yes,
-      no,
-      yt,
-      ytClaimable,
-      lpShares,
-      lpClaimable,
-      pendingCcip,
-      redeemable: outcome ? payoutFor(outcome, 'yes', yes, m.totals) + payoutFor(outcome, 'no', no, m.totals) : undefined,
-      // REP is a V1 contract bound to V1 Settlement.eligibleWinner.
-      repBadge: false,
-      dusdBalance: bal,
-      allowance: alw,
-      transferable: false,
-    };
-  },
+    let sentAt = tracked?.savedAt;
+    if (!sentAt && apiMsg?.sendTimestamp) {
+      const t = Math.floor(Date.parse(apiMsg.sendTimestamp) / 1000);
+      if (Number.isFinite(t)) sentAt = t;
+    }
 
-  async stakeLocal(id, yes, amount, account) {
-    await assertSeries(id);
-    const dusd = req(eth.DemoUSD, 'DemoUSD');
-    const plan: TxPlan = [];
-    if ((await allowance('eth', dusd, account, vault())) < amount) plan.push(approve(SEPOLIA_ID, dusd, vault()));
-    plan.push({
-      label: `Stake ${yes ? 'Yes' : 'No'} (keep my YT)`,
-      chainId: SEPOLIA_ID,
-      request: call(vault(), riskFiStakeVaultV2Abi as Abi, 'stake', [id, yes, amount, account, account]),
+    // Destination: the receiver's own state, then the outcome event for this message id.
+    const views = await readNamed(c, {
+      delivered: read('receiver', 'delivered', [messageId]),
+      recoverable: read('receiver', 'recoverable', [messageId]),
+      recoverySource: read('receiver', 'recoverySourceAccount', [messageId]),
+      operator: read('receiver', 'recoveryOperator'),
     });
-    return plan;
-  },
+    const delivered = need<boolean>(views.delivered, 'receiver.delivered');
+    const recoverable = need<bigint>(views.recoverable, 'receiver.recoverable');
+    const recoverySource = need<Address>(views.recoverySource, 'receiver.recoverySourceAccount');
+    const operator = maybe<Address>(views.operator);
 
-  async quoteStakeAndSell(amount) {
-    return (await sepoliaClient().readContract({
-      address: req(eth.StakeAndSellRouterV2, 'StakeAndSellRouterV2'),
-      abi: stakeAndSellRouterV2Abi,
-      functionName: 'quoteSell',
-      args: [amount],
-    })) as bigint;
-  },
+    if (!delivered && !sourceConfirmed && !apiMsg && !tracked) return undefined;
 
-  async stakeAndSell(id, yes, amount, minUsdcOut, deadline, account) {
-    await assertSeries(id);
-    const router = req(eth.StakeAndSellRouterV2, 'StakeAndSellRouterV2');
-    const dusd = req(eth.DemoUSD, 'DemoUSD');
-    const plan: TxPlan = [];
-    if ((await allowance('eth', dusd, account, router)) < amount) plan.push(approve(SEPOLIA_ID, dusd, router));
-    plan.push({
-      label: `Stake ${yes ? 'Yes' : 'No'} and sell my YT`,
-      chainId: SEPOLIA_ID,
-      request: call(router, stakeAndSellRouterV2Abi as Abi, 'stakeAndSellYield', [yes, amount, minUsdcOut, BigInt(deadline)]),
+    let outcome: ReceiverOutcome | undefined;
+    let destTx = apiMsg?.receiptTransactionHash ?? (isExample ? bundle.exampleCCIP.destinationTx : undefined);
+    let outcomeUnknown = false;
+    if (delivered) {
+      if (destTx) {
+        const rcpt = await c.getTransactionReceipt({ hash: destTx }).catch(() => undefined);
+        if (rcpt) outcome = decodeReceiverOutcome(rcpt.logs, V2.receiver.address, messageId).outcome;
+      }
+      if (!outcome) {
+        // Bounded scan (≤ 8 × 1,000 blocks) from about when the message was sent.
+        const latest = await c.getBlock();
+        const from = apiMsg?.receiptBlockNumber
+          ? BigInt(apiMsg.receiptBlockNumber)
+          : sentAt
+            ? estimateBlockAt(latest, sentAt)
+            : latest.number > LOG_WINDOW
+              ? latest.number - LOG_WINDOW
+              : 0n;
+        const topics = [[eventTopic('receiver', 'Credited'), eventTopic('receiver', 'DeferredAsREP'), eventTopic('receiver', 'Held')], messageId];
+        const scan = await getLogsChunked(c, { address: V2.receiver.address, topics }, { fromBlock: from, toBlock: latest.number, maxChunks: 8, stop: (l) => l.length > 0 }).catch(
+          () => ({ logs: [] as Log[] }),
+        );
+        outcome = decodeReceiverOutcome(scan.logs, V2.receiver.address, messageId).outcome;
+        if (outcome?.tx) destTx = outcome.tx;
+        outcomeUnknown = !outcome;
+      }
+    }
+
+    const status = deriveV2CcipStatus({
+      sourceConfirmed,
+      api: api.ok ? apiMsg?.status : 'unavailable',
+      delivered,
+      outcome: outcome?.kind,
+      recoverable,
+      recoverySourceAccount: recoverySource,
     });
-    return plan;
-  },
 
-  async quoteRemote(id, yes, amount, account) {
-    const sender = req(arb.CCIPStakeSenderV2, 'CCIPStakeSenderV2');
-    const m = await v2.getMarket(id);
-    const intent = buildIntentV2({ reportId: id, yes, account, amount, lockTime: m.lockTime, nonce: 1n });
-    const fee = (await arbClient().readContract({ address: sender, abi: ccipStakeSenderV2Abi, functionName: 'quoteFee', args: [intent, amount, basicExtraArgsV3()] })) as bigint;
-    return { fee, deadline: Number(intent.deadline), cutoff: m.remoteCutoff ?? m.crossChainCutoff };
-  },
+    const recipient = sent?.recipient ?? (outcome?.kind === 'credited' ? outcome.recipient : undefined) ?? tracked?.recipient ?? zeroAddress;
+    const yesSide = sent ? sent.yes : tracked ? tracked.side === 'yes' : undefined;
+    const sourceAccount =
+      sent?.sourceAccount ??
+      (outcome && outcome.kind !== 'credited' ? outcome.sourceAccount : undefined) ??
+      (recoverySource !== zeroAddress ? recoverySource : undefined) ??
+      tracked?.sourceAccount;
 
-  async stakeRemote(id, yes, amount, account) {
-    const sender = req(arb.CCIPStakeSenderV2, 'CCIPStakeSenderV2');
-    const dusd = req(arb.DemoUSD, 'DemoUSD (Arbitrum Sepolia)');
-    const m = await v2.getMarket(id);
-    const intent = buildIntentV2({ reportId: id, yes, account, amount, lockTime: m.lockTime });
-    const extraArgs = basicExtraArgsV3();
-    const fee = (await arbClient().readContract({ address: sender, abi: ccipStakeSenderV2Abi, functionName: 'quoteFee', args: [intent, amount, extraArgs] })) as bigint;
-    const plan: TxPlan = [];
-    if ((await allowance('arb', dusd, account, sender)) < amount) plan.push(approve(ARB_SEPOLIA_ID, dusd, sender, 'Approve dUSD on Arbitrum Sepolia'));
-    plan.push({
-      label: `Send ${yes ? 'Yes' : 'No'} stake via CCIP`,
-      chainId: ARB_SEPOLIA_ID,
-      request: call(sender, ccipStakeSenderV2Abi as Abi, 'stakeRemote', [intent, amount, extraArgs], withFeeBuffer(fee)),
-    });
-    return plan;
-  },
+    // "Voted" needs Credited plus a fresh position/YT read for the recipient.
+    let refreshed: CcipStake['refreshed'];
+    if (status === 'credited' && recipient !== zeroAddress && yesSide !== undefined) {
+      const block = await c.getBlock();
+      const r = await readNamed(c, { position: read('vault', 'positionOf', [recipient, yesSide]), yt: read('yt', 'balanceOf', [recipient]) }, block.number);
+      if (r.position.ok && r.yt.ok) refreshed = { position: r.position.result as bigint, yt: r.yt.result as bigint, blockNumber: block.number };
+    }
+    let repBalance: bigint | undefined;
+    if (status === 'deferred_as_rep' && sourceAccount) repBalance = await readOne<bigint>(c, read('rep', 'balanceOf', [sourceAccount])).catch(() => undefined);
 
-  async quoteYT(_id, dir, amount) {
-    const hook = req(eth.YieldCurveHookV2, 'YieldCurveHookV2');
-    const c = sepoliaClient();
-    const out = (await c.readContract({ address: hook, abi: yieldCurveHookV2Abi, functionName: dir === 'buy' ? 'quoteBuy' : 'quoteSell', args: [amount] })) as bigint;
-    const price = (await c.readContract({ address: hook, abi: yieldCurveHookV2Abi, functionName: 'spotPriceWad' })) as bigint;
-    return { out, price };
-  },
-
-  async swapYT(_id, dir, amount, minOut, deadline, account) {
-    const usdc = req(eth.DemoUSD, 'DemoUSD');
-    const p = await pool();
-    if (!p?.poolKey || !p.configured) throw new ProtocolRevert('Market not deployed yet');
-    const router = req(p.router, 'YieldSwapRouter (V2)');
-    const yt = req(await vaultYt(), 'StakerYieldToken');
-    const input = dir === 'buy' ? usdc : yt;
-    const plan: TxPlan = [];
-    if ((await allowance('eth', input, account, router)) < amount) plan.push(approve(SEPOLIA_ID, input, router, dir === 'buy' ? 'Approve dUSD' : 'Approve YT'));
-    plan.push({
-      label: dir === 'buy' ? 'Buy YT' : 'Sell YT',
-      chainId: SEPOLIA_ID,
-      request: call(router, yieldSwapRouterAbi as Abi, 'swapExactInput', [p.poolKey, zeroForOneFor(p.poolKey, dir, usdc), amount, minOut, BigInt(deadline)]),
-    });
-    return plan;
-  },
-
-  async challenge(id, evidenceHash) {
-    await assertSeries(id);
-    return [{ label: 'Challenge the proposal', chainId: SEPOLIA_ID, request: call(vault(), riskFiStakeVaultV2Abi as Abi, 'challenge', [evidenceHash]) }];
-  },
-  async finalize(id) {
-    await assertSeries(id);
-    return [{ label: 'Finalize', chainId: SEPOLIA_ID, request: call(vault(), riskFiStakeVaultV2Abi as Abi, 'finalize') }];
-  },
-  async redeem(id, yes, amount) {
-    await assertSeries(id);
-    return [{ label: `Claim ${yes ? 'Yes' : 'No'} principal`, chainId: SEPOLIA_ID, request: call(vault(), riskFiStakeVaultV2Abi as Abi, 'claimPrincipal', [yes, amount]) }];
-  },
-  async claimYield() {
-    const yt = req(await vaultYt(), 'StakerYieldToken');
-    return [{ label: 'Claim yield', chainId: SEPOLIA_ID, request: call(yt, stakerYieldTokenAbi as Abi, 'claimYield') }];
-  },
-  async claimLPYield() {
-    return [{ label: 'Claim LP yield', chainId: SEPOLIA_ID, request: call(req(eth.YieldCurveHookV2, 'YieldCurveHookV2'), yieldCurveHookV2Abi as Abi, 'claimLPYield') }];
-  },
-  async recoverCcip(messageId, to) {
-    return [{ label: 'Recover held dUSD', chainId: SEPOLIA_ID, request: call(req(eth.CCIPStakeReceiverV2, 'CCIPStakeReceiverV2'), ccipStakeReceiverV2Abi as Abi, 'recover', [messageId, to]) }];
-  },
-
-  async trackCcip(messageId) {
-    const receiver = req(eth.CCIPStakeReceiverV2, 'CCIPStakeReceiverV2');
-    const c = sepoliaClient();
-    const logs: CcipLogs = {};
-    const tracked = loadTracked().find((t) => t.messageId.toLowerCase() === messageId.toLowerCase());
-    if (tracked) logs.sent = { tx: tracked.sourceTx ?? '0x', at: tracked.savedAt };
-    // V2 has no creditedMessage view; Credited/Held/Recovered logs decide (bounded window).
-    const from = await recentFrom(c, 200_000n);
-    const find = async (eventName: 'Credited' | 'Held' | 'Recovered') =>
-      (await c.getContractEvents({ address: receiver, abi: ccipStakeReceiverV2Abi, eventName, args: { messageId }, fromBlock: from }).catch(() => [])).at(-1);
-    const [cr, hd, rc] = await Promise.all([find('Credited'), find('Held'), find('Recovered')]);
-    if (cr) logs.credited = { tx: cr.transactionHash };
-    if (hd) logs.held = { tx: hd.transactionHash };
-    if (rc) logs.recovered = { tx: rc.transactionHash };
-    if (!tracked && !cr && !hd) return undefined;
-    const [recoverable, source] = (await c.multicall({
-      allowFailure: false,
-      contracts: [
-        { address: receiver, abi: ccipStakeReceiverV2Abi, functionName: 'recoverable', args: [messageId] },
-        { address: receiver, abi: ccipStakeReceiverV2Abi, functionName: 'recoverySourceAccount', args: [messageId] },
-      ],
-    })) as unknown as [bigint, Address];
     return {
       messageId,
-      reportId: BigInt(tracked?.reportId ?? 0),
-      yes: tracked?.side === 'yes',
-      amount: BigInt(tracked?.amount ?? 0),
-      recipient: source,
-      sourceTx: tracked?.sourceTx,
-      sentAt: tracked?.savedAt,
-      status: ccipStatus(logs),
-      destTx: (rc ?? hd ?? cr)?.transactionHash,
-      recoveryRecipient: hd ? source : undefined,
-      recoverable: hd ? recoverable : undefined,
+      reportId: sent?.reportId ?? (outcome?.kind === 'credited' ? outcome.reportId : undefined) ?? BigInt(tracked?.reportId ?? 0),
+      yes: yesSide ?? false,
+      amount: sent?.amount ?? outcome?.amount ?? BigInt(tracked?.amount ?? 0),
+      recipient,
+      sourceAccount,
+      sourceTx,
+      sentAt,
+      status,
+      destTx,
+      delivered,
+      recoveryRecipient: status === 'held' || status === 'recovered' ? recoverySource : undefined,
+      recoverable: status === 'held' || status === 'recovered' ? recoverable : undefined,
+      recoveryOperator: operator,
+      ccipApiStatus: apiMsg?.status,
+      ccipApiUnavailable: !api.ok,
+      readyForManualExecution: apiMsg?.readyForManualExecution,
+      refreshed,
+      repBalance,
+      outcomeUnknown,
     };
-  },
-};
+  }
+
+  // ---------------------------------------------------------------------------- the protocol
+
+  const api: Protocol & { kind: 'v2' } = {
+    kind: 'v2',
+    dusd: V2.dusd.address,
+
+    async listPublished() {
+      const id = await seriesId();
+      return id > 0n ? [id] : [];
+    },
+
+    async chainTime() {
+      return Number(await latestTime(eth()));
+    },
+
+    async getMarket(id) {
+      const c = eth();
+      const block = await c.getBlock();
+      const r = await readNamed(
+        c,
+        {
+          report: read('registry', 'getReport', [id]),
+          maturity: read('registry', 'maturity', [id]),
+          series: read('vault', 'reportId'),
+          yt: read('vault', 'yt'),
+          rep: read('vault', 'rep'),
+          totalYes: read('vault', 'totalYes'),
+          totalNo: read('vault', 'totalNo'),
+          proposed: read('vault', 'proposed'),
+          proposedAt: read('vault', 'proposedAt'),
+          challenged: read('vault', 'challenged'),
+          finalOutcome: read('vault', 'finalOutcome'),
+          finalizedAt: read('vault', 'finalizedAt'),
+          evidenceHash: read('vault', 'evidenceHash'),
+          principalAvailable: read('vault', 'principalAvailable'),
+          vaultMaturity: read('vault', 'maturity'),
+          feeClaimed: read('vault', 'feeClaimed'),
+          treasury: read('vault', 'treasury'),
+          vaultDusd: read('dusd', 'balanceOf', [V2.vault.address]),
+          repSupply: read('rep', 'totalSupply'),
+          ytSupply: read('yt', 'totalSupply'),
+          recoveryOperator: read('receiver', 'recoveryOperator'),
+          poolKeyHash: read('hook', 'poolKeyHash'),
+          shares: read('hook', 'shares'),
+          usdcReserve: read('hook', 'usdcReserve'),
+          ytReserve: read('hook', 'ytReserve'),
+          spotPriceWad: read('hook', 'spotPriceWad'),
+          impliedRateWad: read('hook', 'impliedRateWad'),
+          timeRemainingWad: read('hook', 'timeRemainingWad'),
+          feePips: read('hook', 'feePips'),
+          hookMaturity: read('hook', 'maturity'),
+          lpYieldPerShare: read('hook', 'lpYieldPerShare'),
+          sharesSupply: read('lp', 'totalSupply'),
+        },
+        block.number,
+      );
+      const report = need<Report>(r.report, `ReportRegistry.getReport(${id})`);
+      if (report.reportHash === ZERO32 && report.lockTime === 0n) throw new ProtocolRevert(`Report #${id} is not published in the V2 ReportRegistry.`);
+      const series = need<bigint>(r.series, 'vault.reportId') === id;
+      const now = Number(block.timestamp);
+      const lockTime = Number(report.lockTime);
+      const crossChainCutoff = Number(report.crossChainCutoff);
+
+      let decision: Decision | undefined;
+      let totals = { yes: 0n, no: 0n };
+      let market: MarketPool | undefined;
+      let projectedPrincipal: bigint | undefined;
+      if (series) {
+        totals = { yes: need<bigint>(r.totalYes, 'vault.totalYes'), no: need<bigint>(r.totalNo, 'vault.totalNo') };
+        const proposedAt = need<bigint>(r.proposedAt, 'vault.proposedAt');
+        const finalizedAt = need<bigint>(r.finalizedAt, 'vault.finalizedAt');
+        if (proposedAt > 0n || finalizedAt > 0n)
+          decision = {
+            proposed: outcomeFromEnum(need<number>(r.proposed, 'vault.proposed')),
+            outcome: outcomeFromEnum(need<number>(r.finalOutcome, 'vault.finalOutcome')),
+            evidenceHash: need<Hex>(r.evidenceHash, 'vault.evidenceHash'),
+            proposedAt: Number(proposedAt),
+            challenged: need<boolean>(r.challenged, 'vault.challenged'),
+            finalizedAt: finalizedAt > 0n ? Number(finalizedAt) : undefined,
+          };
+        const held = need<bigint>(r.vaultDusd, 'dUSD held by the vault') - need<bigint>(r.repSupply, 'REP totalSupply');
+        const total = totals.yes + totals.no;
+        projectedPrincipal = held < 0n ? 0n : held < total ? held : total;
+        const keyHash = maybe<Hex>(r.poolKeyHash);
+        if (keyHash && keyHash !== ZERO32)
+          market = {
+            hook: V2.hook.address,
+            router: V2.swapRouter.address,
+            poolKey: bundle.poolKey,
+            spotPriceWad: maybe<bigint>(r.spotPriceWad),
+            impliedRateWad: maybe<bigint>(r.impliedRateWad),
+            timeRemainingWad: maybe<bigint>(r.timeRemainingWad),
+            reserves: { usdc: maybe<bigint>(r.usdcReserve) ?? 0n, yt: maybe<bigint>(r.ytReserve) ?? 0n },
+            feePips: Number(maybe<number>(r.feePips) ?? 0),
+            maturity: Number(maybe<bigint>(r.hookMaturity) ?? need<bigint>(r.vaultMaturity, 'vault.maturity')),
+            configured: keyHash.toLowerCase() === bundle.poolKeyHash.toLowerCase(),
+            shares: maybe<Address>(r.shares),
+            sharesSupply: maybe<bigint>(r.sharesSupply),
+            lpYieldPerShare: maybe<bigint>(r.lpYieldPerShare),
+          };
+      }
+
+      let remoteCutoff: number | undefined;
+      let remoteChainTime: number | undefined;
+      let remoteError: string | undefined;
+      try {
+        const a = arb();
+        const [ab, cutoff] = await Promise.all([a.getBlock(), readOne<bigint>(a, read('sender', 'reportCutoff', [id]))]);
+        remoteCutoff = Number(cutoff);
+        remoteChainTime = Number(ab.timestamp);
+      } catch (e) {
+        remoteError = e instanceof Error ? e.message.split('\n')[0] : String(e);
+      }
+
+      const ytAddr = maybe<Address>(r.yt);
+      return {
+        reportId: id,
+        reportHash: report.reportHash,
+        claimHash: report.claimHash,
+        reviewer: report.reviewer,
+        resolver: report.resolver,
+        adjudicator: report.adjudicator,
+        lockTime,
+        crossChainCutoff,
+        resultDeadline: Number(report.resultDeadline),
+        challengePeriod: Number(report.challengePeriod),
+        maturity: series ? Number(need<bigint>(r.vaultMaturity, 'vault.maturity')) : Number(need<bigint>(r.maturity, 'ReportRegistry.maturity')),
+        totals,
+        locked: now >= lockTime,
+        phase: derivePhase({ now, lockTime, crossChainCutoff, decision }),
+        chainTime: now,
+        blockNumber: block.number,
+        decision,
+        yt: series && ytAddr && ytAddr !== zeroAddress ? { address: ytAddr, totalSupply: maybe<bigint>(r.ytSupply) } : undefined,
+        market,
+        remoteCutoff,
+        remoteChainTime,
+        remoteError,
+        series,
+        rep: maybe<Address>(r.rep),
+        principalAvailable: series ? maybe<bigint>(r.principalAvailable) : undefined,
+        projectedPrincipal,
+        feeClaimed: maybe<boolean>(r.feeClaimed),
+        treasury: maybe<Address>(r.treasury),
+        recoveryOperator: maybe<Address>(r.recoveryOperator),
+        demoReport:
+          id === bundle.report.reportId &&
+          report.reportHash.toLowerCase() === bundle.report.reportHash.toLowerCase() &&
+          report.claimHash.toLowerCase() === bundle.report.claimHash.toLowerCase(),
+      } satisfies MarketView;
+    },
+
+    async getPosition(id, account) {
+      const c = eth();
+      const r = await readNamed(c, {
+        series: read('vault', 'reportId'),
+        yes: read('vault', 'positionOf', [account, true]),
+        no: read('vault', 'positionOf', [account, false]),
+        totalYes: read('vault', 'totalYes'),
+        totalNo: read('vault', 'totalNo'),
+        finalOutcome: read('vault', 'finalOutcome'),
+        principalAvailable: read('vault', 'principalAvailable'),
+        dusd: read('dusd', 'balanceOf', [account]),
+        allowance: read('dusd', 'allowance', [account, V2.vault.address]),
+        rep: read('rep', 'balanceOf', [account]),
+        yt: read('yt', 'balanceOf', [account]),
+        globalIndex: read('yt', 'globalIndex'),
+        paidIndex: read('yt', 'paidIndex', [account]),
+        unclaimed: read('yt', 'unclaimedUSDC', [account]),
+        hookYt: read('yt', 'balanceOf', [V2.hook.address]),
+        hookPaidIndex: read('yt', 'paidIndex', [V2.hook.address]),
+        hookUnclaimed: read('yt', 'unclaimedUSDC', [V2.hook.address]),
+        lpShares: read('lp', 'balanceOf', [account]),
+        lpSupply: read('lp', 'totalSupply'),
+        lpYieldPerShare: read('hook', 'lpYieldPerShare'),
+        paidLPIndex: read('hook', 'paidLPIndex', [account]),
+        unclaimedLP: read('hook', 'unclaimedLPYield', [account]),
+      });
+      const series = need<bigint>(r.series, 'vault.reportId') === id;
+      const yes = series ? need<bigint>(r.yes, 'vault.positionOf') : 0n;
+      const no = series ? need<bigint>(r.no, 'vault.positionOf') : 0n;
+      const globalIndex = need<bigint>(r.globalIndex, 'yt.globalIndex');
+      const yt = need<bigint>(r.yt, 'YT balance');
+      const lpShares = need<bigint>(r.lpShares, 'RF-YLP balance');
+      const lpSupply = need<bigint>(r.lpSupply, 'RF-YLP totalSupply');
+      const hookYtPending = pendingYtYield({
+        unclaimed: need<bigint>(r.hookUnclaimed, 'yt.unclaimedUSDC(hook)'),
+        balance: need<bigint>(r.hookYt, 'yt.balanceOf(hook)'),
+        globalIndex,
+        paidIndex: need<bigint>(r.hookPaidIndex, 'yt.paidIndex(hook)'),
+      });
+      const outcome = series ? outcomeFromEnum(need<number>(r.finalOutcome, 'vault.finalOutcome')) : undefined;
+      const totals = { yes: need<bigint>(r.totalYes, 'vault.totalYes'), no: need<bigint>(r.totalNo, 'vault.totalNo') };
+      const principal = need<bigint>(r.principalAvailable, 'vault.principalAvailable');
+
+      // Arbitrum Sepolia balances for the CCIP source; undefined (shown as unavailable) if any read fails.
+      let remote: PositionView['remote'];
+      try {
+        const a = arb();
+        const [rr, ethBalance] = await Promise.all([
+          readNamed(a, { dusd: read('dusdArb', 'balanceOf', [account]), allowance: read('dusdArb', 'allowance', [account, V2.sender.address]) }),
+          a.getBalance({ address: account }),
+        ]);
+        remote = { dusdBalance: need<bigint>(rr.dusd, 'dUSD balance'), allowance: need<bigint>(rr.allowance, 'dUSD allowance'), ethBalance };
+      } catch {
+        remote = undefined;
+      }
+
+      return {
+        yes,
+        no,
+        yt,
+        ytClaimable: pendingYtYield({ unclaimed: need<bigint>(r.unclaimed, 'yt.unclaimedUSDC'), balance: yt, globalIndex, paidIndex: need<bigint>(r.paidIndex, 'yt.paidIndex') }),
+        lpShares,
+        lpClaimable: pendingLpYield({
+          unclaimed: need<bigint>(r.unclaimedLP, 'hook.unclaimedLPYield'),
+          shares: lpShares,
+          supply: lpSupply,
+          lpYieldPerShare: need<bigint>(r.lpYieldPerShare, 'hook.lpYieldPerShare'),
+          paidLPIndex: need<bigint>(r.paidLPIndex, 'hook.paidLPIndex'),
+          hookYtPending,
+        }),
+        lpSupply,
+        // Cross-chain messages are tracked from local storage + chain state by the CCIP views.
+        pendingCcip: [],
+        redeemable: outcome ? estimatePaid(outcome, 'yes', yes, totals, principal) + estimatePaid(outcome, 'no', no, totals, principal) : undefined,
+        reputationBadge: false,
+        repReceipt: need<bigint>(r.rep, 'REP balance'),
+        dusdBalance: need<bigint>(r.dusd, 'dUSD balance'),
+        allowance: need<bigint>(r.allowance, 'dUSD allowance'),
+        remote,
+        transferable: false,
+      };
+    },
+
+    // ------------------------------------------------------------------------ stake (§B, §C)
+
+    async stakeLocal(id, yes, amount, account, opts) {
+      await assertSeries(id);
+      await requireBalance(eth(), DUSD, account, amount, 'Ethereum Sepolia');
+      return [
+        ...(await approve(DUSD, account, V2.vault.address, 'the vault', amount, opts)),
+        step(`Stake ${fmt(amount)} dUSD on ${side(yes)}`, write('vault', 'stake', [id, yes, amount, account, account])),
+      ];
+    },
+
+    async depositRep(amount, account, opts) {
+      await requireBalance(eth(), DUSD, account, amount, 'Ethereum Sepolia');
+      return [
+        ...(await approve(DUSD, account, V2.vault.address, 'the vault', amount, opts)),
+        step(`Deposit ${fmt(amount)} dUSD for REP`, write('vault', 'deposit', [amount, account])),
+      ];
+    },
+
+    async stakeFromRep(id, yes, amount, account) {
+      await assertSeries(id);
+      await requireBalance(eth(), REP_TOKEN, account, amount, 'Ethereum Sepolia');
+      // stakeFromREP burns the caller's own REP: no REP approval.
+      return [step(`Stake ${fmt(amount)} REP on ${side(yes)}`, write('vault', 'stakeFromREP', [id, yes, amount, account, account]))];
+    },
+
+    async withdrawRep(amount, account) {
+      await requireBalance(eth(), REP_TOKEN, account, amount, 'Ethereum Sepolia');
+      return [step(`Withdraw ${fmt(amount)} dUSD (burns REP)`, write('vault', 'withdraw', [amount]))];
+    },
+
+    async transferRep(to, amount, account) {
+      await requireBalance(eth(), REP_TOKEN, account, amount, 'Ethereum Sepolia');
+      return [step(`Transfer ${fmt(amount)} REP`, write('rep', 'transfer', [to, amount]))];
+    },
+
+    async transferYt(to, amount, account) {
+      await requireBalance(eth(), YT, account, amount, 'Ethereum Sepolia');
+      return [step(`Transfer ${fmt(amount)} YT`, write('yt', 'transfer', [to, amount]))];
+    },
+
+    async quoteStakeAndSell(amount) {
+      return readOne<bigint>(eth(), read('stakeAndSell', 'quoteSell', [amount]));
+    },
+
+    async stakeAndSell(id, yes, amount, minUsdcOut, deadline, account, opts) {
+      await assertSeries(id);
+      await requireBalance(eth(), DUSD, account, amount, 'Ethereum Sepolia');
+      const request = write('stakeAndSell', 'stakeAndSellYield', [yes, amount, minUsdcOut, BigInt(deadline)]);
+      return [
+        ...(await approve(DUSD, account, V2.stakeAndSell.address, 'the stake-and-sell router', amount, opts)),
+        step(`Stake ${fmt(amount)} dUSD on ${side(yes)} and sell the new YT`, request, {
+          prepare: async () => {
+            const [quote, now] = await Promise.all([readOne<bigint>(eth(), read('stakeAndSell', 'quoteSell', [amount])), latestTime(eth())]);
+            if (quote < minUsdcOut)
+              throw new ProtocolRevert(`The YT sale now quotes ${fmt(quote)} dUSD, below your minimum of ${fmt(minUsdcOut)}. Nothing was sent; review the new quote.`);
+            return write('stakeAndSell', 'stakeAndSellYield', [yes, amount, minUsdcOut, now + BigInt(SWAP_DEADLINE_SECONDS)]);
+          },
+        }),
+      ];
+    },
+
+    // ------------------------------------------------------------------------ market (§D)
+
+    async quoteYT(_id, dir, amount) {
+      const [out, price] = await Promise.all([quoteHook(dir, amount), readOne<bigint>(eth(), read('hook', 'spotPriceWad')).catch(() => undefined)]);
+      return { out, price };
+    },
+
+    async swapYT(_id, dir, amount, minOut, deadline, account, opts) {
+      const input = dir === 'buy' ? DUSD : YT;
+      await requireBalance(eth(), input, account, amount, 'Ethereum Sepolia');
+      // dUSD/YT are sorted in the bundle's pool key; derive the direction instead of assuming it.
+      const zeroForOne = zeroForOneFor(bundle.poolKey, dir, V2.dusd.address);
+      const request = write('swapRouter', 'swapExactInput', [bundle.poolKey, zeroForOne, amount, minOut, BigInt(deadline)]);
+      return [
+        ...(await approve(input, account, V2.swapRouter.address, 'the YT swap router', amount, opts)),
+        step(dir === 'buy' ? `Buy YT with ${fmt(amount)} dUSD` : `Sell ${fmt(amount)} YT`, request, {
+          prepare: async () => {
+            const [fresh, now] = await Promise.all([quoteHook(dir, amount), latestTime(eth())]);
+            if (fresh < minOut)
+              throw new ProtocolRevert(
+                `The pool now quotes ${fmt(fresh)} ${dir === 'buy' ? 'YT' : 'dUSD'}, below your minimum of ${fmt(minOut)}. Nothing was sent; review the new quote.`,
+              );
+            return write('swapRouter', 'swapExactInput', [bundle.poolKey, zeroForOne, amount, minOut, now + BigInt(SWAP_DEADLINE_SECONDS)]);
+          },
+        }),
+      ];
+    },
+
+    async addLiquidity(usdcAmount, ytAmount, minShares, account, opts) {
+      const pool = await lpPool();
+      const shares = lpSharesFor(usdcAmount, ytAmount, pool);
+      if (shares === undefined)
+        throw new ProtocolRevert("These amounts don't match the pool's reserves exactly (the hook requires dUSD and YT in the same share ratio). Use the paired amount.");
+      if (shares < minShares) throw new ProtocolRevert(`This deposit mints ${fmt(shares)} RF-YLP, below your minimum of ${fmt(minShares)}.`);
+      await requireBalance(eth(), DUSD, account, usdcAmount, 'Ethereum Sepolia');
+      await requireBalance(eth(), YT, account, ytAmount, 'Ethereum Sepolia');
+      const request = write('hook', 'addLiquidity', [usdcAmount, ytAmount, minShares]);
+      return [
+        ...(await approve(DUSD, account, V2.hook.address, 'the LP hook', usdcAmount, opts)),
+        ...(await approve(YT, account, V2.hook.address, 'the LP hook', ytAmount, opts)),
+        step(`Add ${fmt(usdcAmount)} dUSD + ${fmt(ytAmount)} YT liquidity`, request, {
+          prepare: async () => {
+            if (lpSharesFor(usdcAmount, ytAmount, await lpPool()) === undefined)
+              throw new ProtocolRevert('The reserves moved since you entered the amounts, so the ratio no longer matches exactly. Nothing was sent; recompute the paired amount.');
+            return request;
+          },
+        }),
+      ];
+    },
+
+    async removeLiquidity(shares, minUsdc, minYt, account) {
+      await requireBalance(eth(), LP_TOKEN, account, shares, 'Ethereum Sepolia');
+      // The hook burns the caller's own shares: no approval.
+      return [step(`Remove ${fmt(shares)} RF-YLP liquidity`, write('hook', 'removeLiquidity', [shares, minUsdc, minYt]))];
+    },
+
+    async claimLPYield(_id, account) {
+      return [
+        step('Claim LP yield', write('hook', 'claimLPYield'), {
+          decode: (logs): TxEffect => (account ? { paid: dusdReceived(logs, V2.hook.address, account) } : {}),
+        }),
+      ];
+    },
+
+    async claimYield(_id, account) {
+      return [step('Claim YT yield', write('yt', 'claimYield'), { decode: (logs): TxEffect => ({ paid: dusdReceived(logs, V2.yt.address, account) }) })];
+    },
+
+    async recentTrades() {
+      const c = eth();
+      const latest = await c.getBlockNumber();
+      const window = 5n * 1_000n;
+      const { logs } = await getLogsChunked(
+        c,
+        { address: V2.hook.address, topics: [[eventTopic('hook', 'Swapped'), eventTopic('hook', 'RateObserved')]] },
+        { fromBlock: latest > window ? latest - window + 1n : 0n, toBlock: latest, maxChunks: 5 },
+      );
+      const rates = logsOf('hook', 'RateObserved', logs);
+      return logsOf('hook', 'Swapped', logs)
+        .map((s): Trade => {
+          const rate = rates.find((x) => x.transactionHash === s.transactionHash && (x.logIndex ?? 0) > (s.logIndex ?? 0));
+          return {
+            usdcIn: s.args.usdcIn as boolean,
+            amountIn: s.args.amountIn as bigint,
+            amountOut: s.args.amountOut as bigint,
+            rateWad: rate?.args.rateWad as bigint | undefined,
+            timestamp: rate ? Number(rate.args.timestamp as bigint) : undefined,
+            blockNumber: s.blockNumber ?? 0n,
+            tx: s.transactionHash ?? ZERO32,
+          };
+        })
+        .reverse();
+    },
+
+    async ytVolume() {
+      const trades = await api.recentTrades!();
+      return trades.reduce((sum, t) => sum + (t.usdcIn ? t.amountOut : t.amountIn), 0n);
+    },
+
+    // ------------------------------------------------------------------------ settlement (§F)
+
+    async challenge(id, evidenceHash) {
+      await assertSeries(id);
+      if (!/^0x[0-9a-fA-F]{64}$/.test(evidenceHash) || evidenceHash === ZERO32) throw new ProtocolRevert('The evidence hash must be a nonzero bytes32.');
+      return [step('Challenge the proposal', write('vault', 'challenge', [evidenceHash]))];
+    },
+
+    async finalize(id) {
+      await assertSeries(id);
+      return [step('Finalize', write('vault', 'finalize'))];
+    },
+
+    async redeem(id, yes, amount) {
+      await assertSeries(id);
+      return [step(`Claim ${side(yes)} principal`, write('vault', 'claimPrincipal', [yes, amount]))];
+    },
+
+    async propose(id, outcome: Outcome, evidenceHash) {
+      await assertSeries(id);
+      if (evidenceHash === ZERO32) throw new ProtocolRevert('The evidence hash must be nonzero.');
+      return [step(`Propose ${outcome === 'void' ? 'Void' : side(outcome === 'yes')}`, write('vault', 'propose', [outcomeToEnum(outcome), evidenceHash]))];
+    },
+
+    async adjudicate(id, outcome: Outcome, evidenceHash) {
+      await assertSeries(id);
+      if (evidenceHash === ZERO32) throw new ProtocolRevert('The evidence hash must be nonzero.');
+      return [step(`Adjudicate ${outcome === 'void' ? 'Void' : side(outcome === 'yes')}`, write('vault', 'adjudicate', [outcomeToEnum(outcome), evidenceHash]))];
+    },
+
+    async injectYield(id, amount, account, opts) {
+      await assertSeries(id);
+      await requireBalance(eth(), DUSD, account, amount, 'Ethereum Sepolia');
+      return [
+        ...(await approve(DUSD, account, V2.vault.address, 'the vault', amount, opts)),
+        step(`Inject ${fmt(amount)} dUSD of simulated yield`, write('vault', 'injectYield', [amount])),
+      ];
+    },
+
+    async claimFee(id) {
+      await assertSeries(id);
+      return [step('Claim the protocol fee (paid to the treasury)', write('vault', 'claimFee'))];
+    },
+
+    async recoverCcip(messageId, to) {
+      return [step('Recover held dUSD', write('receiver', 'recover', [messageId, to]))];
+    },
+
+    // ------------------------------------------------------------------------ CCIP (§E)
+
+    async quoteRemote(id, yes, amount, account, attempt?: RemoteAttempt) {
+      const a = arb();
+      const report = await readOne<Report>(eth(), read('registry', 'getReport', [id]));
+      const att = attempt ?? newRemoteAttempt({ lockTime: Number(report.lockTime), recipient: account });
+      const intent = buildIntentV2({ reportId: id, yes, sourceAccount: account, recipient: att.recipient, nonce: att.nonce, deadline: att.deadline, amount });
+      const extraArgs = basicExtraArgsV3();
+      const [block, cutoff, nonceUsed, fee] = await Promise.all([
+        a.getBlock(),
+        readOne<bigint>(a, read('sender', 'reportCutoff', [id])),
+        readOne<boolean>(a, read('sender', 'usedNonce', [account, att.nonce])),
+        readOne<bigint>(a, read('sender', 'quoteFee', [intent, amount, extraArgs])),
+      ]);
+      const registryCutoff = Number(report.crossChainCutoff);
+      return {
+        fee,
+        deadline: Number(att.deadline),
+        cutoff: cutoff > 0n ? Math.min(Number(cutoff), registryCutoff) : 0,
+        intent,
+        nonceUsed,
+        remoteChainTime: Number(block.timestamp),
+      };
+    },
+
+    async stakeRemote(id, yes, amount, account, attempt?: RemoteAttempt, opts?: ApproveOpts) {
+      // The receiver credits only vault.reportId(); anything else would come back as REP.
+      await assertSeries(id);
+      const a = arb();
+      await requireBalance(a, DUSD_ARB, account, amount, 'Arbitrum Sepolia');
+      const report = await readOne<Report>(eth(), read('registry', 'getReport', [id]));
+      const att = attempt ?? newRemoteAttempt({ lockTime: Number(report.lockTime), recipient: account });
+      const extraArgs = basicExtraArgsV3();
+
+      const send = async (): Promise<ContractCall> => {
+        // Same intent as the quote: same deadline, and the same nonce unless it's been used meanwhile.
+        const nonce = await unusedNonce((n) => readOne<boolean>(a, read('sender', 'usedNonce', [account, n])), att.nonce);
+        const intent = buildIntentV2({ reportId: id, yes, sourceAccount: account, recipient: att.recipient, nonce, deadline: att.deadline, amount });
+        const [block, cutoff] = await Promise.all([a.getBlock(), readOne<bigint>(a, read('sender', 'reportCutoff', [id]))]);
+        const close = cutoff > 0n ? (cutoff < report.crossChainCutoff ? cutoff : report.crossChainCutoff) : 0n;
+        if (close === 0n || block.timestamp >= close) throw new ProtocolRevert('Cross-chain stakes for this report are closed (past the cutoff). Nothing was sent.');
+        const fee = await readOne<bigint>(a, read('sender', 'quoteFee', [intent, amount, extraArgs]));
+        const value = withFeeBuffer(fee);
+        const ethBalance = await a.getBalance({ address: account });
+        if (ethBalance < value)
+          throw new ProtocolRevert(
+            `Not enough Arbitrum Sepolia ETH for the CCIP fee: this sends ${formatEther(value)} ETH (fee + 10%, the excess is refunded), you have ${formatEther(ethBalance)}.`,
+          );
+        return write('sender', 'stakeRemote', [intent, amount, extraArgs], value);
+      };
+
+      return [
+        ...(await approve(DUSD_ARB, account, V2.sender.address, 'the CCIP sender', amount, opts, ARB_SEPOLIA_ID)),
+        {
+          label: `Requote the fee and send ${fmt(amount)} dUSD on ${side(yes)} via CCIP`,
+          chainId: ARB_SEPOLIA_ID,
+          prepare: send,
+          decode: (logs): TxEffect => {
+            const s = decodeSent(logs, V2.sender.address);
+            return s ? { messageId: s.messageId, sent: { messageId: s.messageId, sourceAccount: s.sourceAccount, reportId: s.reportId, recipient: s.recipient, yes: s.yes, amount: s.amount } } : {};
+          },
+        },
+      ];
+    },
+
+    trackCcip,
+  };
+  return api;
+}
+
+export const v2 = createV2({
+  eth: sepoliaClient,
+  arb: arbClient,
+  fetchCcip: (messageId) => fetchCcipMessage(messageId, { base: env.ccipApiUrl }),
+});
+
+/** Public bundle facts the UI may show (addresses, pool key, the delivered example message). */
+export const V2_INFO = {
+  version: bundle.version,
+  chainIds: bundle.chainIds,
+  sepolia: bundle.sepolia,
+  arbitrumSepolia: bundle.arbitrumSepolia,
+  poolKey: bundle.poolKey,
+  poolKeyHash: bundle.poolKeyHash,
+  reportId: bundle.reportId,
+  deployer: bundle.report.reviewer,
+  exampleCCIP: bundle.exampleCCIP,
+} as const;
+
+export const isV2Example = (messageId: string) => messageId.toLowerCase() === bundle.exampleCCIP.messageId.toLowerCase();
+
+export const isSameAddress = (a?: string, b?: string) => !!a && !!b && /^0x[0-9a-fA-F]{40}$/.test(a) && /^0x[0-9a-fA-F]{40}$/.test(b) && isAddressEqual(a as Address, b as Address);

@@ -2,39 +2,51 @@
 
 import Link from 'next/link';
 import { Countdown } from '@/components/Countdown';
-import { DemoClockLabel } from '@/components/HonestyLabels';
+import { DemoClockLabel, DemoReportLabel } from '@/components/HonestyLabels';
+import { NetworkBadge } from '@/components/NetworkBadge';
 import { StatusChip } from '@/components/StatusChip';
 import { formatDate } from '@/lib/format';
 import type { WebReport } from '@/lib/types';
-import { nextDeadline, type MarketView } from '@/protocol';
+import { nextDeadline, remoteCutoffOf, type MarketView } from '@/protocol';
 import { useChainTime } from '@/protocol/hooks';
 
-const TABS = [
+export type CaseTab = 'overview' | 'stake' | 'market' | 'result';
+/** '/case' for V1 and the fixture chain; '/onchain' for V2 (never mapped to a backend report). */
+export type CaseBase = '/case' | '/onchain';
+
+const TABS: [CaseTab, string][] = [
   ['stake', 'Stake'],
   ['market', 'Trade YT'],
   ['result', 'Result & claims'],
-] as const;
+];
 
-export function CaseHeader({ market: m, report, tab }: { market: MarketView; report?: WebReport; tab: (typeof TABS)[number][0] }) {
+export const casePath = (base: CaseBase, id: bigint | string, tab: CaseTab) => (tab === 'overview' ? `${base}/${id}` : `${base}/${id}/${tab}`);
+
+export function CaseHeader({ market: m, report, tab, base = '/case' }: { market: MarketView; report?: WebReport; tab: CaseTab; base?: CaseBase }) {
   const now = useChainTime();
   const next = nextDeadline(m);
+  const remote = remoteCutoffOf(m);
+  const tabs: [CaseTab, string][] = base === '/onchain' ? [['overview', 'Overview'], ...TABS] : TABS;
   return (
     <header className="space-y-5">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
         <h1 className="font-display text-4xl sm:text-5xl">
-          {report?.claimManifest.symbol ? `${report.claimManifest.symbol} · ` : ''}Case #{m.reportId.toString()}
+          {report?.claimManifest.symbol ? `${report.claimManifest.symbol} · ` : ''}
+          {base === '/onchain' ? 'Report' : 'Case'} #{m.reportId.toString()}
         </h1>
         <StatusChip status={m.phase} size="lg" />
         {m.demoClock && <DemoClockLabel />}
+        <NetworkBadge chainId={11155111} />
       </div>
+      {m.demoReport && <DemoReportLabel id={m.reportId} />}
       {report && <p className="max-w-3xl text-lg">{report.claimManifest.claimText}</p>}
       <dl className="grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
         <div>
           <dt className="text-muted">Cross-chain cutoff</dt>
-          <dd className="mt-0.5">{formatDate(m.crossChainCutoff)}</dd>
+          <dd className="mt-0.5">{formatDate(remote ?? m.crossChainCutoff)}</dd>
         </div>
         <div>
-          <dt className="text-muted">Lock</dt>
+          <dt className="text-muted">Local stake lock</dt>
           <dd className="mt-0.5">{formatDate(m.lockTime)}</dd>
         </div>
         <div>
@@ -56,10 +68,10 @@ export function CaseHeader({ market: m, report, tab }: { market: MarketView; rep
             Case file
           </Link>
         )}
-        {TABS.map(([t, label]) => (
+        {tabs.map(([t, label]) => (
           <Link
             key={t}
-            href={`/case/${m.reportId}/${t}`}
+            href={casePath(base, m.reportId, t)}
             aria-current={tab === t ? 'page' : undefined}
             className={`-mb-px shrink-0 border-b-2 px-3 py-2 ${tab === t ? 'border-beam text-text' : 'text-muted hover:text-text border-transparent'}`}
           >
@@ -71,7 +83,7 @@ export function CaseHeader({ market: m, report, tab }: { market: MarketView; rep
   );
 }
 
-/** Shared loading / error frame for /case/[id]/* pages. */
+/** Shared loading / error frame for /case/[id]/* and /onchain/[id]/* pages. */
 export function CaseFrame({ state, children }: { state: { isError: boolean; error?: Error | null; data?: unknown }; children: React.ReactNode }) {
   if (state.isError)
     return (

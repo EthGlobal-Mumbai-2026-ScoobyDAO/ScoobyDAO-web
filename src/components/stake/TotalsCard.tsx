@@ -1,5 +1,6 @@
 import { OddsBar } from '@/components/OddsBar';
 import { PublicStakesLabel } from '@/components/HonestyLabels';
+import { NetworkBadge } from '@/components/NetworkBadge';
 import { formatUsdc } from '@/lib/format';
 import type { MarketView } from '@/protocol';
 
@@ -10,7 +11,10 @@ export function TotalsCard({ market: m }: { market: MarketView }) {
         <h2 id="totals-h" className="font-semibold">
           Stakes so far
         </h2>
-        <PublicStakesLabel />
+        <span className="flex flex-wrap gap-2">
+          <PublicStakesLabel />
+          <NetworkBadge chainId={11155111} />
+        </span>
       </div>
       <dl className="mt-4 grid grid-cols-3 gap-3">
         {[
@@ -36,7 +40,8 @@ export function TotalsCard({ market: m }: { market: MarketView }) {
           the losing pool only. Losers get 0.
         </p>
         <p className="mt-2">Example: Yes 80, No 20, Yes wins → treasury 4, each Yes unit redeems 1.20, each No unit 0.</p>
-        <p className="mt-2">Void (one side empty, or no final result by the deadline) refunds principal pro rata, no fee.</p>
+        <p className="mt-2">Void (one side empty, or no final result by the deadline) returns principal, no fee.</p>
+        <p className="mt-2">If a simulated loss reduced the vault&apos;s principal, every payout scales by what&apos;s left. Claims stay open for 90 days after the result is final.</p>
       </div>
     </section>
   );

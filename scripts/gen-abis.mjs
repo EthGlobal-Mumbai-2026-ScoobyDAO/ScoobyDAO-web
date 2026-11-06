@@ -35,12 +35,7 @@ const CONTRACTS = [
   ['yieldLpShareAbi', 'YieldLPShare'],
   ['ccipStakeSenderAbi', 'CCIPStakeSender'],
   ['ccipStakeReceiverAbi', 'CCIPStakeReceiver'],
-  ['riskFiStakeVaultV2Abi', 'RiskFiStakeVaultV2'],
-  ['stakerYieldTokenAbi', 'StakerYieldToken'],
-  ['yieldCurveHookV2Abi', 'YieldCurveHookV2'],
-  ['stakeAndSellRouterV2Abi', 'StakeAndSellRouterV2'],
-  ['ccipStakeSenderV2Abi', 'CCIPStakeSenderV2'],
-  ['ccipStakeReceiverV2Abi', 'CCIPStakeReceiverV2'],
+  // V2 ABIs are not generated here: they come from the contracts handoff bundle (npm run sync:v2).
 ];
 
 if (!fs.existsSync(outDir)) {

@@ -1,8 +1,11 @@
-// Hash checks done in the browser with Web Crypto.
+import { keccak256 } from 'viem';
+
+// Hash checks done in the browser.
 //
 // reportSha256 = SHA-256 over the exact report.json bytes from GET /web/v1/reports/:id/raw
 //   (digest protocol in ScoobyDAO-backend/schemas/CONTRACT.md; no re-serialisation).
-// claimHash    = SHA-256 over the canonical claim manifest, where canonical must equal the
+// claimHash    = keccak256 or SHA-256 over the canonical claim manifest (the backend's
+//   SCOOBY_CLAIM_HASH_ALG; keccak256 by default since backend bd6f82a). Canonical must equal the
 //   backend's store.dumps: json.dumps(x, sort_keys=True, separators=(',',':'), ensure_ascii=False,
 //   allow_nan=False) encoded as UTF-8, integers only (publication/canonical.py rejects floats).
 //
@@ -64,8 +67,36 @@ export const toBytes32 = (hex: string) => `0x${hex.toLowerCase().replace(/^0x/, 
 export const sameHash = (a?: string, b?: string) =>
   !!a && !!b && a.toLowerCase().replace(/^0x/, '') === b.toLowerCase().replace(/^0x/, '');
 
-export async function claimHashOf(manifest: unknown): Promise<`0x${string}`> {
-  return toBytes32(await sha256Hex(canonicalBytes(manifest)));
+export type ClaimHashAlg = 'keccak256' | 'sha256';
+
+export async function claimHashOf(manifest: unknown, alg: ClaimHashAlg = 'sha256'): Promise<`0x${string}`> {
+  const bytes = canonicalBytes(manifest);
+  return alg === 'keccak256' ? keccak256(bytes) : toBytes32(await sha256Hex(bytes));
+}
+
+export interface ClaimHashMatch {
+  /** The algorithm that matched, or the first one tried when nothing matched. */
+  alg: ClaimHashAlg;
+  hash: `0x${string}`;
+  match: boolean;
+  /** True when the backend declared the algorithm (claimHashAlg); false when it was inferred. */
+  declared: boolean;
+}
+
+/**
+ * Recomputes the claim hash and compares it with `expected`. A backend-declared algorithm is the
+ * only one used; without one, keccak256 (the backend default) is tried first, then SHA-256, and the
+ * result says which matched.
+ */
+export async function matchClaimHash(manifest: unknown, expected: string, alg?: ClaimHashAlg): Promise<ClaimHashMatch> {
+  const algs: ClaimHashAlg[] = alg ? [alg] : ['keccak256', 'sha256'];
+  let first: { alg: ClaimHashAlg; hash: `0x${string}` } | undefined;
+  for (const a of algs) {
+    const hash = await claimHashOf(manifest, a);
+    first ??= { alg: a, hash };
+    if (sameHash(hash, expected)) return { alg: a, hash, match: true, declared: !!alg };
+  }
+  return { ...first!, match: false, declared: !!alg };
 }
 
 /** Hash evidence for a challenge: bytes32 = SHA-256 of a file or of pasted UTF-8 text. */

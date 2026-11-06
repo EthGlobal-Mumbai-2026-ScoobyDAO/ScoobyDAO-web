@@ -1,0 +1,42 @@
+{
+  "note": "Computed by ScoobyDAO-backend publication/canonical.py claim_hash() (its .venv, offline) on 2026-11-06. Unicode, quotes and code-point key order exercise the canonical JSON.",
+  "canonicalLength": 723,
+  "keccak256": "0x6f241818ea49dadf6d7c5f16019b1ba5e2b13843f76c177dbccaeb83cc3c81e9",
+  "sha256": "0x0940af9a0e25fc1ab868dc0c940c83b8d981ffe02abde521ce9d76d18faa1a1c",
+  "manifest": {
+    "schema": "scooby.claim-manifest/1",
+    "version": 1,
+    "title": "RAY on chain 1: ray@v1",
+    "chainId": 1,
+    "token": "0x00000000000000000000000000000000000000aa",
+    "symbol": "RAY",
+    "claimText": "not stated. Sniff found no café ☕ issue",
+    "assessmentStatus": "pending_review",
+    "claims": [
+      {
+        "id": 0,
+        "type": "REPORT_CLAIM",
+        "params": {
+          "statement": "Ünïcode & \"quotes\"",
+          "kind": "observation",
+          "pillar": "onchain",
+          "reportClaimId": "c-1"
+        }
+      }
+    ],
+    "evidence": [
+      {
+        "kind": "chain",
+        "result": "complete",
+        "detail": "e1 sha256:abc"
+      }
+    ],
+    "summary": "Zebra before apple: keys sort by code point",
+    "excludedWallets": [],
+    "windowSeconds": 10800,
+    "createdAt": 1700000000,
+    "reportId": "ray",
+    "reportVersion": "v1",
+    "reportSha256": "69712a61331eb414d3eb0ff347c7bec12cb16cccb1f874779f695619d714649a"
+  }
+}

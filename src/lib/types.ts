@@ -1,3 +1,5 @@
+import type { ClaimHashAlg } from './hash';
+
 // Web-side shapes. ReportV02 is generated from the backend's frozen schema; WebReport, ClaimManifest
 // and Approval are what src/lib/api.ts hands to pages after normalising GET /web/v1 responses.
 // See INTERFACES.md (v2, Nov 2026) and NOTES.md "Revamp (Nov 2026)" for unconfirmed fields.
@@ -60,9 +62,12 @@ export interface WebReport {
   reportSha256: string;
   /** 0x-prefixed bytes32 of the canonical claim manifest digest. */
   claimHash: Hex;
+  /** keccak256 | sha256, when the backend states it (requested; the web otherwise tries both). */
+  claimHashAlg?: ClaimHashAlg;
   targetDigest?: string;
   approvalId?: string;
   onchainReportId?: string;
+  /** Publication tx (backend `txHash`, or `publishTxHash` when sent under that name). */
   txHash?: Hex;
   createdAt: number;
   publicationState?: string;
@@ -89,14 +94,18 @@ export interface Approval {
   /** May be absent when the backend only sends manifestHash (it then equals claimHash). */
   reportSha256?: string;
   claimHash: Hex;
+  claimHashAlg?: ClaimHashAlg;
   publishTxHash?: Hex;
   onchainReportId?: string;
   demoIdentity?: boolean;
   detail?: string;
 }
 
-/** Proposed POST /web/v1/rep/authorize response (doesn't exist yet; NOTES.md). */
-export interface RepAuthorizeResponse {
+/**
+ * V1 only: proposed POST /web/v1/reputation-badge/authorize response for the World ID reputation
+ * badge (Reputation.claimWinnerREP). Doesn't exist yet (NOTES.md). Unrelated to the V2 REP receipt.
+ */
+export interface ReputationBadgeAuthorizeResponse {
   reportId: string;
   recipient: Hex;
   scopedNullifier: Hex;

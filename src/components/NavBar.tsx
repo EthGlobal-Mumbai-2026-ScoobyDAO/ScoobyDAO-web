@@ -2,29 +2,36 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { env } from '@/lib/env';
+import { selectProtocol, V2_INFO } from '@/protocol';
 import { Logo } from './Logo';
 import { SectionLink } from './SectionLink';
 import { NetworkBadge } from './NetworkBadge';
 import { ThemeToggle } from './ThemeToggle';
 import { WalletButton } from './WalletButton';
 
-const LINKS = [
+type NavItem = { href: string; label: string; section?: string };
+
+const LIVE_MARKET = `/onchain/${V2_INFO.reportId}`;
+const LINKS: NavItem[] = [
   { href: '/cases', label: 'Cases' },
+  ...(selectProtocol().kind === 'v2' ? [{ href: LIVE_MARKET, label: 'Live market' }] : []),
   { href: '/reports', label: 'Reports' },
   { href: '/me', label: 'My positions' },
+  ...(env.operatorView ? [{ href: '/operator', label: 'Operator' }] : []),
   { href: '/#how-it-works', label: 'How it works', section: 'how-it-works' },
-] as const;
+];
 
 function NavLink({
   link,
   className,
   current,
 }: {
-  link: (typeof LINKS)[number];
+  link: NavItem;
   className: string;
   current?: boolean;
 }) {
-  if ('section' in link)
+  if (link.section)
     return (
       <SectionLink section={link.section} className={className}>
         {link.label}
@@ -51,11 +58,13 @@ export function NavBar() {
             const active =
               l.href === '/cases'
                 ? pathname.startsWith('/case')
-                : l.href === '/reports'
-                  ? pathname.startsWith('/reports')
-                  : l.href === '/me'
-                    ? pathname === '/me'
-                    : false;
+                : l.href === LIVE_MARKET
+                  ? pathname.startsWith('/onchain')
+                  : l.href === '/reports'
+                    ? pathname.startsWith('/reports')
+                    : l.href === '/me' || l.href === '/operator'
+                      ? pathname === l.href
+                      : false;
             return (
               <li key={l.href}>
                 <NavLink

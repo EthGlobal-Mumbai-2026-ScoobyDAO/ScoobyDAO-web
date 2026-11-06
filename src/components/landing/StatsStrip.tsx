@@ -6,15 +6,15 @@ import { useProtocol, useYtVolume } from '@/protocol/hooks';
 
 /** Live numbers from the protocol adapter (no stats route; NOTES.md). Labelled "Demo data" in fixture mode. */
 export function StatsStrip() {
-  const { rows, published, marketsLoading } = useCaseRows();
-  const { fixtureMode } = useProtocol();
+  const { markets, published, marketsLoading } = useCaseRows();
+  const { fixtureMode, protocol } = useProtocol();
   const volume = useYtVolume();
   const loading = published.isLoading || marketsLoading;
-  const staked = rows.reduce((sum, r) => sum + (r.market ? r.market.totals.yes + r.market.totals.no : 0n), 0n);
+  const staked = markets.reduce((sum, m) => sum + m.totals.yes + m.totals.no, 0n);
   const stats = [
     { label: 'Reports published', value: (published.data?.length ?? 0).toString() },
     { label: 'dUSD staked', value: formatUsdc(staked).replace(/\.00$/, '') },
-    { label: 'YT traded', value: volume.data == null ? '—' : formatUsdc(volume.data).replace(/\.00$/, '') },
+    { label: protocol.kind === 'v2' ? 'YT traded (recent blocks)' : 'YT traded', value: volume.data == null ? '—' : formatUsdc(volume.data).replace(/\.00$/, '') },
   ];
   return (
     <section aria-label={fixtureMode ? 'Stats (demo data)' : 'Live stats'} className="border-line bg-surface border-y">
