@@ -4,31 +4,53 @@ import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useQueries } from '@tanstack/react-query';
 import { BadgeCheck } from 'lucide-react';
 import Link from 'next/link';
+import { useMemo } from 'react';
 import { TrackedCcipList } from '@/components/ccip/CcipTracker';
 import { EmptyState } from '@/components/EmptyState';
 import { DemoReportLabel, SimulatedYieldLabel } from '@/components/HonestyLabels';
 import { NetworkBadge } from '@/components/NetworkBadge';
 import { StatusChip } from '@/components/StatusChip';
 import { TxPlanStepper, usePlan } from '@/components/TxPlanStepper';
+import { TxProvider } from '@/lib/tx';
 import { formatDate, formatUsdc } from '@/lib/format';
 import { estimatePaid } from '@/lib/payout';
 import { claimPrincipalOpen, claimsCloseAt, claimsExpired, type MarketView, type PositionView } from '@/protocol';
-import { useActiveAccount, useChainTime, useProtocol, usePublished, useTrackedCcip, useWritesAllowed } from '@/protocol/hooks';
+import { ProtocolOverrideProvider, useActiveAccount, useChainTime, useProtocol, usePublished, useTrackedCcip, useWritesAllowed } from '@/protocol/hooks';
+import type { ReportChoice } from '@/protocol/reportDiscovery';
+import { protocolForReport } from '@/protocol/reportProtocol';
 
-export function PositionsScreen() {
+export function PositionsScreen({ reports }: { reports: ReportChoice[] }) {
   const { protocol, ready, fixtureMode } = useProtocol();
   const { address, connected } = useActiveAccount();
   const published = usePublished();
   const tracked = useTrackedCcip();
-  const rows = useQueries({
-    queries: (published.data ?? []).map((id) => ({
+  const sources = useMemo(
+    () => reports.flatMap((report) => {
+      const reportProtocol = protocolForReport(report);
+      return reportProtocol ? [{ report, protocol: reportProtocol }] : [];
+    }),
+    [reports],
+  );
+  const fixtureRows = useQueries({
+    queries: (fixtureMode ? (published.data ?? []) : []).map((id) => ({
       queryKey: ['protocol', protocol.kind, 'me', id.toString(), address],
       queryFn: async () => ({ market: await protocol.getMarket(id), pos: await protocol.getPosition(id, address!) }),
       enabled: ready && !!address,
     })),
   });
-  const loaded = rows.filter((r) => r.data).map((r) => r.data!);
-  const failed = rows.find((r) => r.isError);
+  const reportRows = useQueries({
+    queries: sources.map(({ report, protocol: reportProtocol }) => ({
+      queryKey: ['protocol', 'v2', 'me', report.deployment, report.id, report.market?.vault ?? reportProtocol.deploymentBundle.sepolia.RiskFiStakeVaultV2, address],
+      queryFn: async () => ({ market: await reportProtocol.getMarket(BigInt(report.id)), pos: await reportProtocol.getPosition(BigInt(report.id), address!) }),
+      enabled: !fixtureMode && !!address,
+      retry: 1,
+    })),
+  });
+  const loaded = fixtureMode
+    ? fixtureRows.filter((row) => row.data).map((row) => ({ ...row.data!, deployment: undefined, reportProtocol: protocol }))
+    : reportRows.flatMap((row, index) => row.data ? [{ ...row.data, deployment: sources[index].report.deployment, reportProtocol: sources[index].protocol }] : []);
+  const failed = (fixtureMode ? fixtureRows : reportRows).find((row) => row.isError);
+  const loading = fixtureMode ? published.isLoading || fixtureRows.some((row) => row.isLoading) : reportRows.some((row) => row.isLoading);
   const mine = loaded.filter(({ pos }) => hasAnything(pos));
   const reportIds = new Set(loaded.map(({ market }) => market.reportId.toString()));
   const otherTracked = tracked.filter((t) => !reportIds.has(t.reportId));
@@ -41,11 +63,11 @@ export function PositionsScreen() {
         <div className="mt-8">
           <ConnectButton />
         </div>
-      ) : published.isError || failed ? (
+      ) : (fixtureMode && published.isError) || failed ? (
         <EmptyState pose="confused" title="Couldn't read your positions from chain">
           {(published.error ?? failed?.error)?.message}
         </EmptyState>
-      ) : published.isLoading || rows.some((r) => r.isLoading) ? (
+      ) : loading ? (
         <div className="mt-8 grid gap-4" aria-busy="true" aria-label="Loading positions">
           {[0, 1, 2].map((i) => (
             <div key={i} className="sweep h-32" />
@@ -59,9 +81,15 @@ export function PositionsScreen() {
         <ul className="mt-8 space-y-4">
           {loaded
             .filter(({ market, pos }) => hasAnything(pos) || tracked.some((t) => t.reportId === market.reportId.toString()))
-            .map(({ market, pos }) => (
-              <li key={market.reportId.toString()}>
-                <PositionRow market={market} pos={pos} />
+            .map(({ market, pos, deployment, reportProtocol }) => (
+              <li key={`${deployment ?? 'fixture'}:${market.reportId.toString()}`}>
+                {deployment ? (
+                  <ProtocolOverrideProvider protocol={reportProtocol}>
+                    <TxProvider bundle={reportProtocol.deploymentBundle}>
+                      <PositionRow market={market} pos={pos} deployment={deployment} />
+                    </TxProvider>
+                  </ProtocolOverrideProvider>
+                ) : <PositionRow market={market} pos={pos} />}
               </li>
             ))}
           {otherTracked.length > 0 && (
@@ -79,7 +107,7 @@ export function PositionsScreen() {
 const hasAnything = (p: PositionView) =>
   p.yes > 0n || p.no > 0n || p.yt > 0n || p.ytClaimable > 0n || p.lpShares > 0n || p.lpClaimable > 0n || p.pendingCcip.length > 0 || p.reputationBadge || p.repReceipt > 0n;
 
-function PositionRow({ market: m, pos }: { market: MarketView; pos: PositionView }) {
+function PositionRow({ market: m, pos, deployment }: { market: MarketView; pos: PositionView; deployment?: ReportChoice['deployment'] }) {
   const { protocol } = useProtocol();
   const { address } = useActiveAccount();
   const now = useChainTime() ?? m.chainTime;
@@ -89,14 +117,14 @@ function PositionRow({ market: m, pos }: { market: MarketView; pos: PositionView
   const outcome = m.decision?.outcome;
   const claimOpen = v2 ? claimPrincipalOpen(m, now) : !!outcome;
   const closes = claimsCloseAt(m);
-  const href = v2 ? `/onchain/${m.reportId}` : `/case/${m.reportId}/result`;
+  const href = deployment ? `/markets/${deployment}/${m.reportId}/result` : v2 ? `/onchain/${m.reportId}` : `/case/${m.reportId}/result`;
   const busy = plan.running || !writes.allowed;
   return (
     <article className="glass space-y-4 p-5">
       <header className="flex flex-wrap items-center gap-3">
         <h2 className="font-display text-2xl">
           <Link href={href} className="hover:underline">
-            {v2 ? 'Report' : 'Case'} #{m.reportId.toString()}
+            {deployment ? `${deployment === 'flexible' ? 'Flexible' : 'Original'} report` : v2 ? 'Report' : 'Case'} #{m.reportId.toString()}
           </Link>
         </h2>
         <StatusChip status={m.phase} />

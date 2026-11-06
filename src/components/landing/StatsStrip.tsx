@@ -6,9 +6,8 @@ import { useMemo } from 'react';
 import { useCaseRows } from '@/components/cases/useCaseRows';
 import { formatUsdc } from '@/lib/format';
 import { useProtocol, useYtVolume } from '@/protocol/hooks';
-import { bundleForMarket } from '@/protocol/dynamicMarket';
 import type { ReportChoice } from '@/protocol/reportDiscovery';
-import { v2ForBundle } from '@/protocol/v2';
+import { protocolForReport } from '@/protocol/reportProtocol';
 
 /** Live numbers from the protocol adapter (no stats route; NOTES.md). Labelled "Demo data" in fixture mode. */
 export function StatsStrip({ reports }: { reports: ReportChoice[] }) {
@@ -16,12 +15,15 @@ export function StatsStrip({ reports }: { reports: ReportChoice[] }) {
   const { fixtureMode, protocol } = useProtocol();
   const volume = useYtVolume();
   const activated = useMemo(
-    () => reports.filter((report) => report.market && report.report).map((report) => ({ report, protocol: v2ForBundle(bundleForMarket(report)) })),
+    () => reports.flatMap((report) => {
+      const reportProtocol = protocolForReport(report);
+      return reportProtocol ? [{ report, protocol: reportProtocol }] : [];
+    }),
     [reports],
   );
   const allMarkets = useQueries({
     queries: activated.map(({ report, protocol: reportProtocol }) => ({
-      queryKey: ['homepage', 'market', report.deployment, report.id, report.market!.vault],
+      queryKey: ['homepage', 'market', report.deployment, report.id, report.market?.vault ?? reportProtocol.deploymentBundle.sepolia.RiskFiStakeVaultV2],
       queryFn: () => reportProtocol.getMarket(BigInt(report.id)),
       refetchInterval: 30_000,
       retry: 1,
@@ -29,7 +31,7 @@ export function StatsStrip({ reports }: { reports: ReportChoice[] }) {
   });
   const allVolumes = useQueries({
     queries: activated.map(({ report, protocol: reportProtocol }) => ({
-      queryKey: ['homepage', 'ytVolume', report.deployment, report.id, report.market!.hook],
+      queryKey: ['homepage', 'ytVolume', report.deployment, report.id, report.market?.hook ?? reportProtocol.deploymentBundle.sepolia.YieldCurveHookV2],
       queryFn: () => reportProtocol.ytVolume!(),
       refetchInterval: 60_000,
       retry: false,
@@ -73,7 +75,7 @@ export function StatsStrip({ reports }: { reports: ReportChoice[] }) {
                   href={`/markets/${report.deployment}/${report.id}`}
                   className="border-line hover:border-beam rounded-full border px-3 py-1.5 font-semibold"
                 >
-                  {report.deployment === 'flexible' ? 'Flexible' : 'Original'} #{report.id} · {report.market ? 'market deployed' : 'setup pending'}
+                  {report.deployment === 'flexible' ? 'Flexible' : 'Original'} #{report.id} · {report.tradable ? 'market deployed' : 'setup pending'}
                 </Link>
               ))}
             </div>
