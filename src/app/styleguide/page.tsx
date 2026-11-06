@@ -1,4 +1,13 @@
 import type { Metadata } from 'next';
+import {
+  CcipNotVoteLabel,
+  DemoClockLabel,
+  DemoIdentityLabel,
+  PublicStakesLabel,
+  SimulatedYieldLabel,
+  TestTokenLabel,
+  YtNotPredictionLabel,
+} from '@/components/HonestyLabels';
 import { StatusChip } from '@/components/StatusChip';
 import { CASE_STATUSES } from '@/lib/status';
 
@@ -23,11 +32,24 @@ export default function Styleguide() {
         </div>
       </section>
 
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold">Honesty labels</h2>
+        <div className="flex flex-wrap gap-2">
+          <TestTokenLabel />
+          <SimulatedYieldLabel />
+          <DemoClockLabel />
+          <PublicStakesLabel />
+          <YtNotPredictionLabel />
+          <CcipNotVoteLabel />
+          <DemoIdentityLabel />
+        </div>
+      </section>
+
       <section className="grid gap-6 md:grid-cols-2">
         <div className="glass p-6">
           <h2 className="font-display text-2xl">Glass card</h2>
           <p className="text-muted mt-2">Muted body text on glass over fog.</p>
-          <p className="num mt-3 text-sm">0x9f2c…41ab · 1,250.000000 USDC</p>
+          <p className="num mt-3 text-sm">0x9f2c…41ab · 1,250.000000 dUSD</p>
           <div className="mt-4 flex gap-3">
             <button className="bg-beam text-on-beam rounded-lg px-4 py-2 font-semibold">
               Primary
@@ -41,8 +63,9 @@ export default function Styleguide() {
           <p className="mt-2">Typed on paper. Stays paper in both themes.</p>
           <p className="text-muted mt-2">Muted note on paper.</p>
           <p className="mt-3 flex gap-3 text-sm">
-            <span className="text-clue-ink">For: teal ink</span>
-            <span className="text-mask-ink">Against: red ink</span>
+            <span className="text-beam-ink">Yes: beam ink</span>
+            <span className="text-clue-ink">No: teal ink</span>
+            <span className="text-mask-ink">Challenged: red ink</span>
             <span className="text-ghost-ink">Pending</span>
           </p>
         </div>

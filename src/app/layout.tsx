@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Bungee, Inter, JetBrains_Mono } from 'next/font/google';
 import type { ReactNode } from 'react';
+import { FixtureModeBanner } from '@/components/FixtureModeBanner';
 import { GrainOverlay } from '@/components/GrainOverlay';
 import { NavBar } from '@/components/NavBar';
 import { themeInitScript } from '@/components/ThemeToggle';
@@ -19,7 +20,7 @@ const mono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-jetbrains', 
 export const metadata: Metadata = {
   title: { default: 'Unmasked', template: '%s · Unmasked' },
   description:
-    'Sniff and a pack of AI agents follow the evidence on scam tokens. A verified human signs off, then the market decides.',
+    'Sniff and a pack of AI agents research tokens. A verified human approves each report, then people stake Yes or No and the result settles onchain.',
 };
 
 export const viewport: Viewport = { themeColor: '#0B1026' };
@@ -43,15 +44,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         </a>
         <Providers>
           <NavBar />
-          {process.env.NEXT_PUBLIC_USE_FIXTURES === 'true' && (
-            <aside
-              role="note"
-              className="border-line bg-surface text-muted border-b px-4 py-3 text-center text-sm"
-            >
-              Demo mode — Cases, approvals and markets are simulated. Research reports load
-              separately and remain drafts.
-            </aside>
-          )}
+          <FixtureModeBanner />
           <div id="main">{children}</div>
         </Providers>
         <GrainOverlay />

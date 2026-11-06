@@ -17,19 +17,7 @@ function base({ size = 16, ...rest }: IconProps) {
   };
 }
 
-/** Snap trap: base plate, spring bar, bait. Used for Frozen. */
-export function TrapIcon(props: IconProps) {
-  return (
-    <svg {...base(props)}>
-      <rect x="3" y="15" width="18" height="5" rx="1" />
-      <path d="M6 15c0-5 2.5-8 6-8s6 3 6 8" />
-      <path d="M9 15V11M15 15V11M12 15V9" />
-      <circle cx="12" cy="17.5" r="0.6" fill="currentColor" />
-    </svg>
-  );
-}
-
-/** Coin-shaped villain mask, lifted off. Used for ResolvedPass ("Unmasked"). */
+/** Coin-shaped villain mask, lifted off. Used for Final · Yes ("Unmasked"). */
 export function MaskOffIcon(props: IconProps) {
   return (
     <svg {...base(props)}>

@@ -1,6 +1,6 @@
 # Theme & Frontend Generation Spec — "Unmask the Rug"
 
-> For the `riskfi-web` repo. Read alongside `CLAUDE.md` and `INTERFACES.md`. This file defines the brand, visual system, 3D plan, every page and component, and ready-to-paste prompts for the tools that generate them.
+> Revamp (Nov 2026): §2.3 and §5–§6 now describe the real product (report v0.2, Yes/No dUSD stakes, YT market, CCIP, settlement). Older wording elsewhere (prompts in §7) is historical. For the web repo. Read alongside `CLAUDE.md` and `INTERFACES.md`. This file defines the brand, visual system, 3D plan, every page and component, and ready-to-paste prompts for the tools that generate them.
 
 ---
 
@@ -63,8 +63,8 @@ Vintage Saturday-morning mystery: a spooky-but-friendly night, flashlight beams 
   --fog-400: #7a86b8; /* muted text, borders */
   --fog-100: #e8ecff; /* body text */
   --beam-400: #ffc857; /* flashlight amber: primary CTA, highlights */
-  --clue-500: #2ec4b6; /* teal: Sniff's coat, success, "For" side */
-  --mask-500: #e4572e; /* villain orange-red: danger, "Against" side, frozen */
+  --clue-500: #2ec4b6; /* teal: Sniff's coat, success, "No" side */
+  --mask-500: #e4572e; /* villain orange-red: danger, challenged */
   --ghost-300: #b8a9ff; /* lavender: pending / awaiting approval */
   --paper-50: #f6f1e3; /* evidence-file paper for light surfaces */
 }
@@ -74,16 +74,23 @@ Light theme: swap background to `--paper-50`, text to `--night-900`, keep accent
 
 ### 2.3 Status colors (always with icon + label)
 
-| Status            | Color      | Icon          | Label                |
-| ----------------- | ---------- | ------------- | -------------------- |
-| Draft             | fog        | 📁 file       | Case file            |
-| Awaiting approval | ghost      | 🔍 magnifier  | Awaiting a human     |
-| Denied / Expired  | fog (dim)  | 🚫 / ⏳       | No case opened       |
-| Open              | clue teal  | 🔦 flashlight | Case open            |
-| Frozen            | mask red   | 🪤 trap       | Trap sprung — frozen |
-| Resolved Pass     | beam amber | 🎭 mask off   | Unmasked             |
-| Resolved Fail     | fog-100    | ✅            | Cleared              |
-| Refunded          | fog        | ↩︎             | Refunded             |
+| Status (phase)                       | Color      | Icon          | Label              |
+| ------------------------------------ | ---------- | ------------- | ------------------ |
+| Draft                                | fog        | 📁 file       | Draft              |
+| Awaiting approval                    | ghost      | 🔍 magnifier  | Awaiting approval  |
+| Denied                               | fog (dim)  | 🚫            | Denied             |
+| Expired                              | fog (dim)  | ⏳            | Expired            |
+| Open (before cross-chain cutoff)     | clue teal  | 🔦 flashlight | Open               |
+| Open, local only (cutoff → lock)     | clue teal  | 🌐 globe      | Cross-chain closed |
+| Locked (lock → maturity)             | ghost      | 🔒 lock       | Locked             |
+| Matured (awaiting proposal)          | beam amber | ⏲ timer       | Matured            |
+| Proposed (challenge window)          | beam amber | 📣 megaphone  | Proposed           |
+| Challenged (adjudicator decides)     | mask red   | ⚔︎ swords      | Challenged         |
+| Final · Yes                          | beam amber | 🎭 mask off   | Final · Yes        |
+| Final · No                           | fog-100    | ✅            | Final · No         |
+| Void                                 | fog        | ↩︎             | Void               |
+
+Every chip ink passes 4.5:1 on its tint in both themes (`node scripts/contrast.mjs`).
 
 ### 2.4 Typography
 
@@ -156,73 +163,70 @@ Do **not** pull character models from asset libraries (Sketchfab, TurboSquid, CG
 
 ## 5. Pages & features (complete list)
 
-### 5.1 Landing `/` (new)
+### 5.1 Landing `/`
 
-- 3D hero (§3.1) with headline "Every rug has a villain behind the mask." and CTAs **Browse cases** / **How it works**.
-- Live stats strip: cases open, USDC staked, cases unmasked, cases cleared (from backend).
-- "How it works" scroll diorama, 4 steps:
-  1. **Sniff finds a clue** — agents run checkable tests (e.g. "a normal wallet can't sell").
-  2. **A human signs off** — World ID Agent Pass; no agent can accuse alone.
-  3. **The case opens** — stake For/Against with sealed bets; scammer-linked wallets are blocked.
-  4. **The trap springs** — the moment a claim triggers, staking and trading freeze; winners redeem.
-- Trust section: "What we can't do" — no AI-only accusations, no betting after the answer is known, no betting on your own rug.
-- Sponsor/credits strip (World, Uniswap, others actually used).
-- Footer: GitHub repos, contract addresses, disclaimer ("testnet demo; not available where prohibited").
+- 3D hero with headline "Every rug has a villain behind the mask." and CTAs **Browse cases** / **How it works**.
+- Live stats strip: reports published, dUSD staked, YT traded (labelled "Demo data" in fixture mode).
+- "How it works": the 8 real steps (research → human approval → publish → stake Yes/No → lock & YT → proposal at maturity → challenge & finalize → separate claims).
+- "Built with" strip, text labels only: World (human approval), Chainlink CCIP (stake from another chain), Uniswap v4 (trade the yield).
+- Trust section "What we can't do": no AI-only accusations, no hidden stakes (stakes are public onchain), no verdict by timer.
+- Footer: neutral repo labels, V1 contract addresses, disclaimer ("dUSD — test token, not USDC").
 
-### 5.2 Case board `/cases` (was "Reports list")
+### 5.2 Case board `/cases`
 
-- Corkboard-style grid of case cards with pinned photos (token icon/identicon), red string connecting related cases (stretch).
-- Filters: status, claim type; search by token address.
-- Each card: token, claim type chip, status chip (§2.3), stakes, odds bar, time left.
-- Demo button "Send Sniff to scan" (`POST /demo/scan`, demo mode only) → Sniff 2D "sniffing" loader.
+- Corkboard grid: backend reports merged with onchain published ids.
+- Card: symbol + chain, assessment label, phase chip, Yes/No totals, time to the next deadline.
+- Filters: phase, token chain; search by token, symbol, report id or #case.
 
-### 5.3 Case file `/cases/[id]` (was report detail)
+### 5.3 Case file `/cases/[id]`
 
-- Paper "case file" layout: claims as typed index cards, evidence with stamps, the LLM summary clearly labelled "Sniff's notes (AI-written; not the verdict)".
-- Manifest JSON viewer + **Recompute hash** button (✓ match / ✗ mismatch).
-- Excluded-wallet list ("Suspects barred from betting").
-- CTA "Request a human sign-off" → `/approve/[approvalId]`.
+- Report v0.2: identity header, assessment (unknowns and counterevidence shown open), the claim card, five pillar cards with findings linked to evidence, evidence list, artifacts, limitations.
+- Hash check: SHA-256 of the raw report bytes and of the canonical claim manifest, ✓/✗ vs backend and vs `ReportRegistry.getReport`.
+- Side rail: onchain market summary, or draft state with **Request human approval**.
 
-### 5.4 Sign-off `/approve/[id]` (World demo screen — keep it plain and fast)
+### 5.4 Sign-off `/approve/[id]` (World demo screen)
 
-- No 3D. Large type for the projector.
-- Shows token + chain, exact claim text, manifest hash, user code, QR / button to World App, countdown.
-- States: approved → "Case opened" + tx link; denied → "Denied — no case opened"; expired → "Expired — no case opened"; not a reviewer → "Not a registered reviewer — nothing published".
+- No 3D. Large type. Report version, ClaimCard, claimHash and reportSha256, user code, QR of `verificationUriComplete ?? verificationUri`, countdown.
+- States: approved → "Approved — publishing…"; spent → "Published onchain" + tx + case link; denied → "Denied — no case opened. Draft only, no market opened."; expired → "Expired — no case opened."; not a reviewer → "This World ID isn't an enrolled reviewer — nothing published."; error → "World verification unavailable — nothing published."
+- "Demo identity: World Agent Pass" label when proofs are mocked.
 - Note: "World App shows only the requester and this code. Check the claim above before approving."
 
-### 5.5 Stake `/case/[claimId]/stake`
+### 5.5 Stake `/case/[id]/stake`
 
-- Case header with status, countdown, trigger tx if frozen.
-- Excluded-wallet banner if the connected wallet is barred.
-- Sealed commit form (side, amount) with "Your side stays sealed until reveal" tooltip; salt saved locally + **Download backup**.
-- Reveal / Redeem buttons; payout preview with the exact formula.
-- Totals + odds bar (teal For vs red Against).
-- On Resolved Pass → small 3D/Lottie "mask pops off" + confetti; on Cleared → Sniff shrugs (2D).
+- Source: Ethereum Sepolia (direct) or Arbitrum Sepolia (via Chainlink CCIP, only before the cross-chain cutoff, with ETH fee quote).
+- Yes/No picker → dUSD amount (max = balance) → TxPlan stepper (approve if needed, then stake). "Stakes are public onchain."
+- Payout preview: if Yes wins / if No wins / if Void, with the 20%-of-losing-pool fee line.
+- V2 only: "Keep my YT" / "Sell my YT now" with slippage.
+- Test funds panel (no public faucet; `NEXT_PUBLIC_FAUCET_URL` or "Ask the team").
 
-### 5.6 Market `/case/[claimId]/market`
+### 5.6 Market `/case/[id]/market`
 
-- Swap For↔USDC and Against↔USDC via the v4 router.
-- Price chart of implied probability (simple line; stretch).
-- Frozen state: inputs disabled, big "🪤 Trap sprung — trading halted at block N"; if a forced tx is sent, show the revert reason.
+- "Trade the interest earned on locked stakes. The YT price is not a prediction of the verdict."
+- Buy/sell YT via the v4 hook router; price, implied APR and time to maturity, all "Simulated yield"; slippage → minOut; received amount from the `Swapped` event. Disabled states per reason ("Market not deployed yet", matured, …).
 
-### 5.7 My cases `/me` (stretch)
+### 5.7 Result `/case/[id]/result`
 
-- Wallet's commits (sealed/revealed), share balances, redeemable payouts, backup files reminder.
+- Settlement timeline, challenge form (SHA-256 evidence hash; "No bond is required; the adjudicator decides."), finalize ("Anyone can finalize — nothing happens automatically.").
+- Three separate claim cards: redeem position, claim yield, REP badge.
+- Mask-pop "Unmasked!" on Final · Yes; "Case closed — cleared." on No; "No verdict — stakes refunded." on Void.
 
-### 5.8 Global UI
+### 5.8 Positions `/me` and CCIP tracker `/tx/ccip/[messageId]`
 
-- Top bar: logo (Sniff head + wordmark), Cases, How it works, network badge (Sepolia), wallet button.
-- Toasts for every tx: pending → confirmed with explorer link → failed with reason.
-- Empty states with Sniff poses (no cases yet: Sniff asleep; error: Sniff confused).
-- 404: "This case went cold."
-- Loading: flashlight sweep skeletons.
-- Mobile layout for all pages except the market chart (simplified).
+- `/me`: Yes/No positions, redeemable amounts, YT and claimable yield, LP shares, pending/held CCIP stakes, REP badges; one Claim button per item.
+- Tracker: Sent → In transit (CCIP Explorer link) → Credited, or Held → Recover.
+
+### 5.9 Global UI
+
+- Top bar: logo, Cases, My positions, How it works, network badge (Sepolia / Arbitrum Sepolia), wallet.
+- Fixture-mode banner on every page when data is simulated.
+- Every write: TxPlan stepper, toast with Etherscan / Arbiscan link, decoded revert reason, wrong-chain prompt.
+- Empty states with Sniff poses; 404 "This case went cold."; flashlight-sweep skeletons.
 
 ---
 
 ## 6. Component inventory
 
-`Logo`, `NavBar`, `WalletButton`, `NetworkBadge`, `HeroScene3D` (+ `HeroParallaxFallback`), `HowItWorksScroll`, `StatsStrip`, `CaseCard`, `StatusChip`, `ClaimIndexCard`, `EvidenceStamp`, `ManifestViewer`, `HashCheck`, `SuspectList`, `ApprovalPanel`, `Countdown`, `QrCode`, `CommitForm`, `RevealButton`, `RedeemPanel`, `PayoutPreview`, `OddsBar`, `SwapPanel`, `FrozenBanner`, `TxToast`, `TxLink`, `MaskPop3D` (+ Lottie fallback), `SniffPose` (SVG/PNG by pose), `FlashlightCursor`, `GrainOverlay`, `EmptyState`.
+`Logo`, `NavBar`, `WalletButton`, `NetworkBadge`, `FixtureModeBanner`, `HonestyLabels`, `HeroScene3D` (+ `HeroParallaxFallback`), `HowItWorks`, `StatsStrip`, `BuiltWith`, `CaseCard`, `StatusChip`, `ReportViewer` (`IdentityHeader`, `AssessmentCard`, `PillarCard`, `EvidenceList`, `Artifacts`, `LimitationsNote`), `ClaimCard`, `HashCheck`, `HashText`, `Countdown`, `TxLink`, `TxPlanStepper`, `SidePicker`, `PayoutPreview`, `TotalsCard`, `OddsBar` (share of stakes), `GetTestFunds`, `CcipTracker`, `SettlementTimeline`, `ChallengeForm`, `FinalizeButton`, `RepCard`, `MaskPop` (+ 3D scene), `SniffPose`, `GrainOverlay`, `EmptyState`.
 
 ---
 
@@ -238,8 +242,8 @@ TanStack Query, Framer Motion, and React Three Fiber + drei for one 3D hero only
 
 Theme: vintage Saturday-morning mystery at night meets clean DeFi. Dark navy background
 (#0B1026), cards #151B3D, body text #E8ECFF, muted #7A86B8, amber flashlight accent
-#FFC857 for primary actions, teal #2EC4B6 for the "For" side and success, red-orange
-#E4572E for the "Against" side, danger and frozen states, lavender #B8A9FF for pending.
+#FFC857 for primary actions and the "Yes" side, teal #2EC4B6 for the "No" side and success,
+red-orange #E4572E for danger and challenged states, lavender #B8A9FF for pending.
 Display font Bungee for headings, Inter for body, JetBrains Mono for numbers and hashes.
 Add a subtle film-grain overlay and glassmorphism cards over a foggy background.
 Respect prefers-reduced-motion. All mascot art must be ORIGINAL — no existing cartoon
@@ -249,21 +253,20 @@ Pages:
 1. "/" landing: 3D hero canvas (placeholder box where a .glb of Sniff will load, with a
    spotlight "flashlight" that follows the pointer; parallax PNG fallback when WebGL is
    unavailable or reduced motion is on), headline "Every rug has a villain behind the
-   mask.", CTAs, live stats strip, a 4-step scroll section (Sniff finds a clue → a human
-   signs off → the case opens → the trap springs), a "What we can't do" trust section, footer.
-2. "/cases": corkboard grid of case cards with status chips, odds bar, filters, search,
-   and a demo "Send Sniff to scan" button.
-3. "/cases/[id]": paper case-file layout with claim index cards, evidence with stamps,
-   AI notes clearly labelled as not the verdict, manifest JSON viewer with a "Recompute
-   hash" check, list of barred wallets, and a "Request a human sign-off" button.
-4. "/approve/[id]": plain, large-type screen for a projector (no 3D): token, chain, exact
-   claim text, manifest hash, user code, QR code, countdown, and result states for
-   approved / denied / expired / not-a-reviewer.
-5. "/case/[claimId]/stake": sealed commit form (side + amount), reveal and redeem buttons,
-   payout preview, totals, odds bar, barred-wallet banner, frozen banner, and a celebratory
-   "mask pops off" animation when the case resolves.
-6. "/case/[claimId]/market": swap panel for For/Against shares vs USDC, disabled with a
-   "Trap sprung — trading halted" banner when frozen.
+   mask.", CTAs, live stats strip, the 8-step "How it works" (see §5.1), a "Built with"
+   strip, a "What we can't do" trust section, footer.
+2. "/cases": corkboard grid of case cards with phase chips, share-of-stakes bar, filters, search.
+3. "/cases/[id]": paper case-file layout rendering report v0.2 (assessment, unknowns,
+   counterevidence, five pillars, evidence, limitations), the claim card, SHA-256 hash checks,
+   and a "Request human approval" button.
+4. "/approve/[id]": plain, large-type screen for a projector (no 3D): report, claim card,
+   claim hash and report SHA-256, user code, QR code, countdown, and result states (§5.4).
+5. "/case/[id]/stake": Yes/No stake in dUSD (direct or via Chainlink CCIP), payout preview,
+   totals, share-of-stakes bar, TxPlan stepper.
+6. "/case/[id]/market": buy/sell the yield token (YT) on the Uniswap v4 hook market;
+   "The YT price is not a prediction of the verdict"; "Simulated yield" on every rate.
+7. "/case/[id]/result": settlement timeline, challenge, finalize, three separate claims and
+   the "mask pops off" animation on Final · Yes.
 Global: navbar with logo, Sepolia badge, wallet button; tx toasts with explorer links;
 empty, loading and 404 states using mascot poses.
 
@@ -318,7 +321,7 @@ Original artwork.
 | P0       | Design tokens, fonts, layout, navbar, status chips                        | 2                      |
 | P0       | `/approve/[id]` and `/case/[claimId]/stake` fully working (demo-critical) | 6                      |
 | P0       | `/cases` and `/cases/[id]`                                                | 4                      |
-| P1       | `/case/[claimId]/market` + frozen state                                   | 3                      |
+| P1       | `/case/[id]/market` (YT) + `/case/[id]/result`                            | 3                      |
 | P1       | Landing with **parallax fallback** hero + how-it-works (2D)               | 3                      |
 | P2       | Mascot 2D poses (concept → cut PNGs)                                      | 2 (parallel, designer) |
 | P2       | 3D Sniff .glb + R3F hero (swap in over the fallback)                      | 4 (parallel)           |
@@ -335,5 +338,5 @@ Rule: if the 3D hero isn't stable by Saturday 6 pm, ship the parallax hero and s
 - [ ] 3D fallback tested with WebGL disabled and with reduced motion on
 - [ ] `/approve` loads instantly, readable from the back of the room
 - [ ] Every tx shows pending → confirmed → explorer link
-- [ ] Frozen state visible on stake and market pages
+- [ ] Phase-closed states visible on stake, market and result pages (with reasons)
 - [ ] Lighthouse performance ≥ 80 on landing; .glb < 3 MB

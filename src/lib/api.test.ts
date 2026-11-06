@@ -15,7 +15,7 @@ describe('approval fixture boundary', () => {
   it('rejects an incompatible response instead of falling back after an incompatible health API', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ status: 'ok' })));
     vi.stubGlobal('fetch', fetchMock);
-    await expect(api.getApproval('apr-pending')).rejects.toThrow('Incompatible sign-off response');
+    await expect(api.getApproval('apr-pending')).rejects.toThrow('Unexpected API response');
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0][0]).toContain('/approvals/apr-pending');
   });
@@ -23,8 +23,8 @@ describe('approval fixture boundary', () => {
     config.forceFixtures = true;
     vi.stubGlobal('fetch', vi.fn());
     await expect(usingFixtures()).resolves.toBe(true);
-    const approval = await api.getApproval('apr-pending');
-    expect(approval.id).toBe('apr-pending');
+    const approval = await api.getApproval('demo-pending');
+    expect(approval.id).toBe('demo-pending');
     expect(fetch).not.toHaveBeenCalled();
   });
   it('rejects research report metadata as an incompatible legacy case list', async () => {
@@ -34,6 +34,6 @@ describe('approval fixture boundary', () => {
         .fn()
         .mockResolvedValue(new Response(JSON.stringify([{ report_id: 'r', report_version: 'v' }]))),
     );
-    await expect(api.getReports()).rejects.toThrow('Incompatible case response');
+    await expect(api.getReports()).rejects.toThrow('Unexpected API response');
   });
 });

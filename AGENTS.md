@@ -1,3 +1,14 @@
+# Agent rules (Unmasked web)
+
+Read `CLAUDE.md` first; it has the hard rules, routes and terms. In short:
+
+- **Git is read-only.** No `git add/commit/push/branch/checkout/switch/stash/reset/rebase/merge/tag`, no `gh` writes, no attribution lines. Leave changes uncommitted for the human.
+- No secrets; only `NEXT_PUBLIC_*`. No transactions to real networks from scripts or tests.
+- Contracts only through `src/protocol`; ABIs are generated (`npm run sync:contracts`), never hand-written.
+- Use the honesty labels in `src/components/HonestyLabels.tsx`. Brand is "Unmasked" + "Sniff".
+- Record conflicts and assumptions in `NOTES.md`.
+- Keep `npm run typecheck && npm run lint && npm test && npm run build` green.
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 ## This is NOT the Next.js you know

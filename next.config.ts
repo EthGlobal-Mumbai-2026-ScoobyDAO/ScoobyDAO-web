@@ -2,12 +2,12 @@ import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  // CLAUDE.md §2 page paths → THEME.md §5 routes (see NOTES.md).
+  // Old route names → current routes (NOTES.md "Revamp (Nov 2026)").
   async redirects() {
     return [
-      { source: '/claim/:claimId', destination: '/case/:claimId/stake', permanent: false },
-      { source: '/market/:claimId', destination: '/case/:claimId/market', permanent: false },
-      { source: '/case/:claimId', destination: '/case/:claimId/stake', permanent: false },
+      { source: '/claim/:id', destination: '/case/:id/stake', permanent: false },
+      { source: '/market/:id', destination: '/case/:id/market', permanent: false },
+      { source: '/case/:id', destination: '/case/:id/stake', permanent: false },
     ];
   },
   turbopack: {

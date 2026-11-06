@@ -6,10 +6,10 @@ import { canUse3D } from '@/lib/webgl';
 
 const MaskPop3DScene = dynamic(() => import('./MaskPop3DScene'), { ssr: false });
 
-const seenKey = (claimId: string) => `scoobydao:maskpop:${claimId}`;
+const seenKey = (claimId: string) => `unmasked:maskpop:${claimId}`;
 
 /**
- * "Mask pops off" when a case resolves Pass (THEME.md §3.1, §5.5). Plays once per case per
+ * "Mask pops off" on Finalized(id, Yes) (THEME.md §3.1). Plays once per case per
  * session. 3D on capable devices; CSS pop otherwise; static mask with reduced motion.
  */
 export function MaskPop({ claimId, className = '' }: { claimId: string; className?: string }) {

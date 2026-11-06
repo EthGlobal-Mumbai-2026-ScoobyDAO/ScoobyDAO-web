@@ -1,97 +1,84 @@
-# scoobydao-web — Unmasked
+# Unmasked (web)
 
-## ACTIVE STATE — merged Reports checkpoint
+Frontend for **Unmasked** (ETHGlobal Mumbai 2026). AI agents and an original detective-hound mascot, Sniff, research suspicious tokens and write a five-pillar report (unknowns and counterevidence included). An enrolled human approves the exact report with World Agent Pass, the backend publishes it to `ReportRegistry`, and anyone stakes **dUSD** on **Yes** or **No**, directly on Ethereum Sepolia or from Arbitrum Sepolia over Chainlink CCIP. Stakes lock, earn simulated yield whose **yield token (YT)** trades on a Uniswap v4 hook market, and after maturity a proposed result can be challenged before anyone finalizes it.
 
-`/reports` presents a native five-pillar card reader, empty unless a trusted research API origin is explicitly configured. RAY is a pending, not gate-qualified local reference. The research API and legacy approval API use different contracts and configuration; neither a health response nor a local review assertion proves authenticated sign-off. Reports PRs #1 and #2 are merged and CI passed. See [LIVE-STATE.md](LIVE-STATE.md) for current scope, deployment variables, backend asset transfer and remaining work, and [reports handoff](HANDOFF-REPORTS.md) for component ownership. No actual deployment or authenticated approval is claimed; World ID is deferred for this checkpoint.
+`/reports` is a separate read-only research library (five-pillar reader + worker-status widget), empty unless `NEXT_PUBLIC_REPORT_API_URL` points at a trusted research API. See [LIVE-STATE.md](LIVE-STATE.md) and [HANDOFF-REPORTS.md](HANDOFF-REPORTS.md).
 
-Frontend for **Unmasked** (ETHGlobal Mumbai 2026): AI agents and an original detective-hound mascot, Sniff, investigate suspicious tokens; a verified human signs off on each claim; people stake For/Against with sealed bets; a Uniswap v4 hook freezes trading the moment a claim triggers.
-
-Sibling repos: `ScoobyDAO-contracts` (ABIs + addresses), `ScoobyDAO-backend` (API, World Agent Pass gate). Shared types and routes live in [`INTERFACES.md`](INTERFACES.md). Open questions and deviations are tracked in [`NOTES.md`](NOTES.md).
+Interfaces: [`INTERFACES.md`](INTERFACES.md) (v2, Nov 2026). Decisions, gaps and requests to the other repos: [`NOTES.md`](NOTES.md) → "Revamp (Nov 2026)". Plan: [`docs/revamp-plan.md`](docs/revamp-plan.md).
 
 ## Run it
 
 ```bash
-npm ci
-cp .env.example .env.local      # then fill in the values below
+npm install
+cp .env.example .env.local
 npm run dev                     # http://localhost:3000
 ```
 
 | Script | What it does |
 |---|---|
 | `npm run dev` / `build` / `start` | Next.js 16 (Turbopack) |
-| `npm run lint` | ESLint (flat config, `eslint-config-next`) |
-| `npm run typecheck` | `tsc --noEmit` |
-| `npm test` | vitest: commitment hash + storage, canonical manifest hash, payout math, v4 encoding, ABI drift |
-| `npm run sync:contracts` | copies `abi/*.json` + `deployments/sepolia.json` from the contracts repo |
-| `node scripts/contrast.mjs` | checks every text/background token pair against WCAG AA |
+| `npm run typecheck` · `lint` · `test` | tsc, ESLint, vitest (phase boundaries, payout math, hashes, guards, fixture chain, CCIP, market, TxPlan runner, ABI contract test, approve states) |
+| `npm run sync:contracts` | regenerates `src/contracts/generated.ts` from `../SmartContracts/out` and copies `deployments/testnets.json` (run `forge build` there first) |
+| `node scripts/gen-report-types.mjs` | regenerates `ReportV02` types from the backend schema |
+| `node scripts/gen-fixtures.mjs` | re-copies the historical bundle's `report.json` bytes into `src/fixtures/historicalReport.ts` |
+| `node scripts/contrast.mjs` | WCAG AA contrast for every token pair and status chip |
 
-## Environment
+### Fixture mode
 
-Only `NEXT_PUBLIC_*` values; they are public by definition. No secrets live in this repo, and the browser never calls World's token endpoint.
+On when `NEXT_PUBLIC_USE_FIXTURES=true`, when the backend `/health` is unreachable, or when the selected protocol's contract addresses are missing. A banner says so on every page.
+
+- Backend fixtures serve the real v0.2 historical bundle (`ScoobyDAO-backend/tests/historical-bundle/report.json`, bytes unchanged; the hash check is ✓).
+- The fixture chain enforces the contract rules (stakes before lock, CCIP before the cutoff, late CCIP → Held, payout math, challenge window, Void) on a **demo clock**. Without a wallet you act as a demo account.
+- Scenarios: case #1 open (with one held CCIP stake), #2 locked with a YT market, #3 proposed inside a 3-minute challenge window, #4 final Yes 80/20, #5 Void. `/approve/demo-<status>` shows any approval state.
+- State lives in memory: a **full page reload resets it**. Navigate with in-app links during a demo.
+
+### Live mode
+
+Set `NEXT_PUBLIC_API_URL` to a running backend (`…/web/v1`) and leave `NEXT_PUBLIC_USE_FIXTURES=false`. Reads go to the V1 contracts in `src/contracts/testnets.json` (`NEXT_PUBLIC_PROTOCOL=v1`). Writes go through your wallet; the app prompts a switch between Ethereum Sepolia and Arbitrum Sepolia.
 
 | Variable | Purpose |
 |---|---|
-| `NEXT_PUBLIC_API_URL` | backend base URL (default `http://localhost:8080`) |
-| `NEXT_PUBLIC_REPORT_API_URL` | optional trusted HTTPS research API origin (or loopback HTTP for local development) |
-| `NEXT_PUBLIC_CHAIN_ID` | `11155111` (Sepolia only) |
-| `NEXT_PUBLIC_SEPOLIA_RPC_URL` | optional RPC; falls back to the public default |
-| `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` | needed for WalletConnect; without it injected wallets still work but the console shows 403s |
-| `NEXT_PUBLIC_DEMO_MODE` | `true` shows "Send Sniff to scan" (`POST /demo/scan`) |
-| `NEXT_PUBLIC_USE_FIXTURES` | `true` explicitly enables sample data and simulated sign-off for demo/test only |
-| `CONTRACTS_REPO_PATH` | used only by `scripts/sync-contracts.sh` |
+| `NEXT_PUBLIC_API_URL` | backend `/web/v1` base (default `http://127.0.0.1:8000/web/v1`) |
+| `NEXT_PUBLIC_USE_FIXTURES` | `true` forces fixture mode |
+| `NEXT_PUBLIC_PROTOCOL` | `v1` (deployed) or `v2` (local only; shows "Not deployed yet" until addresses exist) |
+| `NEXT_PUBLIC_SEPOLIA_RPC_URL` · `NEXT_PUBLIC_ARB_SEPOLIA_RPC_URL` | optional RPCs |
+| `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` | enables WalletConnect |
+| `NEXT_PUBLIC_FAUCET_URL` | team-run dUSD faucet link (no public faucet exists) |
+| `NEXT_PUBLIC_REP_ENABLED` · `NEXT_PUBLIC_LP_ENABLED` | REP badge card, LP panel |
 
-The Reports page also has a read-only worker-status widget using `NEXT_PUBLIC_REPORT_API_URL`. It shows generic worker heartbeat and job counts; token-by-token discovery activity is not yet connected. See [the Reports handoff](HANDOFF-REPORTS.md) for scope and integration dependencies.
+## Demo script
 
-## Fixtures mode
+1. **Cases** → open the draft SHIB report. Both hashes verify ✓ (report SHA-256 of the raw bytes, claim hash of the canonical manifest).
+2. **Request human approval** → the approve screen shows the code. First request: denied → red banner "Denied — no case opened."
+3. Back to the case file (link on the page) → request again → "Approved — publishing…" → "Published onchain" with the tx → **Go to case** → phase Open.
+4. **Stake** 10 dUSD Yes directly. Switch the source to Arbitrum Sepolia, stake via CCIP → **Track message**: Sent → In transit → Credited. Case #1 also shows a Held stake → Recover.
+5. **Market** (case #2, locked): buy YT; price and implied APR are labelled "Simulated yield"; the received amount comes from the `Swapped` event.
+6. **Result** (case #3, proposed): the challenge window counts down → **Finalize** → "Unmasked!" → redeem pays 1.20 per winning unit → claim yield.
+7. **Void** (case #5): refund pro rata, no fee.
 
-The app uses `src/fixtures/` only when `NEXT_PUBLIC_USE_FIXTURES=true` is explicitly set for a demo or test. API failures and incompatible approval responses surface as errors; they do not enable fixtures. Fixtures cover every status: draft, awaiting approval, denied, expired, Open, Frozen, Resolved Pass (Unmasked), Resolved Fail (Cleared), Refunded.
+## Honesty labels
 
-While fixtures are on, or until real contract addresses are synced, reads and writes go to an in-memory chain (`src/lib/fixtureChain.ts`) and a dashed **Fixture mode** bar lets you act as an honest or a deployer-linked wallet. Transactions show the full toast flow but are marked "fixture, no real tx".
+"dUSD — test token, not USDC" · "Simulated yield" · "Demo clock" · "Stakes are public onchain" · "The YT price is not a prediction of the verdict" · "A CCIP transfer is not a vote until it is credited" · "Demo identity: World Agent Pass". All in `src/components/HonestyLabels.tsx`.
 
-Handy fixture ids: approvals `apr-pending`, `apr-approved`, `apr-denied`, `apr-expired`, `apr-not-reviewer`, and `apr-live` (flips pending → approved after ~12s of polling); cases `/case/1` (open) … `/case/5` (refunded).
+## Known limits
 
-## Contracts
-
-```bash
-CONTRACTS_REPO_PATH=../ScoobyDAO-contracts npm run sync:contracts
-npm test   # contracts.test.ts fails if a synced ABI drops a function the UI calls
-```
-
-Until then `src/contracts/sepolia.json` holds zero addresses and `src/contracts/abi/*.json` are generated placeholders. Typed ABIs used by wagmi live in `src/contracts/abis.ts`; Uniswap v4 encoding (Universal Router `V4_SWAP`, Permit2, V4Quoter) is in `src/contracts/v4.ts`. See NOTES.md for the router/pool assumptions the contracts team should confirm.
-
-## Pages
-
-| Route | What |
-|---|---|
-| `/` | Landing: flashlight hero (2D parallax, 3D on capable desktops), live stats, how it works, what we can't do |
-| `/cases` | Corkboard of case files: filters, address search, demo scan |
-| `/cases/[id]` | Case file: claims, stamped evidence, Sniff's notes (AI-written; not the verdict), barred wallets, manifest + Recompute hash, request sign-off |
-| `/approve/[id]` | Projector screen for the World Agent Pass sign-off; polls every 2s; no 3D |
-| `/case/[claimId]/stake` | Sealed commit → reveal → redeem with payout preview; barred and frozen banners |
-| `/case/[claimId]/market` | For/Against shares ↔ USDC on Uniswap v4; halted when frozen |
-
-Legacy paths `/claim/:id` and `/market/:id` redirect; `/reports` contains the research library.
-
-## Demo walkthrough
-
-1. **Cases** (`/cases`): show the board; filter to *Awaiting a human*; optionally *Send Sniff to scan*.
-2. **Case file** (`/cases/rpt-honeypot`): read the claim cards and stamped evidence; press **Recompute hash** (✓); point out *Sniff's notes* are AI-written and not the verdict, and the barred deployer/funder wallets.
-3. **Approve: deny first.** From a draft (`/cases/rpt-lantern`) press **Request a human sign-off**. On the projector screen read out the claim and hash, then deny in World App → "Denied — no case opened / Denied — draft only, no market opened". Then request again and approve → "Case opened" with the publish tx and a link to the case.
-4. **Stake** (`/case/1/stake`): act as the deployer-linked wallet → barred banner, form disabled. Switch to the honest wallet → pick For, enter an amount, **Approve USDC, then commit** → sealed card + **Download backup** → **Reveal stake**.
-5. **Market** (`/case/1/market`): buy For shares with USDC.
-6. **Trigger**: the resolver triggers the claim. On `/case/2/market` (frozen fixture) the page shows "🪤 Trap sprung — trading halted at block N"; press **Send it anyway** → the swap reverts with `RiskFi: claim frozen`.
-7. **Redeem** (`/case/3/stake`): the mask pops off; the payout preview shows the exact formula; **Redeem**.
+- Live V1: no report is published yet, no YT series, hook or `YieldSwapRouter` exists, so market pages show "Market not deployed yet". V2 isn't deployed at all.
+- The 30-day maturity is real on Sepolia; only fixtures show settlement live.
+- dUSD minting is role-gated; there's no public faucet.
+- REP badges need a backend IDKit verification endpoint that doesn't exist (fixture flow only).
+- The backend's claim manifest doesn't state a measurement method, observation window or Void rule; the UI says "not stated" (Void rule falls back to what the contract enforces).
+- CCIP status for V1 comes from receiver/market state plus a bounded log window; very old messages may show no source link.
 
 ## Accessibility and performance
 
-- Status is always icon + text + colour (`StatusChip`, banners); every accent has a text-safe "ink" variant (`node scripts/contrast.mjs`).
-- `prefers-reduced-motion`: no parallax, fixed flashlight, no 3D, static mask; grain and skeleton sweeps stop.
-- axe (WCAG 2 A/AA + best practice): 0 violations on every page in dark and light themes.
-- Lighthouse on `/` (production build, fixtures): mobile 100, desktop 96 (performance); accessibility and best practices 100. three.js loads right after hydration only on fine-pointer devices with WebGL and ≥4 cores; the 3D Sniff is visible ~0.4–0.5 s after navigation and the glTF loader is fetched only when `sniff.glb` exists.
+- Status is always icon + text + colour; every chip ink passes 4.5:1 in both themes.
+- `prefers-reduced-motion`: no parallax, fixed flashlight, no 3D, static mask.
+- axe (WCAG 2 A/AA + best practice) on every page: 0 violations after the revamp fixes.
+- Lighthouse on `/` (production, fixtures): mobile 97 / desktop 100 performance, accessibility 100, best practices 96 (only the refused `/health` request when no backend runs).
 
 ## Asset credits
 
-- **Mascot, hero scene, icons for mask/trap, identicons:** original placeholder art drawn in code for this project (SVG + three.js primitives). No third-party characters, models or illustrations. Drop a generated `public/models/sniff.glb` in and set `"sniff": true` in `public/models/manifest.json` to replace the placeholder hound; check the generator's licence first and credit it here.
+- **Mascot, hero scene, mask icon, identicons:** original placeholder art drawn in code (SVG + three.js primitives). No third-party characters, models or illustrations.
 - **Fonts:** Bungee, Inter, JetBrains Mono via Google Fonts (`next/font`), SIL Open Font License 1.1.
 - **Icons:** Lucide (ISC licence).
-- **Libraries:** Next.js, React, wagmi, viem, RainbowKit, TanStack Query, React Three Fiber, drei, three.js, qrcode.react; see `package.json` for licences.
+- **Libraries:** Next.js, React, wagmi, viem, RainbowKit, TanStack Query, React Three Fiber, drei, three.js, qrcode.react, json-schema-to-typescript (dev); see `package.json`.

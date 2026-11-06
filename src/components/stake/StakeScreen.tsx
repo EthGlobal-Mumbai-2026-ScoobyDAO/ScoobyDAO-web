@@ -1,271 +1,321 @@
 'use client';
 
 import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { ArrowRightLeft, CircleCheck } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useState } from 'react';
-import type { Address } from 'viem';
 import { Banner } from '@/components/Banner';
-import { CaseHeader } from '@/components/case/CaseHeader';
+import { CaseFrame, CaseHeader } from '@/components/case/CaseHeader';
 import { useCase } from '@/components/case/useCase';
-import { DemoWalletBar } from '@/components/DemoWalletBar';
-import { FrozenBanner } from '@/components/FrozenBanner';
-import { MaskOffIcon } from '@/components/icons';
-import { MaskPop } from '@/components/MaskPop';
-import { SniffPose } from '@/components/SniffPose';
-import { useActiveAccount } from '@/lib/account';
-import { ApiError } from '@/lib/api';
-import { useStakeChain, type StakeChainState } from '@/lib/chain';
-import { loadStake, type SealedStake } from '@/lib/commitment';
+import { CcipNotVoteLabel, PublicStakesLabel, TestTokenLabel } from '@/components/HonestyLabels';
+import { TxPlanStepper, usePlan, WrongChainPrompt } from '@/components/TxPlanStepper';
 import { env } from '@/lib/env';
-import { formatUsdc } from '@/lib/format';
-import type { ClaimView } from '@/lib/types';
-import { RestoreBackup } from './BackupControls';
-import { CommitForm } from './CommitForm';
-import { RedeemPanel } from './RedeemPanel';
-import { SealedPanel } from './SealedPanel';
+import { formatDate, formatEth, formatUsdc, parseUsdc } from '@/lib/format';
+import { useEnsureChain } from '@/lib/useEnsureChain';
+import {
+  ccipV1Deployed,
+  ccipV2Deployed,
+  DEFAULT_SLIPPAGE_BPS,
+  minOutFor,
+  saveTracked,
+  stakingOpen,
+  SWAP_DEADLINE_SECONDS,
+  type MarketView,
+  type PositionView,
+} from '@/protocol';
+import { useActiveAccount, useChainTime, usePosition, useProtocol } from '@/protocol/hooks';
+import { CcipStakeList } from '../ccip/CcipTracker';
+import { GetTestFunds } from './GetTestFunds';
+import { PayoutPreview } from './PayoutPreview';
+import { SidePicker, type SideKey } from './SidePicker';
 import { TotalsCard } from './TotalsCard';
 
-export function StakeScreen({ claimId }: { claimId: string }) {
-  const { claim, report } = useCase(claimId);
-  const { address, isDemo } = useActiveAccount();
-  const c = claim.data;
-  const chain = useStakeChain(c, address);
+type Source = 'local' | 'ccip';
+const SEPOLIA = 11155111;
+const ARB = 421614;
 
-  if (claim.isError) {
-    const nf = claim.error instanceof ApiError && claim.error.status === 404;
-    return (
-      <main className="mx-auto max-w-6xl px-4 py-10">
-        <Banner
-          tone="danger"
-          title={nf ? `There's no case #${claimId}` : "Couldn't load this case"}
-        >
-          {nf ? (
-            <>
-              It may not be published yet.{' '}
-              <Link href="/cases" className="underline">
-                Browse open cases
-              </Link>
-              .
-            </>
-          ) : (
-            claim.error.message
-          )}
-        </Banner>
-      </main>
-    );
-  }
-  if (!c) return <StakeSkeleton />;
-
+export function StakeScreen({ id }: { id: string }) {
+  const { market, report } = useCase(id);
   return (
-    <main className="mx-auto max-w-6xl space-y-6 px-4 py-8 sm:py-10">
-      <CaseHeader claim={c} report={report} tab="stake" />
-      <StatusBanner claim={c} frozenBlock={chain.frozenBlock} />
-      <DemoWalletBar />
-      <div className="grid gap-6 lg:grid-cols-[1.1fr_1fr]">
-        <section aria-labelledby="action-h" className="glass p-5 sm:p-6">
-          <h2 id="action-h" className="font-display mb-5 text-2xl">
-            {c.status === 'Open'
-              ? 'Stake your verdict'
-              : c.status === 'Frozen'
-                ? 'Your stake'
-                : 'Redeem'}
-          </h2>
-          {!address ? (
-            <div className="space-y-4">
-              <p className="text-muted">Connect a wallet on Sepolia to stake, reveal or redeem.</p>
-              <ConnectButton />
+    <CaseFrame state={market}>
+      {market.data && (
+        <main className="mx-auto max-w-6xl space-y-8 px-4 py-8 sm:py-10">
+          <CaseHeader market={market.data} report={report} tab="stake" />
+          <div className="grid gap-6 lg:grid-cols-[1.3fr_1fr]">
+            <StakePanel market={market.data} />
+            <div className="space-y-6">
+              <TotalsCard market={market.data} />
             </div>
-          ) : (
-            <Actions key={`${address}:${isDemo}`} claim={c} account={address} chain={chain} />
-          )}
-        </section>
-        <TotalsCard claim={c} totals={chain.totals} feeBps={chain.feeBps} />
-      </div>
-    </main>
-  );
-}
-
-function StatusBanner({ claim, frozenBlock }: { claim: ClaimView; frozenBlock?: bigint }) {
-  switch (claim.status) {
-    case 'Frozen':
-      return <FrozenBanner block={frozenBlock} what="staking and trading" />;
-    case 'ResolvedPass':
-      return (
-        <div className="relative">
-          <Banner tone="warning" size="xl" icon={MaskOffIcon} title="Unmasked: the claim held">
-            <p className="sm:pr-40">
-              The trap sprang during the case window. For shares win; redeem below.
-            </p>
-          </Banner>
-          <MaskPop
-            claimId={claim.claimId}
-            className="pointer-events-none absolute top-1/2 right-4 hidden h-36 w-36 -translate-y-1/2 sm:block"
-          />
-        </div>
-      );
-    case 'ResolvedFail':
-      return (
-        <div className="relative">
-          <Banner tone="info" size="xl" icon={CircleCheck} title="Cleared: the claim didn't hold">
-            <p className="sm:pr-36">
-              The window ended without a trigger. Against shares win; redeem below.
-            </p>
-          </Banner>
-          <div className="pointer-events-none absolute top-1/2 right-6 hidden -translate-y-1/2 sm:block">
-            <SniffPose pose="shrug" size={104} decorative />
           </div>
-        </div>
-      );
-    case 'Refunded':
-      return (
-        <Banner tone="info" title="Refunded">
-          Only one side revealed a stake, so every revealed stake is refunded minus the fee.
-        </Banner>
-      );
+        </main>
+      )}
+    </CaseFrame>
+  );
+}
+
+function closedReason(m: MarketView): string {
+  switch (m.phase) {
+    case 'locked':
+      return `Stakes locked at ${formatDate(m.lockTime)}. The pool now earns simulated yield until maturity.`;
+    case 'matured':
+      return `Stakes closed at ${formatDate(m.lockTime)}. The case matured on ${formatDate(m.maturity)}; waiting for the resolver.`;
+    case 'proposed':
+    case 'challenged':
+      return `Stakes closed at ${formatDate(m.lockTime)}. A result has been proposed; see Result & claims.`;
     default:
-      return null;
+      return `Stakes closed at ${formatDate(m.lockTime)}. This case is final; see Result & claims.`;
   }
 }
 
-function Actions({
-  claim,
-  account,
-  chain,
-}: {
-  claim: ClaimView;
-  account: Address;
-  chain: StakeChainState;
-}) {
-  const chainId = env.chainId;
-  const [local, setLocal] = useState<SealedStake | null>(() =>
-    loadStake(chainId, claim.claimId, account),
-  );
-  const shares = chain.forShares + chain.againstShares;
-  const resolved =
-    claim.status === 'ResolvedPass' ||
-    claim.status === 'ResolvedFail' ||
-    claim.status === 'Refunded';
+function StakePanel({ market: m }: { market: MarketView }) {
+  const { protocol, fixtureMode } = useProtocol();
+  const { address, connected } = useActiveAccount();
+  const position = usePosition(m.reportId, m.blockNumber);
+  const now = useChainTime() ?? m.chainTime;
+  const plan = usePlan();
+  const [side, setSide] = useState<SideKey | null>(null);
+  const [amountStr, setAmountStr] = useState('');
+  const [source, setSource] = useState<Source>('local');
+  const [ytMode, setYtMode] = useState<'keep' | 'sell'>('keep');
+  const [slippageBps, setSlippageBps] = useState(DEFAULT_SLIPPAGE_BPS);
+  const [lastMessage, setLastMessage] = useState<string | null>(null);
+  const ensureEth = useEnsureChain(SEPOLIA);
+  const ensureArb = useEnsureChain(ARB);
 
-  if (!chain.ready)
-    return <div className="sweep h-48" aria-busy="true" aria-label="Reading the chain" />;
+  const open = stakingOpen(m.phase);
+  const ccipDeployed = fixtureMode || (env.protocol === 'v2' ? ccipV2Deployed : ccipV1Deployed);
+  const remoteCutoff = m.remoteCutoff || 0;
+  const ccipOpen = m.phase === 'open' && ccipDeployed && remoteCutoff > now;
+  const src: Source = source === 'ccip' && ccipOpen ? 'ccip' : 'local';
+  const amount = parseUsdc(amountStr);
+  const pos = position.data;
+  const balance = src === 'ccip' ? pos?.remote?.dusdBalance : pos?.dusdBalance;
+  const v2Sell = env.protocol === 'v2' && ytMode === 'sell' && src === 'local';
 
-  const barred = chain.excluded && (
-    <Banner tone="barred" title="This wallet can't stake on this case">
-      Wallets linked to the token deployer can&apos;t stake on this claim.
-    </Banner>
-  );
+  const ccipQuote = useQuery({
+    queryKey: ['protocol', protocol.kind, 'ccipQuote', m.reportId.toString(), side, amount?.toString(), address],
+    queryFn: () => protocol.quoteRemote!(m.reportId, side === 'yes', amount!, address!),
+    enabled: src === 'ccip' && !!side && !!amount && !!address && !!protocol.quoteRemote,
+    refetchInterval: 30_000,
+  });
+  const sellQuote = useQuery({
+    queryKey: ['protocol', protocol.kind, 'sellQuote', amount?.toString()],
+    queryFn: () => protocol.quoteStakeAndSell!(amount!),
+    enabled: v2Sell && !!amount && !!protocol.quoteStakeAndSell,
+    refetchInterval: 15_000,
+  });
 
-  if (resolved) {
+  if (!open)
     return (
-      <div className="space-y-5">
-        <RedeemPanel
-          claim={claim}
-          account={account}
-          forShares={chain.forShares}
-          againstShares={chain.againstShares}
-          totals={chain.totals}
-          feeBps={chain.feeBps}
-          redeemed={chain.redeemed}
-        />
-        {local && shares === 0n && !chain.redeemed && (
-          <SealedPanel
-            stake={local}
-            account={account}
-            chainId={chainId}
-            onRevealed={chain.refetch}
-          />
-        )}
-      </div>
+      <section className="glass space-y-4 p-6">
+        <h2 className="font-display text-2xl">Staking is closed</h2>
+        <p>{closedReason(m)}</p>
+        <Link href={`/case/${m.reportId}/result`} className="text-beam-ink underline">
+          Go to result &amp; claims
+        </Link>
+        {pos && <MyPosition pos={pos} />}
+      </section>
     );
-  }
 
-  if (shares > 0n) {
-    const side = chain.forShares > 0n ? 'For' : 'Against';
-    return (
-      <div className="space-y-4">
-        <p className="text-lg">
-          Revealed: you hold <span className="num font-semibold">{formatUsdc(shares)}</span>{' '}
-          <span className={side === 'For' ? 'text-clue-ink' : 'text-mask-ink'}>{side} shares</span>.
-        </p>
-        <p className="text-muted text-sm">
-          Hold them to redeem when the case resolves, or trade them against USDC.
-        </p>
-        {claim.status === 'Open' && (
-          <Link
-            href={`/case/${claim.claimId}/market`}
-            className="border-line inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 font-semibold hover:border-[var(--fog-400)]"
-          >
-            <ArrowRightLeft size={18} aria-hidden /> Trade shares
-          </Link>
-        )}
-      </div>
-    );
-  }
+  const error =
+    amountStr && amount === null
+      ? 'Enter an amount with at most 6 decimals.'
+      : amount !== null && amount <= 0n
+        ? 'Enter more than 0.'
+        : amount && balance !== undefined && amount > balance
+          ? `Insufficient dUSD on ${src === 'ccip' ? 'Arbitrum Sepolia' : 'Ethereum Sepolia'} (you have ${formatUsdc(balance)}).`
+          : null;
+  const canSubmit = !!side && !!amount && amount > 0n && !error && !!address && !plan.running && (!v2Sell || sellQuote.data !== undefined);
 
-  if (local) {
-    return (
-      <SealedPanel stake={local} account={account} chainId={chainId} onRevealed={chain.refetch} />
+  const submit = async () => {
+    if (!side || !amount || !address) return;
+    const yes = side === 'yes';
+    const deadline = now + SWAP_DEADLINE_SECONDS;
+    const r = await plan.start(() =>
+      src === 'ccip'
+        ? protocol.stakeRemote!(m.reportId, yes, amount, address)
+        : v2Sell
+          ? protocol.stakeAndSell!(m.reportId, yes, amount, minOutFor(sellQuote.data ?? 0n, slippageBps), deadline, address)
+          : protocol.stakeLocal(m.reportId, yes, amount, address),
     );
-  }
-
-  if (claim.status !== 'Open') {
-    return (
-      <div className="space-y-4">
-        {barred}
-        <p className="text-muted">
-          Staking closed when the trap sprang. If you staked from another browser, restore your
-          backup to reveal.
-        </p>
-        <RestoreBackup
-          chainId={chainId}
-          claimId={claim.claimId}
-          account={account}
-          onRestored={setLocal}
-        />
-      </div>
-    );
-  }
+    if (r.ok && r.effect.messageId) {
+      saveTracked({
+        messageId: r.effect.messageId,
+        reportId: m.reportId.toString(),
+        side,
+        amount: amount.toString(),
+        sourceTx: r.lastHash,
+        savedAt: now,
+      });
+      setLastMessage(r.effect.messageId);
+    }
+    if (r.ok) setAmountStr('');
+  };
 
   return (
-    <div className="space-y-5">
-      {barred}
-      <CommitForm
-        claim={claim}
-        account={account}
-        chainId={chainId}
-        usdcBalance={chain.usdcBalance}
-        allowance={chain.allowance}
-        feeBps={chain.feeBps}
-        totals={chain.totals}
-        disabled={chain.excluded}
-        onCommitted={setLocal}
-      />
-      {!chain.excluded && (
-        <RestoreBackup
-          chainId={chainId}
-          claimId={claim.claimId}
-          account={account}
-          onRestored={setLocal}
-        />
+    <section aria-labelledby="stake-h" className="glass space-y-6 p-5 sm:p-6">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 id="stake-h" className="font-display text-2xl">
+          Stake Yes or No
+        </h2>
+        <div className="flex flex-wrap gap-2">
+          <PublicStakesLabel />
+          <TestTokenLabel />
+        </div>
+      </div>
+
+      {!connected && !fixtureMode ? (
+        <div className="space-y-3">
+          <p>Connect a wallet to stake.</p>
+          <ConnectButton />
+        </div>
+      ) : (
+        <>
+          <fieldset className="space-y-2">
+            <legend className="text-muted mb-1 text-sm">Stake from</legend>
+            {(
+              [
+                ['local', 'Ethereum Sepolia (direct)', 'VoteMarket.stakeLocal. Open until lock.'],
+                ['ccip', 'Arbitrum Sepolia (via Chainlink CCIP)', ccipOpen ? `Open until the cross-chain cutoff, ${formatDate(remoteCutoff)}.` : !ccipDeployed ? 'Not deployed yet.' : m.phase !== 'open' ? 'Closed: past the cross-chain cutoff.' : 'Not configured for this report yet.'],
+              ] as const
+            ).map(([k, label, hint]) => (
+              <label key={k} className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 ${src === k ? 'border-beam' : 'border-line'} ${k === 'ccip' && !ccipOpen ? 'cursor-not-allowed opacity-60' : ''}`}>
+                <input type="radio" name="source" className="mt-1" checked={src === k} disabled={k === 'ccip' && !ccipOpen} onChange={() => setSource(k)} />
+                <span>
+                  <span className="font-semibold">{label}</span>
+                  <span className="text-muted block text-sm">{hint}</span>
+                </span>
+              </label>
+            ))}
+          </fieldset>
+
+          <SidePicker value={side} onChange={setSide} disabled={plan.running} />
+
+          <div>
+            <label htmlFor="amount" className="text-muted text-sm">
+              Amount (dUSD)
+            </label>
+            <div className="mt-1 flex gap-2">
+              <input
+                id="amount"
+                inputMode="decimal"
+                autoComplete="off"
+                value={amountStr}
+                onChange={(e) => setAmountStr(e.target.value)}
+                placeholder="10.00"
+                aria-invalid={!!error}
+                aria-describedby="amount-help"
+                className="num border-line focus:border-beam w-full rounded-xl border bg-[color-mix(in_srgb,var(--bg)_60%,transparent)] px-3 py-2.5 text-lg outline-none"
+              />
+              <button
+                type="button"
+                disabled={balance === undefined}
+                onClick={() => balance !== undefined && setAmountStr(formatUsdc(balance, { exact: true }).replace(/,/g, ''))}
+                className="border-line rounded-xl border px-3 font-semibold hover:border-[var(--fog-400)] disabled:opacity-50"
+              >
+                Max
+              </button>
+            </div>
+            <p id="amount-help" className={`mt-1 text-sm ${error ? 'text-mask-ink' : 'text-muted'}`}>
+              {error ?? (balance !== undefined ? `Balance: ${formatUsdc(balance)} dUSD` : 'Reading balance…')}
+            </p>
+          </div>
+
+          {env.protocol === 'v2' && src === 'local' && (
+            <fieldset className="space-y-2">
+              <legend className="text-muted mb-1 text-sm">Your yield token (YT)</legend>
+              {(['keep', 'sell'] as const).map((k) => (
+                <label key={k} className="flex items-center gap-2">
+                  <input type="radio" name="yt" checked={ytMode === k} onChange={() => setYtMode(k)} />
+                  {k === 'keep' ? 'Keep my YT' : 'Sell my YT now'}
+                </label>
+              ))}
+              {ytMode === 'sell' && (
+                <p className="text-sm">
+                  You receive about <span className="num font-semibold">{sellQuote.data !== undefined ? formatUsdc(sellQuote.data, { exact: true }) : '…'}</span> dUSD now; minimum{' '}
+                  <span className="num">{formatUsdc(minOutFor(sellQuote.data ?? 0n, slippageBps), { exact: true })}</span> at{' '}
+                  <label>
+                    <span className="sr-only">Slippage in percent</span>
+                    <input type="number" min={0} max={50} step={0.1} value={slippageBps / 100} onChange={(e) => setSlippageBps(Math.round(Number(e.target.value) * 100))} className="num border-line w-16 rounded border bg-transparent px-1" />
+                  </label>
+                  % slippage.
+                </p>
+              )}
+              <p className="text-muted text-xs">V2 positions are non-transferable. Selling YT keeps your Yes/No position.</p>
+            </fieldset>
+          )}
+
+          {src === 'ccip' && (
+            <div className="border-line space-y-1 rounded-xl border p-3 text-sm">
+              <p>
+                CCIP fee:{' '}
+                <span className="num font-semibold">{ccipQuote.data ? `${formatEth(ccipQuote.data.fee, 6)} ETH` : ccipQuote.isFetching ? 'quoting…' : '—'}</span>{' '}
+                <span className="text-muted">(paid on Arbitrum Sepolia; any excess is refunded)</span>
+              </p>
+              {ccipQuote.data && (
+                <p className="text-muted">
+                  Must be credited by {formatDate(ccipQuote.data.deadline)}. Cross-chain cutoff {formatDate(ccipQuote.data.cutoff)}. A message that arrives after
+                  lock is held, not counted, and your dUSD stays recoverable.
+                </p>
+              )}
+              {ccipQuote.isError && <p className="text-mask-ink">Couldn&apos;t quote the fee: {ccipQuote.error.message}</p>}
+              <CcipNotVoteLabel />
+            </div>
+          )}
+
+          {side && amount && amount > 0n && <PayoutPreview totals={m.totals} side={side} amount={amount} />}
+
+          {connected && <WrongChainPrompt ensure={src === 'ccip' ? ensureArb : ensureEth} />}
+
+          <button
+            type="button"
+            onClick={() => void submit()}
+            disabled={!canSubmit}
+            className="bg-beam text-on-beam w-full rounded-xl px-4 py-3 text-lg font-semibold hover:brightness-105 disabled:opacity-50"
+          >
+            {plan.running ? 'Working…' : side ? `Stake ${amount ? formatUsdc(amount) : ''} dUSD on ${side === 'yes' ? 'Yes' : 'No'}${src === 'ccip' ? ' via CCIP' : ''}` : 'Pick Yes or No'}
+          </button>
+          <TxPlanStepper steps={plan.steps} buildError={plan.buildError} />
+          {plan.result?.ok && !lastMessage && <Banner tone="success" title="Stake recorded">Your position is below.</Banner>}
+          {lastMessage && (
+            <Banner tone="info" title="Sent via Chainlink CCIP">
+              Not a vote until it is credited on Ethereum Sepolia.{' '}
+              <Link href={`/tx/ccip/${lastMessage}`} className="text-beam-ink underline">
+                Track message
+              </Link>
+            </Banner>
+          )}
+          <GetTestFunds token={protocol.dusd} chainId={src === 'ccip' ? ARB : SEPOLIA} />
+        </>
+      )}
+      {pos && <MyPosition pos={pos} />}
+    </section>
+  );
+}
+
+function MyPosition({ pos }: { pos: PositionView }) {
+  return (
+    <div className="border-line border-t pt-4">
+      <h3 className="font-semibold">Your position</h3>
+      <dl className="mt-2 grid grid-cols-2 gap-3 text-sm">
+        <div>
+          <dt className="text-muted">Yes</dt>
+          <dd className="num text-beam-ink text-lg font-semibold">{formatUsdc(pos.yes)}</dd>
+        </div>
+        <div>
+          <dt className="text-muted">No</dt>
+          <dd className="num text-clue-ink text-lg font-semibold">{formatUsdc(pos.no)}</dd>
+        </div>
+      </dl>
+      <p className="text-muted mt-1 text-xs">
+        {pos.transferable ? 'V1 positions are ERC-1155 VotingPositionToken balances at tokenId(reportId, yes).' : 'V2 positions are non-transferable.'}
+      </p>
+      {pos.pendingCcip.length > 0 && (
+        <div className="mt-3">
+          <p className="text-sm font-semibold">Cross-chain stakes not yet counted</p>
+          <CcipStakeList stakes={pos.pendingCcip} />
+        </div>
       )}
     </div>
-  );
-}
-
-function StakeSkeleton() {
-  return (
-    <main
-      className="mx-auto max-w-6xl space-y-6 px-4 py-10"
-      aria-busy="true"
-      aria-label="Loading case"
-    >
-      <div className="sweep h-12 w-64" />
-      <div className="sweep h-6 w-full max-w-2xl" />
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="sweep h-80" />
-        <div className="sweep h-80" />
-      </div>
-    </main>
   );
 }

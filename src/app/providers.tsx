@@ -5,10 +5,15 @@ import { RainbowKitProvider, darkTheme } from '@rainbow-me/rainbowkit';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
 import { WagmiProvider } from 'wagmi';
-import { DemoWalletProvider } from '@/lib/account';
 import { ApiError } from '@/lib/api';
 import { TxProvider } from '@/lib/tx';
 import { wagmiConfig } from '@/lib/wagmi';
+import { useFixtureSync } from '@/protocol/hooks';
+
+function FixtureSync() {
+  useFixtureSync();
+  return null;
+}
 
 export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(
@@ -30,9 +35,10 @@ export function Providers({ children }: { children: ReactNode }) {
             borderRadius: 'medium',
           })}
         >
-          <DemoWalletProvider>
-            <TxProvider>{children}</TxProvider>
-          </DemoWalletProvider>
+          <TxProvider>
+            <FixtureSync />
+            {children}
+          </TxProvider>
         </RainbowKitProvider>
       </QueryClientProvider>
     </WagmiProvider>

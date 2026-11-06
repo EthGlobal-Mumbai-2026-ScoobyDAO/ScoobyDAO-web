@@ -1,171 +1,93 @@
-# RiskFi — Cross-Repo Interfaces (shared by all three repos)
+# Web ⇄ backend ⇄ contracts (v2, Nov 2026)
 
-> Copy this file into the root of each repo. If you change anything here, change it in all three repos in the same hour and tell the team. The contracts repo owns ABIs and addresses; the backend repo owns the HTTP API.
+> **Supersedes** the previous "RiskFi — Cross-Repo Interfaces" (ClaimRegistry / VerdictMarket / ShareToken / FreezeHook, sealed commit/reveal, `SELL_REVERTS` claims, 3% fee). None of that exists; the old text is in git history only. The same file should be copied to `../ScoobyDAO-backend` and `../SmartContracts`.
+>
+> Sources of truth: `../SmartContracts/src/**` (V1 deployed, `src/v2/**` local only), `../SmartContracts/deployments/testnets.json`, `../ScoobyDAO-backend/schemas/report.schema.json` (v0.2, frozen), `../ScoobyDAO-backend/publication/web_adapter.py`.
 
-## Repos
+## 1. Chains and artifacts
 
-| Repo | Owns | Publishes | Consumes |
-|---|---|---|---|
-| `riskfi-contracts` (the DAO) | Solidity, Foundry tests, deploy scripts, mock tokens, v4 hook + pools | `deployments/sepolia.json`, `abi/*.json` | Nothing |
-| `riskfi-backend` | Agents, claim checks, World Agent Pass gate, publisher, resolver, HTTP API | HTTP API (below) | Contracts ABIs + addresses |
-| `riskfi-web` | Next.js app, wallet flows, reviewer approval page | Nothing | Backend API + contract ABIs + addresses |
+| Chain | Id | Role |
+|---|---|---|
+| Ethereum Sepolia | 11155111 | ReportRegistry, VoteMarket, VotingPositionToken, Settlement, Reputation, Treasury, YieldSplitter, YieldVaultAdapter, YieldHookFactory, CCIPStakeReceiver, DemoUSD |
+| Arbitrum Sepolia | 421614 | CCIPStakeSender, DemoUSD (CCIP source only) |
 
-## 1. Contract artifacts (published by `riskfi-contracts`)
+- Collateral: **DemoUSD (`dUSD`)**, 6 decimals, Chainlink `BurnMintERC20`, role-gated mint. Not USDC.
+- Web reads `deployments/testnets.json` (`ethereumSepolia.contracts.<Name>.address`, `arbitrumSepolia.contracts.<Name>.address`). Missing keys mean "Not deployed yet".
+- Keys the web will pick up when they exist: `YieldMarketHook`, `YieldSwapRouter` (V1 market), `RiskFiStakeVaultV2`, `YieldCurveHookV2`, `StakeAndSellRouterV2`, `YieldSwapRouterV2`, `CCIPStakeReceiverV2` (Sepolia) and `CCIPStakeSenderV2` (Arbitrum Sepolia).
+- ABIs: generated from Foundry `out/<File>.sol/<Contract>.json` by `ScoobyDAO-web/scripts/gen-abis.mjs` (`npm run sync:contracts`).
 
-After every Sepolia deploy, the contracts repo commits:
+## 2. Contract calls the web makes (V1)
 
-```
-deployments/sepolia.json
-abi/ClaimRegistry.json
-abi/VerdictMarket.json
-abi/ShareToken.json
-abi/FreezeHook.json
-abi/Treasury.json
-abi/MockUSDC.json
-abi/HoneypotToken.json
-abi/HonestToken.json
-```
+Reads (multicall at the latest block; phase is derived from `block.timestamp`, never the local clock):
 
-`deployments/sepolia.json` shape:
-```json
-{
-  "chainId": 11155111,
-  "deployedAt": "2026-11-07T10:00:00Z",
-  "commit": "<git sha>",
-  "contracts": {
-    "ClaimRegistry": "0x…",
-    "VerdictMarket": "0x…",
-    "FreezeHook": "0x…",
-    "Treasury": "0x…",
-    "USDC": "0x…",
-    "HoneypotToken": "0x…",
-    "HonestToken": "0x…",
-    "PoolManager": "0x…",
-    "SwapRouter": "0x…"
-  },
-  "roles": { "publisher": "0x…", "resolver": "0x…" },
-  "demo": { "deployer": "0x…", "funder": "0x…" }
-}
-```
+| Contract | Call |
+|---|---|
+| ReportRegistry | `reportCount()`, `getReport(id) → (reportHash, claimHash, reviewer, resolver, adjudicator, lockTime, crossChainCutoff, resultDeadline, challengePeriod)` |
+| VoteMarket | `total(id, yes)`, `locked(id)`, `creditedMessage(messageId)` |
+| Settlement | `decisions(id) → (proposed, finalOutcome, evidenceHash, proposedAt, finalizedAt, challenged)`; Outcome enum `None=0, Yes=1, No=2, Void=3` |
+| VotingPositionToken | `tokenId(reportId, yes)` (= `reportId*2 + yes`), `balanceOf(account, tokenId)` |
+| YieldSplitter | `yieldToken(id)`, `prepared(id)` |
+| YieldVaultAdapter | `positiveYield()` |
+| YieldToken | `balanceOf`, `globalIndex`, `paidIndex(a)`, `unclaimedUSDC(a)` → claimable = unclaimed + bal·(globalIndex − paidIndex)/1e18 |
+| YieldHookFactory | event `HookDeployed(hook, yt, salt)` (to find the hook when `YieldMarketHook` isn't in testnets.json) |
+| YieldMarketHook | `usdcReserve`, `ytReserve`, `feePips`, `maturity`, `poolKeyHash`, `shares`, `lpYieldPerShare`, `paidLPIndex(a)`, `unclaimedLPYield(a)`; event `Swapped(usdcIn, amountIn, amountOut)` |
+| Reputation | `hasBadge(reportId, account)` |
+| CCIPStakeSender (Arb) | `reportCutoff(id)`, `quoteFee(intent, amount, extraArgs)`; event `Sent(messageId, sender, reportId, recipient, yes, amount)` |
+| CCIPStakeReceiver | `delivered(messageId)`, `recoverable(messageId)`, `recoveryRecipient(messageId)`; events `Credited`, `Held`, `Recovered` |
 
-**How the other repos sync:** run `scripts/sync-contracts.sh` (each consumer repo has one) which copies `abi/` and `deployments/sepolia.json` from a local checkout of `riskfi-contracts` (path in env `CONTRACTS_REPO_PATH`) or downloads them from the GitHub raw URL. Commit the synced copies so each repo builds on its own.
+Writes (each is a TxPlan: dUSD/YT `approve(spender, max)` first when the allowance is short):
 
-## 2. Onchain interface (frozen — don't rename without telling everyone)
+| Action | Call |
+|---|---|
+| Stake on Sepolia | `VoteMarket.stakeLocal(id, yes, amount, recipient=msg.sender)` (requires `now < lockTime`) |
+| Stake from Arbitrum | `CCIPStakeSender.stakeRemote(StakeIntent, amount, extraArgs)` with `msg.value = fee + 10%` (excess refunded); requires `now < reportCutoff(id)` |
+| Buy / sell YT | `YieldSwapRouter.swapExactInput(PoolKey, zeroForOne, amountIn, minOut, deadline)`; PoolKey = sorted (dUSD, YT), fee 0, tickSpacing 1, hooks = hook |
+| Challenge | `Settlement.challenge(id, evidenceHash)` (anyone, `now < proposedAt + challengePeriod`, no bond) |
+| Finalize | `Settlement.finalize(id)` (anyone; after the window, or after `resultDeadline` → Void) |
+| Redeem | `Settlement.redeemVPT(id, yes, amount)` |
+| Claim yield | optional `YieldSplitter.checkpointYield(id)`, then `YieldToken.claimYield()` |
+| Claim LP yield | `YieldMarketHook.claimLPYield()` |
+| Recover held CCIP | `CCIPStakeReceiver.recover(messageId, to)`: recipient only, `to == recipient`; operator only when the recipient is zero |
+| REP badge | `Reputation.claimWinnerREP(reportId, recipient, scopedNullifier, nonce, expiry, signature)` |
 
-```solidity
-enum Status { None, Open, Frozen, ResolvedPass, ResolvedFail, Refunded }
-enum Side   { For, Against }
+`StakeIntent` (src/ccip/StakeIntent.sol): `(uint256 protocolVersion=1, uint256 reportId, bool yes, address recipient, uint256 nonce, uint64 deadline, uint256 minAmount)`. The web sets `deadline = lockTime − 1`, `minAmount = amount`, a random 128-bit nonce.
+`extraArgs`: `0xa69dd4aa ‖ uint32(500000) ‖ bytes4(0) ‖ bytes7(0)` (ExtraArgsCodec basic V3, as in `script/PreflightSource.s.sol`).
 
-// ClaimRegistry
-function register(address token, bytes32 manifestHash, bytes32 approvalId,
-                  uint64 windowSeconds, address[] calldata excluded)
-  external returns (uint256 claimId);                       // PUBLISHER_ROLE only
-function trigger(uint256 claimId, bytes32 evidenceHash) external; // RESOLVER_ROLE only → Frozen
-function resolve(uint256 claimId) external;
-function getClaim(uint256 claimId) external view returns (Claim memory);
-function isExcluded(uint256 claimId, address who) external view returns (bool);
-event ClaimRegistered(uint256 indexed claimId, address indexed token, bytes32 manifestHash, bytes32 approvalId);
-event ClaimTriggered(uint256 indexed claimId, bytes32 evidenceHash, uint64 at);
-event ClaimResolved(uint256 indexed claimId, Status outcome);
+Payout (Settlement.redeemVPT): Void → `amount`; winner → `amount + amount·(L − L/5)/W`; loser → 0. Fee = `L/5`. Released amounts scale by `principalAvailable / totalPrincipal`.
 
-// VerdictMarket
-function commit(uint256 claimId, bytes32 commitment, uint256 amount) external;
-// commitment = keccak256(abi.encode(claimId, msg.sender, uint8(side), amount, salt))
-function reveal(uint256 claimId, uint8 side, uint256 amount, bytes32 salt) external;
-function redeem(uint256 claimId) external;
-function shareTokens(uint256 claimId) external view returns (address forToken, address againstToken);
-function totals(uint256 claimId) external view returns (uint256 committed, uint256 forRevealed, uint256 againstRevealed);
-function feeBps() external view returns (uint16); // default 300
-event Committed(uint256 indexed claimId, address indexed staker, uint256 amount);
-event Revealed(uint256 indexed claimId, address indexed staker, uint8 side, uint256 amount);
-event Redeemed(uint256 indexed claimId, address indexed staker, uint256 payout);
+### 2.1 V2 (local only, behind `NEXT_PUBLIC_PROTOCOL=v2`)
 
-// FreezeHook
-function claimOfPool(bytes32 poolId) external view returns (uint256 claimId);
-event ImpliedOdds(uint256 indexed claimId, uint256 forPriceX18);
-```
+`RiskFiStakeVaultV2`: `reportId`, `maturity`, `yt`, `totalYes/totalNo`, `positionOf(a, yes)`, `proposed/finalOutcome/evidenceHash/proposedAt/finalizedAt/challenged`, `stake(id, yes, amount, owner, ytReceiver)`, `challenge(evidence)`, `finalize()`, `claimPrincipal(yes, amount)`. `StakeAndSellRouterV2.quoteSell(amount)` / `stakeAndSellYield(yes, amount, minUsdcOut, deadline)`. `YieldCurveHookV2.quoteBuy/quoteSell/spotPriceWad/impliedRateWad/timeRemainingWad`. `CCIPStakeSenderV2.stakeRemote(StakeIntentV2, …)` with `StakeIntentV2 = (uint8 protocolVersion=2, reportId, yes, sourceAccount, recipient, nonce, deadline, minAmount)`.
 
-Units: USDC and share tokens use **6 decimals**. Timestamps are unix seconds.
+## 3. Report v0.2 and the claim manifest
 
-## 3. Manifest format (owned by backend, hash goes onchain)
+- `report.json`: `schemas/report.schema.json` v0.2 (frozen). Web types are generated (`src/lib/report.generated.ts`).
+- `reportHash` onchain = `0x` + SHA-256 of the exact `report.json` bytes (no re-serialisation).
+- Claim manifest `scooby.claim-manifest/1` (publication/canonical.py): `{schema, version, title, chainId, token, symbol, claimText, assessmentStatus, claims[], evidence[], summary, excludedWallets[], windowSeconds, createdAt, reportId, reportVersion, reportSha256}`. `claimHash` = `0x` + SHA-256 of `json.dumps(m, sort_keys=True, separators=(',',':'), ensure_ascii=False)` UTF-8, integers only.
+- **Requested:** `measurementMethod`, `observationWindow`, `voidRule` in the manifest (the web shows "not stated" until then).
 
-```json
-{
-  "version": 1,
-  "chainId": 11155111,
-  "token": "0x…",
-  "claims": [{ "id": 0, "type": "SELL_REVERTS", "params": { "minSellTaxBps": 9000 } }],
-  "evidence": [{ "kind": "simulation", "result": "revert", "detail": "…" }],
-  "summary": "LLM-drafted, human-readable",
-  "excludedWallets": ["0x…"],
-  "windowSeconds": 259200,
-  "createdAt": 1762400000
-}
-```
-`manifestHash = keccak256(utf8(canonicalJSON(manifest)))` where canonical JSON = keys sorted, no whitespace. Backend exposes the exact JSON so anyone can recompute the hash.
+## 4. HTTP: `/web/v1` (backend `publication/web_adapter.py`)
 
-Claim types: `SELL_REVERTS`, `SELL_TAX_ABOVE`, `OWNER_CAN_PAUSE_OR_BLACKLIST`.
+Base: `NEXT_PUBLIC_API_URL` (default `http://127.0.0.1:8000/web/v1`). Responses never contain device codes, tokens or keys; the web rejects any such field.
 
-## 4. Backend HTTP API (owned by `riskfi-backend`)
-
-Base URL in env: `NEXT_PUBLIC_API_URL`. JSON everywhere. CORS allows the web origin only.
-
-| Method | Path | Returns |
+| Method | Path | Response |
 |---|---|---|
 | GET | `/health` | `{ ok: true }` |
 | GET | `/reports` | `Report[]` |
-| GET | `/reports/:id` | `Report` (includes full manifest) |
-| POST | `/reports/:id/approve` | `Approval` — starts a World Agent Pass device grant |
-| GET | `/approvals/:id` | `Approval` (poll every 2s) |
-| GET | `/claims/:claimId` | `ClaimView` |
-| GET | `/deployments` | the current `deployments/sepolia.json` |
-| POST | `/demo/scan` | *(demo only, behind `DEMO_MODE=true`)* triggers the scout now |
+| GET | `/reports/{report_id@version}` | `Report` |
+| GET | `/reports/{id}/raw` | exact `report.json` bytes, header `X-Content-SHA256` |
+| POST | `/reports/{id}/approve` | `Approval` (starts or reuses a World device grant) |
+| GET | `/approvals/{id}` | `Approval` (poll every 2 s until final) |
+| POST | `/rep/authorize` | **proposed**, see §5 |
 
-```ts
-type ReportStatus = 'draft' | 'awaiting_approval' | 'denied' | 'expired' | 'published';
-interface Report {
-  id: string; token: string; chainId: number;
-  status: ReportStatus;
-  manifest: Manifest; manifestHash: `0x${string}`;
-  approvalId?: string; claimId?: string; txHash?: `0x${string}`;
-  createdAt: number;
-}
+`Report` as sent today: `{ id, token, chainId, status: 'draft'|'awaiting_approval'|'denied'|'expired'|'published', manifest, manifestHash, createdAt, reportSha256, targetDigest, publicationState, revoked, approvalId?, txHash?, claimId?, onchainReportId? }`. The web maps it to `WebReport { id, reportId, version, status, claimManifest (= manifest), claimHash (= manifestHash), reportSha256, targetDigest?, onchainReportId?, txHash?, createdAt }` and fetches `report` from `/raw`.
+**Requested:** emit `claimManifest`, `claimHash`, `reportId`, `version` under those names.
 
-type ApprovalStatus = 'pending' | 'approved' | 'denied' | 'expired' | 'rejected_not_reviewer' | 'spent';
-interface Approval {
-  id: string; reportId: string; manifestHash: `0x${string}`;
-  status: ApprovalStatus;
-  userCode?: string;               // shown on the reviewer page
-  verificationUri?: string;        // link/QR into World App
-  expiresAt: number;
-  publishTxHash?: `0x${string}`;
-  // device_code, tokens and secrets are NEVER returned
-}
+`Approval` as sent today: `{ id, reportId, manifestHash, status: 'pending'|'approved'|'denied'|'expired'|'rejected_not_reviewer'|'spent', expiresAt, userCode?, verificationUri?, publishTxHash?, onchainReportId?, detail? }`. The web also accepts `claimHash`, `reportSha256`, `verificationUriComplete`, `demoIdentity`, and status `error`.
+**Requested:** send `status: 'error'` (instead of mapping it to `expired`), `verificationUriComplete` separately, `reportSha256`, and `demoIdentity: true` when World proofs are mocked.
 
-interface ClaimView {
-  claimId: string; token: string; status: 'Open'|'Frozen'|'ResolvedPass'|'ResolvedFail'|'Refunded';
-  windowEnd: number; frozenAt?: number;
-  totals: { committed: string; forRevealed: string; againstRevealed: string }; // 6-decimal strings
-  shareTokens: { for: string; against: string };
-  pools: { for?: string; against?: string };   // v4 pool ids
-  impliedForProbability?: number;              // 0..1
-  evidenceHash?: string; triggerTxHash?: string;
-}
-```
+## 5. Proposed: `POST /web/v1/rep/authorize`
 
-## 5. Environments and keys
-
-| Key | Lives in | Never in |
-|---|---|---|
-| Deployer key | contracts repo `.env` (local only) | git, backend, web |
-| Publisher key (`PUBLISHER_ROLE`) | backend server env | git, web |
-| Resolver key (`RESOLVER_ROLE`) | backend server env | git, web |
-| World client secret, device codes | backend server env / DB | git, web, API responses |
-| Anything `NEXT_PUBLIC_*` | web | — (it is public by definition) |
-
-## 6. Change protocol
-1. Interface change → edit this file in a PR in the owning repo first.
-2. Copy the updated file to the other two repos; bump the version line below.
-3. Post in the team chat: what changed and which commit.
-
-**Interfaces version:** 1 (2026-11-06)
+Request `{ reportId: string, recipient: address, proof: IDKitResult }` (the IDKit 4.x result forwarded as-is). The backend verifies the proof with World (`POST https://developer.world.org/api/v4/verify/{rp_id}`), derives a report-scoped nullifier, checks `Settlement.eligibleWinner(reportId, recipient)`, and signs `Reputation.authorizationDigest(reportId, recipient, scopedNullifier, nonce, expiry)` with the `identitySigner` key.
+Response `200 { reportId, recipient, scopedNullifier: bytes32, nonce: string, expiry: number, signature: bytes }`; `409` "This human already claimed a badge for this report"; `400` cancelled/invalid proof; `403` ineligible.
+IDKit 4.x also needs a backend-signed `rp_context` (`rp_id, nonce, created_at, expires_at, signature`); propose `GET /web/v1/rep/context?reportId=` for it.

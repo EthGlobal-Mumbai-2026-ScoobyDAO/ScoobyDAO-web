@@ -6,10 +6,10 @@ import { useEffect, useRef, type ReactNode } from 'react';
 
 // Positions keep clear of the left-aligned headline and of Sniff; only the first shows on small screens.
 const CLUES: { text: string; x: string; y: string; mobile?: boolean }[] = [
-  { text: 'sell() → revert', x: '64%', y: '15%', mobile: true },
-  { text: 'owner: setTrap(true)', x: '89%', y: '46%' },
-  { text: 'funded 0.8 ETH, 40 min before deploy', x: '61%', y: '79%' },
-  { text: 'sell tax: 99%', x: '90%', y: '30%' },
+  { text: 'unknown: LP lock status', x: '64%', y: '15%', mobile: true },
+  { text: 'counterevidence: 2 claims', x: '89%', y: '46%' },
+  { text: 'evidence sha256: a14c…87f4', x: '61%', y: '79%' },
+  { text: 'pillar: technical health · partial', x: '88%', y: '30%' },
 ];
 
 /**
@@ -80,9 +80,9 @@ export function Hero({ scene }: { scene: ReactNode }) {
           Every rug has a villain behind the mask.
         </h1>
         <p className="mt-6 max-w-xl text-lg text-[#c9d0f0] drop-shadow-[0_2px_10px_rgb(0_0_0/0.8)]">
-          Sniff and a pack of AI agents follow the evidence on suspicious tokens. A verified human
-          signs off, the case opens, and the market decides. Wallets linked to the scammer
-          can&apos;t bet on their own crime.
+          Sniff and a pack of AI agents research suspicious tokens, unknowns and counterevidence
+          included. A verified human approves the exact report, then anyone stakes Yes or No and the
+          result settles onchain, with a challenge window before anything is final.
         </p>
         <div className="mt-8 flex flex-wrap gap-3">
           <Link

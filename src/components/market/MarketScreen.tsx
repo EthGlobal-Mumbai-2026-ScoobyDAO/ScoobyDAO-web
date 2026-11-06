@@ -1,142 +1,254 @@
 'use client';
 
-import Link from 'next/link';
+import { ConnectButton } from '@rainbow-me/rainbowkit';
+import { useQuery } from '@tanstack/react-query';
+import { ArrowDown } from 'lucide-react';
+import { useState } from 'react';
 import { Banner } from '@/components/Banner';
-import { CaseHeader } from '@/components/case/CaseHeader';
+import { CaseFrame, CaseHeader } from '@/components/case/CaseHeader';
 import { useCase } from '@/components/case/useCase';
-import { DemoWalletBar } from '@/components/DemoWalletBar';
-import { FrozenBanner } from '@/components/FrozenBanner';
-import { OddsBar } from '@/components/OddsBar';
-import { TxLink } from '@/components/TxLink';
-import { useActiveAccount } from '@/lib/account';
-import { ApiError } from '@/lib/api';
-import { useStakeChain } from '@/lib/chain';
-import { formatUsdc } from '@/lib/format';
-import { SwapPanel } from './SwapPanel';
+import { SimulatedYieldLabel, TestTokenLabel, YtNotPredictionLabel } from '@/components/HonestyLabels';
+import { TxPlanStepper, usePlan, WrongChainPrompt } from '@/components/TxPlanStepper';
+import { env } from '@/lib/env';
+import { formatDuration, formatUsdc, formatWad, parseUsdc } from '@/lib/format';
+import { useEnsureChain } from '@/lib/useEnsureChain';
+import {
+  DEFAULT_SLIPPAGE_BPS,
+  formatRateWad,
+  impliedAprFromPrice,
+  marketBlock,
+  minOutFor,
+  SWAP_DEADLINE_SECONDS,
+  type MarketBlock,
+  type MarketView,
+} from '@/protocol';
+import { useActiveAccount, useChainTime, usePosition, useProtocol } from '@/protocol/hooks';
 
-export function MarketScreen({ claimId }: { claimId: string }) {
-  const { claim, report } = useCase(claimId);
-  const { address } = useActiveAccount();
-  const c = claim.data;
-  const chain = useStakeChain(c, address);
+const SLIPPAGES = [50, 100, 200] as const;
 
-  if (claim.isError) {
-    const nf = claim.error instanceof ApiError && claim.error.status === 404;
-    return (
-      <main className="mx-auto max-w-6xl px-4 py-10">
-        <Banner
-          tone="danger"
-          title={nf ? `There's no case #${claimId}` : "Couldn't load this case"}
-        >
-          {nf ? (
-            <Link href="/cases" className="underline">
-              Browse cases
-            </Link>
-          ) : (
-            claim.error.message
+export const BLOCK_COPY: Record<Exclude<MarketBlock, null>, string> = {
+  not_locked: 'The YT is issued when stakes lock. Come back after lock.',
+  not_deployed: 'Market not deployed yet.',
+  no_router: 'Market not deployed yet (no swap router address in testnets.json).',
+  not_configured: 'The pool exists but isn’t configured yet.',
+  matured: 'Matured: the hook accepts no swaps after maturity.',
+};
+
+export function MarketScreen({ id }: { id: string }) {
+  const { market, report } = useCase(id);
+  return (
+    <CaseFrame state={market}>
+      {market.data && (
+        <main className="mx-auto max-w-6xl space-y-8 px-4 py-8 sm:py-10">
+          <CaseHeader market={market.data} report={report} tab="market" />
+          <section className="space-y-2">
+            <h2 className="font-display text-3xl">Trade the yield token (YT)</h2>
+            <p className="max-w-3xl text-lg">
+              Trade the interest earned on locked stakes. The YT price is not a prediction of the verdict.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <YtNotPredictionLabel />
+              <SimulatedYieldLabel />
+              <TestTokenLabel />
+            </div>
+          </section>
+          <div className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
+            <SwapPanel market={market.data} />
+            <PoolStats market={market.data} />
+          </div>
+        </main>
+      )}
+    </CaseFrame>
+  );
+}
+
+function PoolStats({ market: m }: { market: MarketView }) {
+  const now = useChainTime() ?? m.chainTime;
+  const p = m.market;
+  const left = (p?.maturity || m.maturity) - now;
+  const apr = p?.impliedRateWad ?? impliedAprFromPrice(p?.spotPriceWad, left);
+  const position = usePosition(m.reportId, m.blockNumber);
+  return (
+    <section aria-labelledby="pool-h" className="glass space-y-4 p-5 sm:p-6">
+      <h2 id="pool-h" className="font-semibold">
+        Pool
+      </h2>
+      {!p ? (
+        <p className="text-muted">{BLOCK_COPY[marketBlock(m, now) ?? 'not_deployed']}</p>
+      ) : (
+        <dl className="grid grid-cols-2 gap-4">
+          <Stat label="Price (dUSD per YT)" value={formatWad(p.spotPriceWad)} />
+          <Stat
+            label={p.impliedRateWad !== undefined ? 'Implied APR' : 'Implied APR (from price)'}
+            value={apr !== undefined ? formatRateWad(apr) : '—'}
+            tag
+          />
+          <Stat label="Time to maturity" value={left > 0 ? formatDuration(left) : 'matured'} />
+          <Stat label="Fee" value={p.feePips !== undefined ? `${(p.feePips / 10_000).toFixed(2)}%` : '—'} />
+          {p.reserves && (
+            <>
+              <Stat label="dUSD reserve" value={formatUsdc(p.reserves.usdc)} />
+              <Stat label="YT reserve" value={formatUsdc(p.reserves.yt)} />
+            </>
           )}
-        </Banner>
-      </main>
-    );
-  }
-  if (!c) {
-    return (
-      <main
-        className="mx-auto max-w-6xl space-y-6 px-4 py-10"
-        aria-busy="true"
-        aria-label="Loading market"
-      >
-        <div className="sweep h-12 w-64" />
-        <div className="grid gap-6 lg:grid-cols-2">
-          <div className="sweep h-96" />
-          <div className="sweep h-64" />
-        </div>
-      </main>
-    );
-  }
+        </dl>
+      )}
+      {position.data && (
+        <p className="border-line border-t pt-3 text-sm">
+          You hold <span className="num">{formatUsdc(position.data.yt)}</span> YT · claimable{' '}
+          <span className="num">{formatUsdc(position.data.ytClaimable, { exact: true })}</span> dUSD <SimulatedYieldLabel />
+        </p>
+      )}
+      {env.lpEnabled && position.data && <LiquidityPanel market={m} lpShares={position.data.lpShares} lpClaimable={position.data.lpClaimable} />}
+    </section>
+  );
+}
 
-  const resolved =
-    c.status === 'ResolvedPass' || c.status === 'ResolvedFail' || c.status === 'Refunded';
+function Stat({ label, value, tag }: { label: string; value: string; tag?: boolean }) {
+  return (
+    <div>
+      <dt className="text-muted text-xs">{label}</dt>
+      <dd className="num mt-1 text-xl font-semibold">{value}</dd>
+      {tag && (
+        <dd>
+          <SimulatedYieldLabel />
+        </dd>
+      )}
+    </div>
+  );
+}
+
+function LiquidityPanel({ market: m, lpShares, lpClaimable }: { market: MarketView; lpShares: bigint; lpClaimable: bigint }) {
+  const { protocol } = useProtocol();
+  const plan = usePlan();
+  return (
+    <div className="border-line space-y-2 border-t pt-3 text-sm">
+      <p className="font-semibold">Liquidity</p>
+      <p>
+        LP shares <span className="num">{formatUsdc(lpShares)}</span> · claimable LP yield <span className="num">{formatUsdc(lpClaimable, { exact: true })}</span> dUSD
+      </p>
+      <p className="text-muted text-xs">Add and remove liquidity go straight to the hook (addLiquidity / removeLiquidity); not wired in this UI yet.</p>
+      {protocol.claimLPYield && (
+        <button
+          type="button"
+          disabled={plan.running || lpClaimable === 0n}
+          onClick={() => void plan.start(() => protocol.claimLPYield!(m.reportId))}
+          className="border-line rounded-lg border px-3 py-1.5 font-semibold disabled:opacity-50"
+        >
+          Claim LP yield
+        </button>
+      )}
+      <TxPlanStepper steps={plan.steps} buildError={plan.buildError} />
+    </div>
+  );
+}
+
+function SwapPanel({ market: m }: { market: MarketView }) {
+  const { protocol, fixtureMode } = useProtocol();
+  const { address, connected } = useActiveAccount();
+  const now = useChainTime() ?? m.chainTime;
+  const position = usePosition(m.reportId, m.blockNumber);
+  const plan = usePlan();
+  const ensure = useEnsureChain(11155111);
+  const [dir, setDir] = useState<'buy' | 'sell'>('buy');
+  const [input, setInput] = useState('');
+  const [slippage, setSlippage] = useState<number>(DEFAULT_SLIPPAGE_BPS);
+  const block = marketBlock(m, now);
+  const amountIn = parseUsdc(input);
+  const quote = useQuery({
+    queryKey: ['protocol', protocol.kind, 'quoteYT', m.reportId.toString(), dir, amountIn?.toString(), m.blockNumber.toString()],
+    queryFn: () => protocol.quoteYT(m.reportId, dir, amountIn!),
+    enabled: !block && !!amountIn && amountIn > 0n,
+  });
+  const out = quote.data?.out;
+  const minOut = out !== undefined ? minOutFor(out, slippage) : undefined;
+  const bal = dir === 'buy' ? position.data?.dusdBalance : position.data?.yt;
+  const tooMuch = amountIn !== null && bal !== undefined && amountIn > bal;
+
+  if (block)
+    return (
+      <section className="glass p-6" aria-labelledby="swap-h">
+        <h2 id="swap-h" className="font-display text-2xl">
+          Swap
+        </h2>
+        <p className="mt-3">{BLOCK_COPY[block]}</p>
+      </section>
+    );
 
   return (
-    <main className="mx-auto max-w-6xl space-y-6 px-4 py-8 sm:py-10">
-      <CaseHeader claim={c} report={report} tab="market" />
-      {c.status === 'Frozen' && <FrozenBanner block={chain.frozenBlock} what="trading" />}
-      {resolved && (
-        <Banner tone="info" title="Case closed: trading has ended">
-          Winning shares redeem for USDC on the{' '}
-          <Link href={`/case/${c.claimId}/stake`} className="underline underline-offset-4">
-            stake page
-          </Link>
-          .
-        </Banner>
-      )}
-      <DemoWalletBar />
-      <div className="grid gap-6 lg:grid-cols-[1fr_1fr]">
-        <section aria-labelledby="swap-h" className="glass p-5 sm:p-6">
-          <h2 id="swap-h" className="font-display mb-5 text-2xl">
-            Trade shares
-          </h2>
-          <SwapPanel
-            claim={c}
-            account={address}
-            usdcBalance={chain.usdcBalance}
-            forShares={chain.forShares}
-            againstShares={chain.againstShares}
-          />
-        </section>
-        <section aria-labelledby="odds-h" className="glass space-y-5 p-5 sm:p-6">
-          <h2 id="odds-h" className="font-semibold">
-            Market odds
-          </h2>
-          <OddsBar
-            probability={c.impliedForProbability}
-            forRevealed={chain.totals.forRevealed}
-            againstRevealed={chain.totals.againstRevealed}
-          />
-          <p className="text-muted text-sm">
-            For and Against shares each redeem for a slice of the pot if their side wins. The For
-            share price is the market&apos;s guess that the claim holds. A thin pool price
-            isn&apos;t evidence; only the trigger decides the case.
-          </p>
-          {address && (
-            <dl className="border-line grid grid-cols-3 gap-3 border-t pt-4">
-              <div>
-                <dt className="text-muted text-xs">Your USDC</dt>
-                <dd className="num mt-1 text-lg">{formatUsdc(chain.usdcBalance)}</dd>
-              </div>
-              <div>
-                <dt className="text-muted text-xs">Your For shares</dt>
-                <dd className="num text-clue-ink mt-1 text-lg">{formatUsdc(chain.forShares)}</dd>
-              </div>
-              <div>
-                <dt className="text-muted text-xs">Your Against shares</dt>
-                <dd className="num text-mask-ink mt-1 text-lg">
-                  {formatUsdc(chain.againstShares)}
-                </dd>
-              </div>
-            </dl>
-          )}
-          <dl className="border-line space-y-1.5 border-t pt-4 text-sm">
-            <div className="flex flex-wrap justify-between gap-2">
-              <dt className="text-muted">For share token</dt>
-              <dd>
-                <TxLink kind="token" value={c.shareTokens.for} />
-              </dd>
-            </div>
-            <div className="flex flex-wrap justify-between gap-2">
-              <dt className="text-muted">Against share token</dt>
-              <dd>
-                <TxLink kind="token" value={c.shareTokens.against} />
-              </dd>
-            </div>
-            <div className="flex flex-wrap justify-between gap-2">
-              <dt className="text-muted">Pools</dt>
-              <dd>Uniswap v4, guarded by the freeze hook</dd>
-            </div>
-          </dl>
-        </section>
+    <section aria-labelledby="swap-h" className="glass space-y-4 p-5 sm:p-6">
+      <h2 id="swap-h" className="font-display text-2xl">
+        Swap
+      </h2>
+      <div role="radiogroup" aria-label="Direction" className="flex gap-2">
+        {(['buy', 'sell'] as const).map((d) => (
+          <button
+            key={d}
+            type="button"
+            role="radio"
+            aria-checked={dir === d}
+            onClick={() => setDir(d)}
+            className={`rounded-full border px-4 py-1.5 text-sm font-semibold ${dir === d ? 'border-beam bg-[color-mix(in_srgb,var(--beam-400)_14%,transparent)]' : 'border-line text-muted'}`}
+          >
+            {d === 'buy' ? 'Buy YT with dUSD' : 'Sell YT for dUSD'}
+          </button>
+        ))}
       </div>
-    </main>
+      {!connected && !fixtureMode ? (
+        <ConnectButton />
+      ) : (
+        <>
+          <label className="block">
+            <span className="text-muted text-sm">You pay ({dir === 'buy' ? 'dUSD' : 'YT'})</span>
+            <input
+              inputMode="decimal"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="5.00"
+              className="num border-line focus:border-beam mt-1 w-full rounded-xl border bg-[color-mix(in_srgb,var(--bg)_60%,transparent)] px-3 py-2.5 text-lg outline-none"
+            />
+            <span className={`text-sm ${tooMuch ? 'text-mask-ink' : 'text-muted'}`}>
+              {tooMuch ? 'More than your balance. ' : ''}Balance {bal !== undefined ? formatUsdc(bal) : '…'}
+            </span>
+          </label>
+          <ArrowDown className="text-muted mx-auto" aria-hidden />
+          <div>
+            <p className="text-muted text-sm">You receive about ({dir === 'buy' ? 'YT' : 'dUSD'})</p>
+            <p className="num text-2xl font-semibold">{out !== undefined ? formatUsdc(out, { exact: true }) : quote.isFetching ? '…' : '—'}</p>
+            {quote.isError && <p className="text-mask-ink text-sm">{quote.error.message}</p>}
+            {out === 0n && amountIn && <p className="text-mask-ink text-sm">This amount is outside what the pool can fill.</p>}
+          </div>
+          <fieldset className="flex flex-wrap items-center gap-2 text-sm">
+            <legend className="text-muted mb-1">Slippage</legend>
+            {SLIPPAGES.map((s) => (
+              <label key={s} className={`cursor-pointer rounded-lg border px-2.5 py-1 ${slippage === s ? 'border-beam' : 'border-line'}`}>
+                <input type="radio" name="slip" className="sr-only" checked={slippage === s} onChange={() => setSlippage(s)} />
+                {(s / 100).toFixed(1)}%
+              </label>
+            ))}
+            {minOut !== undefined && (
+              <span className="text-muted">
+                min received <span className="num">{formatUsdc(minOut, { exact: true })}</span> · deadline 10 min
+              </span>
+            )}
+          </fieldset>
+          {connected && <WrongChainPrompt ensure={ensure} />}
+          <button
+            type="button"
+            disabled={!amountIn || !out || tooMuch || plan.running || !address}
+            onClick={() => void plan.start(() => protocol.swapYT(m.reportId, dir, amountIn!, minOut!, now + SWAP_DEADLINE_SECONDS, address!))}
+            className="bg-beam text-on-beam w-full rounded-xl px-4 py-3 text-lg font-semibold hover:brightness-105 disabled:opacity-50"
+          >
+            {plan.running ? 'Working…' : dir === 'buy' ? 'Buy YT' : 'Sell YT'}
+          </button>
+          <TxPlanStepper steps={plan.steps} buildError={plan.buildError} />
+          {plan.result?.ok && plan.result.effect.amountOut !== undefined && (
+            <Banner tone="success" title="Swap confirmed">
+              Received <span className="num">{formatUsdc(plan.result.effect.amountOut, { exact: true })}</span> {dir === 'buy' ? 'YT' : 'dUSD'} (from the Swapped event).
+            </Banner>
+          )}
+        </>
+      )}
+    </section>
   );
 }

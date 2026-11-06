@@ -1,11 +1,13 @@
 'use client';
 
-import { useClaim, useReports } from '@/lib/queries';
+import { useReports } from '@/lib/queries';
+import { useMarket } from '@/protocol/hooks';
 
-/** ClaimView + the report that published it (ClaimView has no reportId, so match on claimId). */
-export function useCase(claimId: string) {
-  const claim = useClaim(claimId, { poll: true });
+/** Onchain market for /case/[id] plus the backend report that published it (matched on onchainReportId). */
+export function useCase(id: string) {
+  const onchainId = /^\d+$/.test(id) ? BigInt(id) : undefined;
+  const market = useMarket(onchainId);
   const reports = useReports();
-  const report = reports.data?.find((r) => r.claimId === claimId);
-  return { claim, report, reportsLoading: reports.isLoading };
+  const report = reports.data?.find((r) => r.onchainReportId === id);
+  return { onchainId, market, report, reportsLoading: reports.isLoading };
 }

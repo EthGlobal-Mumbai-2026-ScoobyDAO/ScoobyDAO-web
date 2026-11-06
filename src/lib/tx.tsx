@@ -1,137 +1,82 @@
 'use client';
 
-import { AlertOctagon, CheckCircle2, ExternalLink, Loader2, Wallet, X } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import { AlertOctagon, CheckCircle2, ExternalLink, Loader2, Repeat, Wallet, X } from 'lucide-react';
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
-import type { Abi, Address, Hex } from 'viem';
-import { simulateContract, waitForTransactionReceipt, writeContract } from 'wagmi/actions';
-import { contractsDeployed } from '@/contracts';
+import type { Hex } from 'viem';
+import { getAccount, simulateContract, switchChain, waitForTransactionReceipt, writeContract } from 'wagmi/actions';
+import { decodeEffects, type TxPlan } from '@/protocol';
+import { fakeTxHash } from '@/protocol/fixture';
 import { revertReason } from './errors';
-import { explorer } from './explorer';
-import { FixtureRevert, fakeTxHash } from './fixtureChain';
+import { chainName, explorer, explorerName } from './explorer';
 import { shortHex } from './format';
-import { useFixturesMode } from './queries';
+import { runPlan, type RunResult, type StepProgress } from './runPlan';
 import { wagmiConfig } from './wagmi';
 
-type Phase = 'wallet' | 'pending' | 'confirmed' | 'failed';
-interface Toast {
-  id: number;
-  label: string;
-  phase: Phase;
-  hash?: Hex;
-  reason?: string;
-  simulated?: boolean;
-}
-
-export interface WriteParams {
-  address: Address;
-  abi: Abi;
-  functionName: string;
-  args?: readonly unknown[];
-  account?: Address;
-}
-
-export interface TxSpec {
-  /** Verb phrase used in every toast state, e.g. "Commit sealed stake". */
-  label: string;
-  /** Real transaction. */
-  live: () => WriteParams;
-  /** Fixture-mode effect; throw FixtureRevert to simulate a revert. */
-  fixture: () => void;
-  /** Send without a pre-flight simulation (the "force it anyway" demo on a frozen pool). */
-  force?: boolean;
-  /** Called with the decoded revert reason when the tx fails. */
-  onFailed?: (reason: string) => void;
-  /**
-   * Called when the tx was broadcast but its outcome could not be read (receipt wait threw:
-   * RPC error, timeout, dropped connection). `run` still resolves false, but the tx may yet be
-   * mined, so callers must not undo local state that a mined tx depends on.
-   */
-  onOutcomeUnknown?: (hash: Hex) => void;
-}
-
-// Call sites build params from the typed ABIs in src/contracts; the runner only forwards them.
 type Loose = Record<string, unknown>;
-const simulate = simulateContract as unknown as (
-  c: typeof wagmiConfig,
-  p: Loose,
-) => Promise<{ request: Loose }>;
+const simulate = simulateContract as unknown as (c: typeof wagmiConfig, p: Loose) => Promise<{ request: Loose }>;
 const write = writeContract as unknown as (c: typeof wagmiConfig, p: Loose) => Promise<Hex>;
 
-const Ctx = createContext<{ run: (spec: TxSpec) => Promise<boolean> } | null>(null);
+const deps = {
+  currentChainId: () => getAccount(wagmiConfig).chainId,
+  switchChain: async (chainId: number) => {
+    await switchChain(wagmiConfig, { chainId: chainId as 11155111 | 421614 });
+  },
+  send: async (req: { address: `0x${string}` } & Loose) => {
+    const account = getAccount(wagmiConfig).address;
+    const { request } = await simulate(wagmiConfig, { ...req, account, chainId: getAccount(wagmiConfig).chainId });
+    return write(wagmiConfig, request);
+  },
+  confirm: async (hash: Hex, req: Loose) => {
+    const chainId = getAccount(wagmiConfig).chainId as 11155111 | 421614;
+    const receipt = await waitForTransactionReceipt(wagmiConfig, { hash, chainId });
+    if (receipt.status === 'reverted') {
+      // Replay at the same block to recover the revert string.
+      let reason = 'Transaction reverted';
+      try {
+        await simulate(wagmiConfig, { ...req, account: receipt.from, blockNumber: receipt.blockNumber, chainId });
+      } catch (e) {
+        reason = revertReason(e);
+      }
+      return { ok: false as const, reason };
+    }
+    return { ok: true as const, logs: receipt.logs };
+  },
+  decode: decodeEffects,
+  fakeHash: fakeTxHash,
+  chainName,
+};
+
+interface Toast extends StepProgress {
+  id: string;
+}
+export type RunPlan = (plan: TxPlan, onProgress?: (p: StepProgress) => void) => Promise<RunResult>;
+const Ctx = createContext<RunPlan | null>(null);
 
 export function TxProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const fixtures = useFixturesMode().data ?? true;
-  const simulated = fixtures || !contractsDeployed;
+  const qc = useQueryClient();
 
-  const update = useCallback((id: number, patch: Partial<Toast>) => {
-    setToasts((ts) => ts.map((t) => (t.id === id ? { ...t, ...patch } : t)));
-    if (patch.phase === 'confirmed')
-      setTimeout(() => setToasts((ts) => ts.filter((t) => t.id !== id)), 9000);
-  }, []);
-
-  const run = useCallback(
-    async (spec: TxSpec): Promise<boolean> => {
-      const id = Date.now() + Math.random();
-      const fail = (reason: string, hash?: Hex) => {
-        update(id, { phase: 'failed', reason, ...(hash ? { hash } : {}) });
-        spec.onFailed?.(reason);
-        return false;
-      };
-      setToasts((ts) => [...ts.slice(-3), { id, label: spec.label, phase: 'wallet', simulated }]);
-
-      if (simulated) {
-        await new Promise((r) => setTimeout(r, 500));
-        const hash = fakeTxHash();
-        update(id, { phase: 'pending', hash });
-        await new Promise((r) => setTimeout(r, 1300));
-        try {
-          spec.fixture();
-          update(id, { phase: 'confirmed' });
-          return true;
-        } catch (e) {
-          return fail(e instanceof FixtureRevert ? e.reason : revertReason(e));
-        }
-      }
-
-      let hash: Hex | undefined;
-      const params = spec.live() as unknown as Loose;
-      try {
-        if (spec.force) {
-          hash = await write(wagmiConfig, { ...params, gas: 500_000n });
-        } else {
-          const { request } = await simulate(wagmiConfig, params);
-          hash = await write(wagmiConfig, request);
-        }
-        update(id, { phase: 'pending', hash });
-        const receipt = await waitForTransactionReceipt(wagmiConfig, { hash });
-        if (receipt.status === 'reverted') {
-          // Replay at the same block to recover the revert string.
-          let reason = 'Transaction reverted';
-          try {
-            await simulate(wagmiConfig, { ...params, blockNumber: receipt.blockNumber });
-          } catch (e) {
-            reason = revertReason(e);
-          }
-          return fail(reason);
-        }
-        update(id, { phase: 'confirmed' });
-        return true;
-      } catch (e) {
-        if (hash) {
-          spec.onOutcomeUnknown?.(hash);
-          return fail(
-            `${revertReason(e)} — the transaction was sent; check its status on the explorer`,
-            hash,
-          );
-        }
-        return fail(revertReason(e));
-      }
+  const run = useCallback<RunPlan>(
+    async (plan, onProgress) => {
+      const runId = `${Date.now()}-${Math.random()}`;
+      const result = await runPlan(plan, deps as never, (p) => {
+        onProgress?.(p);
+        const id = `${runId}-${p.index}`;
+        setToasts((ts) => {
+          const rest = ts.filter((t) => t.id !== id);
+          return [...rest.slice(-3), { ...p, id }];
+        });
+        if (p.status === 'done') setTimeout(() => setToasts((ts) => ts.filter((t) => t.id !== id)), 9000);
+      });
+      // Every write can change chain state the pages read.
+      await qc.invalidateQueries({ queryKey: ['protocol'] });
+      return result;
     },
-    [simulated, update],
+    [qc],
   );
 
-  const value = useMemo(() => ({ run }), [run]);
+  const value = useMemo(() => run, [run]);
   return (
     <Ctx.Provider value={value}>
       {children}
@@ -140,20 +85,22 @@ export function TxProvider({ children }: { children: ReactNode }) {
   );
 }
 
-export function useTx() {
+export function useRunPlan(): RunPlan {
   const c = useContext(Ctx);
-  if (!c) throw new Error('useTx must be used inside TxProvider');
-  return c.run;
+  if (!c) throw new Error('useRunPlan must be used inside TxProvider');
+  return c;
 }
 
-const PHASE_COPY: Record<Phase, string> = {
+const PHASE_COPY: Record<StepProgress['status'], string> = {
+  idle: 'Waiting',
+  switching: 'Switch network in your wallet',
   wallet: 'Confirm in your wallet',
   pending: 'Pending onchain',
-  confirmed: 'Confirmed',
+  done: 'Confirmed',
   failed: 'Failed',
 };
 
-function Toaster({ toasts, dismiss }: { toasts: Toast[]; dismiss: (id: number) => void }) {
+function Toaster({ toasts, dismiss }: { toasts: Toast[]; dismiss: (id: string) => void }) {
   return (
     <ol
       aria-live="polite"
@@ -163,59 +110,52 @@ function Toaster({ toasts, dismiss }: { toasts: Toast[]; dismiss: (id: number) =
       {toasts.map((t) => (
         <li
           key={t.id}
-          role={t.phase === 'failed' ? 'alert' : 'status'}
+          role={t.status === 'failed' ? 'alert' : 'status'}
           className={`bg-surface pointer-events-auto w-full rounded-xl border p-3.5 shadow-2xl ${
-            t.phase === 'failed'
+            t.status === 'failed'
               ? 'border-[color-mix(in_srgb,var(--mask-500)_60%,transparent)]'
-              : t.phase === 'confirmed'
+              : t.status === 'done'
                 ? 'border-[color-mix(in_srgb,var(--clue-500)_55%,transparent)]'
                 : 'border-line'
           }`}
         >
           <div className="flex items-start gap-3">
             <span className="mt-0.5 shrink-0">
-              {t.phase === 'wallet' && <Wallet size={18} className="text-beam-ink" aria-hidden />}
-              {t.phase === 'pending' && (
-                <Loader2 size={18} className="text-beam-ink animate-spin" aria-hidden />
-              )}
-              {t.phase === 'confirmed' && (
-                <CheckCircle2 size={18} className="text-clue-ink" aria-hidden />
-              )}
-              {t.phase === 'failed' && (
-                <AlertOctagon size={18} className="text-mask-ink" aria-hidden />
-              )}
+              {t.status === 'switching' && <Repeat size={18} className="text-beam-ink" aria-hidden />}
+              {(t.status === 'wallet' || t.status === 'idle') && <Wallet size={18} className="text-beam-ink" aria-hidden />}
+              {t.status === 'pending' && <Loader2 size={18} className="text-beam-ink animate-spin" aria-hidden />}
+              {t.status === 'done' && <CheckCircle2 size={18} className="text-clue-ink" aria-hidden />}
+              {t.status === 'failed' && <AlertOctagon size={18} className="text-mask-ink" aria-hidden />}
             </span>
             <div className="min-w-0 flex-1 text-sm">
-              <p className="font-semibold">{t.label}</p>
+              <p className="font-semibold">
+                {t.total > 1 && (
+                  <span className="num text-muted mr-1.5">
+                    {t.index + 1}/{t.total}
+                  </span>
+                )}
+                {t.label}
+              </p>
               <p className="text-muted">
-                {PHASE_COPY[t.phase]}
+                {PHASE_COPY[t.status]} · {chainName(t.chainId)}
                 {t.simulated && ' · fixture, no real tx'}
               </p>
-              {t.reason && (
-                <p className="num text-mask-ink mt-1 text-[13px] break-words">{t.reason}</p>
-              )}
+              {t.reason && <p className="num text-mask-ink mt-1 text-[13px] break-words">{t.reason}</p>}
               {t.hash && !t.simulated && (
                 <a
-                  href={explorer.tx(t.hash)}
+                  href={explorer.tx(t.hash, t.chainId)}
                   target="_blank"
                   rel="noreferrer"
                   className="num text-beam-ink mt-1 inline-flex items-center gap-1 text-[13px] underline-offset-2 hover:underline"
                 >
                   {shortHex(t.hash, 10, 6)} <ExternalLink size={12} aria-hidden />
-                  <span className="sr-only">View on Etherscan</span>
+                  <span className="sr-only">View on {explorerName(t.chainId)}</span>
                 </a>
               )}
-              {t.hash && t.simulated && (
-                <p className="num text-muted mt-1 text-[13px]">{shortHex(t.hash, 10, 6)}</p>
-              )}
+              {t.hash && t.simulated && <p className="num text-muted mt-1 text-[13px]">{shortHex(t.hash, 10, 6)}</p>}
             </div>
-            {(t.phase === 'failed' || t.phase === 'confirmed') && (
-              <button
-                type="button"
-                onClick={() => dismiss(t.id)}
-                aria-label="Dismiss"
-                className="text-muted hover:text-text"
-              >
+            {(t.status === 'failed' || t.status === 'done') && (
+              <button type="button" onClick={() => dismiss(t.id)} aria-label="Dismiss" className="text-muted hover:text-text">
                 <X size={16} aria-hidden />
               </button>
             )}

@@ -6,7 +6,7 @@ import {
   walletConnectWallet,
 } from '@rainbow-me/rainbowkit/wallets';
 import { createConfig, http } from 'wagmi';
-import { sepolia } from 'wagmi/chains';
+import { arbitrumSepolia, sepolia } from 'wagmi/chains';
 import { env } from './env';
 
 // Explicit wallet list: RainbowKit's default list pulls in the Coinbase CDP SDK,
@@ -24,9 +24,13 @@ const connectors = connectorsForWallets(
   { appName: 'Unmasked', projectId: env.walletConnectProjectId || 'unset' },
 );
 
+/** Ethereum Sepolia hosts the market; Arbitrum Sepolia is only the CCIP source. */
 export const wagmiConfig = createConfig({
   connectors,
-  chains: [sepolia],
-  transports: { [sepolia.id]: http(env.sepoliaRpcUrl) },
+  chains: [sepolia, arbitrumSepolia],
+  transports: {
+    [sepolia.id]: http(env.sepoliaRpcUrl),
+    [arbitrumSepolia.id]: http(env.arbSepoliaRpcUrl),
+  },
   ssr: true,
 });

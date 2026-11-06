@@ -1,54 +1,36 @@
 import { formatUsdc } from '@/lib/format';
-import { BPS, refundPayout, winningPayout } from '@/lib/payout';
+import { previewStake, type Totals } from '@/lib/payout';
+import type { SideKey } from './SidePicker';
 
-/** Shows the exact formula with the live numbers plugged in. No jokes on money screens. */
-export function PayoutPreview({
-  s,
-  W,
-  L,
-  feeBps,
-  refund = false,
-  caption,
-}: {
-  s: bigint;
-  W: bigint;
-  L: bigint;
-  feeBps: bigint;
-  refund?: boolean;
-  caption?: string;
-}) {
-  const oneSided = refund || W === 0n || L === 0n;
-  const payout = oneSided ? refundPayout(s, feeBps) : winningPayout(s, W, L, feeBps);
+/** Payout if Yes wins / if No wins / if Void, for current totals plus your stake (Settlement.redeemVPT math). */
+export function PayoutPreview({ totals, side, amount }: { totals: Totals; side: SideKey; amount: bigint }) {
+  const p = previewStake(totals, side, amount);
+  const loserIfYes = p.totalsAfter.no;
+  const loserIfNo = p.totalsAfter.yes;
   return (
-    <div className="border-line rounded-xl border p-4">
-      {caption && <p className="text-muted mb-3 text-sm">{caption}</p>}
-      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
-        <dt className="text-muted">Your winning shares (s)</dt>
-        <dd className="num text-right">{formatUsdc(s, { exact: true })}</dd>
-        {!oneSided && (
-          <>
-            <dt className="text-muted">Winning side total (W)</dt>
-            <dd className="num text-right">{formatUsdc(W, { exact: true })}</dd>
-            <dt className="text-muted">Losing side total (L)</dt>
-            <dd className="num text-right">{formatUsdc(L, { exact: true })}</dd>
-          </>
-        )}
-        <dt className="text-muted">Fee (f)</dt>
-        <dd className="num text-right">
-          {feeBps.toString()} bps ({(Number(feeBps) / 100).toFixed(2)}%)
-        </dd>
+    <section aria-labelledby="payout-h" className="border-line rounded-xl border p-4">
+      <h3 id="payout-h" className="font-semibold">
+        If you stake {formatUsdc(amount)} dUSD on {side === 'yes' ? 'Yes' : 'No'}
+      </h3>
+      <dl className="mt-3 space-y-2 text-sm">
+        <Line label="If Yes wins" value={p.ifYes} hint={side === 'yes' ? `fee ${formatUsdc(p.feeIfYes)} dUSD = 20% of the ${formatUsdc(loserIfYes)} No pool` : 'your No position pays 0'} />
+        <Line label="If No wins" value={p.ifNo} hint={side === 'no' ? `fee ${formatUsdc(p.feeIfNo)} dUSD = 20% of the ${formatUsdc(loserIfNo)} Yes pool` : 'your Yes position pays 0'} />
+        <Line label="If Void" value={p.ifVoid} hint="refund pro rata, no fee" />
       </dl>
-      <p className="num border-line text-muted mt-3 border-t pt-3 text-xs break-words">
-        {oneSided
-          ? `payout = s × (${BPS} − f) / ${BPS}`
-          : `payout = s + s × L × (${BPS} − f) / (${BPS} × W)`}
-      </p>
-      <p className="mt-2 flex items-baseline justify-between gap-3">
-        <span className="text-muted text-sm">{oneSided ? 'Refund' : 'Payout'}</span>
-        <span className="num text-2xl font-semibold">
-          {formatUsdc(payout, { exact: true })} USDC
-        </span>
-      </p>
+      <p className="num text-muted mt-3 text-xs">payout = s + ⌊s × (L − ⌊L/5⌋) / W⌋ · each winning unit now redeems {formatUsdc(p.perUnitIfWin, { exact: true })}</p>
+      <p className="text-muted mt-1 text-xs">Totals keep moving until lock, so this preview changes as others stake.</p>
+    </section>
+  );
+}
+
+function Line({ label, value, hint }: { label: string; value: bigint; hint: string }) {
+  return (
+    <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+      <dt>{label}</dt>
+      <dd className="text-right">
+        <span className="num font-semibold">{formatUsdc(value, { exact: true })}</span> dUSD
+        <span className="text-muted block text-xs">{hint}</span>
+      </dd>
     </div>
   );
 }

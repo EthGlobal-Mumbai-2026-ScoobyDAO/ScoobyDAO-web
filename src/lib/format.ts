@@ -1,7 +1,7 @@
 import { formatUnits, parseUnits } from 'viem';
 
-/** USDC and For/Against shares use 6 decimals (INTERFACES.md §2). */
-export const USDC_DECIMALS = 6;
+/** dUSD, YT and Yes/No positions all use 6 decimals. */
+export const DUSD_DECIMALS = 6;
 
 export function toUnits(value: bigint | string): bigint {
   return typeof value === 'bigint' ? value : BigInt(value || '0');
@@ -9,11 +9,11 @@ export function toUnits(value: bigint | string): bigint {
 
 /** 1250000000n → "1,250.00". `exact` shows all 6 decimals (for payouts). */
 export function formatUsdc(value: bigint | string, opts: { exact?: boolean } = {}): string {
-  const raw = formatUnits(toUnits(value), USDC_DECIMALS);
+  const raw = formatUnits(toUnits(value), DUSD_DECIMALS);
   const [int, frac = ''] = raw.split('.');
   const intFmt = BigInt(int.replace('-', '')).toLocaleString('en-US');
   const sign = int.startsWith('-') ? '-' : '';
-  const decimals = opts.exact ? frac.padEnd(USDC_DECIMALS, '0') : frac.padEnd(2, '0').slice(0, 2);
+  const decimals = opts.exact ? frac.padEnd(DUSD_DECIMALS, '0') : frac.padEnd(2, '0').slice(0, 2);
   return `${sign}${intFmt}.${decimals}`;
 }
 
@@ -22,7 +22,7 @@ export function parseUsdc(input: string): bigint | null {
   const s = input.trim().replace(/,/g, '');
   if (!/^\d+(\.\d{0,6})?$/.test(s)) return null;
   try {
-    return parseUnits(s, USDC_DECIMALS);
+    return parseUnits(s, DUSD_DECIMALS);
   } catch {
     return null;
   }
@@ -59,3 +59,14 @@ export function formatDate(unixSeconds: number): string {
     minute: '2-digit',
   });
 }
+
+/** dUSD per YT from a 1e18-scaled price, e.g. "0.0600". */
+export function formatWad(wad: bigint | undefined, dp = 4): string {
+  if (wad === undefined) return '—';
+  const s = formatUnits(wad, 18);
+  const [i, f = ''] = s.split('.');
+  return `${i}.${f.padEnd(dp, '0').slice(0, dp)}`;
+}
+
+/** 18-decimal ETH for fees, e.g. "0.0020". */
+export const formatEth = (wei: bigint, dp = 4) => formatWad(wei, dp);

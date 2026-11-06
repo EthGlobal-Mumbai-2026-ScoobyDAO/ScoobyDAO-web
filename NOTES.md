@@ -1,6 +1,73 @@
 # NOTES — conflicts, gaps and decisions
 
+> Everything below "Revamp (Nov 2026)" predates the revamp and describes the retired RiskFi spec (sealed stakes, For/Against shares, FreezeHook). It is kept as history only.
+
 Running log for `scoobydao-web`. Precedence when docs disagree: INTERFACES.md (data shapes) > CLAUDE.md (rules, scope) > THEME.md (look, copy, page features).
+
+## Revamp (Nov 2026)
+
+Rebuilt against `../SmartContracts` (V1 deployed, V2 local) and `../ScoobyDAO-backend` (`/web/v1`). Where `FRONTEND_REVAMP.md` and the revamp prompt differ, the prompt won. Nothing was committed.
+
+### Contracts and ABIs
+
+1. **No Foundry output to read.** `../SmartContracts/out` doesn't exist, forge isn't installed and `lib/` (git-ignored) is empty. To avoid hand-writing ABIs, this run compiled `src/**` with **solc-js 0.8.26** using foundry.toml's remappings, with dependencies fetched from npm into a scratch dir: OZ 4.9.6 (also used for Chainlink's `@openzeppelin/contracts@4.8.3` imports), OZ 5.3.0 (for `@5.3.0` and unversioned imports), `@chainlink/contracts` 1.5.0, `@chainlink/contracts-ccip` 2.0.0, `@uniswap/v4-core` 1.0.2. These may not be the exact commits in the contracts' `lib/`; only inherited ABI parts (CCIPReceiver `ccipReceive`/`getRouter`/`supportsInterface`, ERC1155, ERC20) depend on them. **Re-run `npm run sync:contracts` after `forge build`** to regenerate from the real `out/`. `scripts/gen-abis.mjs` reads any Foundry `out/` (`CONTRACTS_OUT`).
+2. **Payout formula.** The prompt says `s + floor(s·L·0.8/W)`. The contracts compute `s + floor(s·(L − floor(L/5))/W)` (Settlement.redeemVPT, RiskFiStakeVaultV2.claimPrincipal). These differ when `L` isn't a multiple of 5 (e.g. L=9: 8 vs 7). `src/lib/payout.ts` follows the contract; tests cover Voting.t.sol (80/20 → 96, fee 4, 1.20/unit; one-sided → Void; 2+1 vs 1 dust) and EightVoterWorkflowV2.t.sol (145/75: fee 15; winners 113.103448 / 42.413793 / 28.275862 / 14.137931 / 7.068965; dust ≤ 5).
+3. **Void refunds are pro rata.** `VoteMarket.release` scales by `principalAvailable / totalPrincipal` once the splitter is set; the UI says "refund pro rata, no fee".
+4. **One series only (V1).** `DeploySepolia.s.sol` calls `configureSplitter`, so `VoteMarket._credit` enforces `ONE_SERIES_ONLY`: after the first report takes a stake, stakes on any other report revert. The UI shows the revert reason. Contracts: confirm this is intended for the demo, or deploy a fresh market per report.
+5. **listPublished** uses `ReportRegistry.reportCount()` (ids 1..n) instead of scanning `Published` logs, because public RPCs reject unbounded `eth_getLogs`. Other history uses bounded windows (`src/protocol/clients.ts`).
+6. **No YT market addresses.** testnets.json has `YieldHookFactory` but no `YieldMarketHook` or `YieldSwapRouter` (no report has locked yet). The hook is discovered via `YieldHookFactory.HookDeployed(hook, yt)` in a bounded window; the router can only come from testnets.json. **Request:** add `YieldMarketHook` and `YieldSwapRouter` to `deployments/testnets.json` after `DeployYieldHook.s.sol`. Until then live market pages say "Market not deployed yet".
+7. **PoolKey** is built as YieldHookFactory and the tests do: sorted (dUSD, YT), fee 0, tickSpacing 1, hooks = hook. Swaps use `YieldSwapRouter.swapExactInput` (standard v4 routers can't use this hook).
+8. **V1 implied APR** isn't a contract value: the UI derives it from price ÷ years to maturity and labels it "Implied APR (from price)" + "Simulated yield". V2 uses `impliedRateWad`.
+9. **V1 YT goes to the Treasury at lock**, so users only get YT by buying it. Claimable yield is computed from `globalIndex/paidIndex/unclaimedUSDC`; vault yield reaches YT only after `YieldSplitter.checkpointYield(id)` (public), which the Claim-yield plan adds when `positiveYield() > 0`.
+10. **V2** (`NEXT_PUBLIC_PROTOCOL=v2`) expects testnets.json keys `RiskFiStakeVaultV2`, `YieldCurveHookV2`, `StakeAndSellRouterV2`, `YieldSwapRouterV2` (falls back to `YieldSwapRouter`), `CCIPStakeReceiverV2`, `CCIPStakeSenderV2`. Not deployed, so V2 always shows "Not deployed yet" live. V2 has no `lock()`; the adapter treats `now >= lockTime` as locked. `Reputation` is bound to V1 Settlement, so V2 shows no REP.
+
+### CCIP
+
+11. **StakeIntent** exactly as `src/ccip/StakeIntent.sol` / `src/v2/StakeIntentV2.sol`. Choices: `deadline = lockTime − 1` (the receiver credits only while `now <= deadline` and `now < lockTime`), `minAmount = amount` (burn/mint pool moves exact amounts), random 128-bit nonce.
+12. **extraArgs** = ExtraArgsCodec basic V3 with gas 500,000 (`0xa69dd4aa ‖ uint32 ‖ bytes4(0) ‖ bytes7(0)`), as in `script/PreflightSource.s.sol` (which got a live fee quote). The Foundry tests pass `""` against a mock router. Encoding copied from `@chainlink/contracts-ccip` 2.0.0; confirm against the pinned lib.
+13. **Fee:** `CCIPStakeSender.quoteFee(intent, amount, extraArgs)`; the web sends `fee + 10%`, and `stakeRemote` refunds any excess.
+14. **Cutoff:** remote stakes need `CCIPStakeSender.reportCutoff(id)` (set by the sender owner with `configureReportCutoff`), separate from the registry's `crossChainCutoff`. If it's 0 the UI says "Not configured for this report yet". **Request:** configure it right after each publish.
+15. **Tracking (V1)** uses state, not only logs: `VoteMarket.creditedMessage`, `CCIPStakeReceiver.delivered/recoverable/recoveryRecipient`, plus bounded `Sent`/`Credited`/`Held` log lookups for tx links. V2 has no credited view, so it relies on logs. Destination polling every 15 s while pending; "slow" after 30 min.
+16. **Recover access:** `recover(messageId, to)` is callable by the recorded recipient only, with `to == recipient`; if the recipient is zero (undecodable message) only the recovery operator can. V2: the source account. The UI shows the button only to the recipient and explains the operator case.
+17. **CCIP Explorer link:** `https://ccip.chain.link/#/side-drawer/msg/<messageId>`, taken from sample output in the Chainlink CCIP tutorials (programmable token transfers / send arbitrary data, updated 2026-05-01). The dedicated explorer docs page returned 404.
+18. localStorage key `unmasked:ccip` remembers which message ids to track (try/catch); logs and receiver state are the source of truth.
+
+### Backend `/web/v1`
+
+19. **Shape mismatch.** `publication/web_adapter.py` still returns the old `Report` (`token, chainId, manifest, manifestHash, claimId`) and `Approval` (`manifestHash`, no `reportSha256`, no `verificationUriComplete`, `verificationUri = complete || uri`). `src/lib/guards.ts` maps them to `WebReport`/`Approval` and whitelists fields, rejecting anything secret-looking (`device_code`, `*_token`, `tokens`, `secret`, …). **Request (backend):** emit `claimManifest`, `claimHash`, `reportId`, `version`; on approvals add `reportSha256`, `verificationUriComplete`, `demoIdentity`, and return `status: 'error'` instead of mapping errors to `expired`.
+20. The full v0.2 report is fetched from `/reports/:id/raw` (exact bytes, also used for the SHA-256 check). The board uses only the manifest (symbol, chain, claim text) to avoid N raw downloads.
+21. **Claim manifest gaps.** `scooby.claim-manifest/1` has no measurement method, observation window or Void rule; ClaimCard says "not stated in the claim manifest" and shows the window from chain times and the Void rule the contract enforces, labelled as such. **Request:** add `measurementMethod`, `observationWindow`, `voidRule`. The manifest still carries `excludedWallets` (old product); it is hashed so it stays in the type, but the UI never shows it.
+22. `claimHashAlg` is configurable in the backend (`sha256` | `keccak256`). The web recomputes SHA-256 only; with keccak256 the check would show ✗.
+23. **Canonical JSON** in `src/lib/hash.ts` mirrors `json.dumps(sort_keys=True, separators=(',',':'), ensure_ascii=False)`: keys sorted by code point, integers only (floats rejected, as the backend does). Lone surrogates would still differ (JSON.stringify escapes them, Python writes them raw); floats would format differently.
+24. **Brand conflict in data.** The historical bundle's own text says "No new Scooby DAO assessment has been made." It's frozen report content, rendered as-is. **Request (backend):** use "Unmasked" in generated report text.
+25. Evidence records have no source/method/units fields; method and units are shown per measurement inside each pillar.
+26. **Artifacts:** no public route serves bundle files or the rendered reader/PDF, so Artifacts lists kind/availability/path/sha256 without links (no iframe). **Request:** a `readerUrl`/`pdfUrl` on the report.
+27. `demoIdentity` isn't sent by the backend; fixture approvals set it. **Request:** send it when World proofs are mocked at the event.
+28. `/demo/scan` isn't part of `/web/v1`; the "Send Sniff to scan" button and `NEXT_PUBLIC_DEMO_MODE` were removed.
+
+### Faucet and REP
+
+29. **dUSD faucet:** DemoUSD is a Chainlink `BurnMintERC20` with role-gated mint, so there's no public faucet. `GetTestFunds` links `NEXT_PUBLIC_FAUCET_URL` if set, else "Ask the team for test dUSD" + token address + Add-to-wallet (`wallet_watchAsset`). **Request:** a minter-role faucet contract or a backend drip.
+30. **REP (flagged, partial).** Current World docs (docs.world.org/world-id/reference/idkit, read Nov 2026): IDKit **4.x**, `@worldcoin/idkit`, component `IDKitRequestWidget` with `app_id`, `action`, `rp_context`, `preset={orbLegacy({ signal })}`, `handleVerify`, `onSuccess`; `rp_context` must be signed by the backend. Neither that nor a REP authorization exists, and the deployed `identitySigner` is the deployer key (mock). So the widget is **not installed**; `RepCard` implements success / "This human already claimed a badge for this report" / cancelled-ineligible with a fixture proof only. Proposed endpoints for the backend owner (also in INTERFACES.md §5):
+    - `GET /web/v1/rep/context?reportId=` → `{ rp_id, nonce, created_at, expires_at, signature }`
+    - `POST /web/v1/rep/authorize` `{ reportId, recipient, proof: IDKitResult }` → `200 { reportId, recipient, scopedNullifier, nonce, expiry, signature }` for `Reputation.claimWinnerREP`; `409` already claimed; `400` cancelled/invalid; `403` ineligible (`Settlement.eligibleWinner` false). Verify via `POST https://developer.world.org/api/v4/verify/{rp_id}`; nullifier unique per (nullifier, action).
+
+### Web decisions
+
+31. **Protocol interface deviations** from the prompt's sketch: write builders are `async` (they read allowances); `stakeLocal/stakeRemote/swapYT/stakeAndSell/claimYield` take the account; `quoteYT/swapYT/claimYield` take the report id; extra methods `quoteRemote`, `quoteStakeAndSell`, `claimLPYield`, `claimRep`, `trackCcip`, `chainTime`, `ytVolume`. `Decision` also carries the proposed outcome.
+32. **Fixture selection:** the fixture chain is used when `NEXT_PUBLIC_USE_FIXTURES=true`, when the protocol's addresses are missing, **or when the backend is in fixture mode** (so fixture reports never point at real report ids). Fixture state is in memory and resets on full reload; the demo clock is wall time plus an offset.
+33. **Chain time:** phases use `getBlock('latest').timestamp`; countdowns interpolate locally between 12 s refreshes (one shared 1 Hz clock). Backend times (approval expiry) use the local clock.
+34. Every write runs through one plan runner (`src/lib/runPlan.ts`): wrong-chain switch, simulate, send, receipt, revert replay at the receipt block, toast with Etherscan/Arbiscan link. Fixture tx hashes are shown as "fixture tx", never linked.
+35. Terminology: For/Against, frozen, trap, sealed, commit/reveal and excluded-wallet copy are gone; THEME.md §2.3, §5–§7 and the checklist were updated. Status chips: Draft, Awaiting approval, Denied, Expired, Open, Cross-chain closed, Locked, Matured, Proposed, Challenged, Final · Yes, Final · No, Void; all inks pass 4.5:1 (`node scripts/contrast.mjs`).
+36. Footer no longer lists repo names (they're derived from a studio character name; the brand rule keeps them internal). Internal storage keys like `scoobydao:theme` were left.
+37. LP: `NEXT_PUBLIC_LP_ENABLED` shows LP shares and Claim LP yield; add/remove liquidity are not wired.
+38. Screenshots: `screenshots/p3-approve-apr-*` (desktop + mobile) were overwritten with the new states, plus a new `-error` pair. Older screenshots of retired pages were left in place, not deleted.
+39. Checks run: axe-core WCAG 2 A/AA + best practice on 12 pages, 0 violations (after fixing one `<dl>` structure on the market page); Lighthouse `/` mobile 97 / desktop 100 performance, a11y 100, best practices 96 (the refused `/health` request without a backend).
+40. A `next dev -p 3100` server from an earlier session was running during this work; it was left alone. Verification used a production build on port 3217.
+
+---
+
+# Pre-revamp notes (historical)
 
 ## Conflicts between docs
 

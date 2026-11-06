@@ -394,3 +394,19 @@ body::before {
     transition: none;
   }
 }
+
+/* Small primary action used for per-item claim buttons (/me). */
+.btn-claim {
+  margin-top: 0.25rem;
+  border-radius: 0.75rem;
+  background: var(--beam-400);
+  color: var(--on-beam);
+  padding: 0.375rem 0.875rem;
+  font-weight: 600;
+}
+.btn-claim:hover {
+  filter: brightness(1.05);
+}
+.btn-claim:disabled {
+  opacity: 0.5;
+}

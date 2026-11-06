@@ -14,6 +14,17 @@ const pairs = {
   onBeam: { bg: ['#ffc857'], fg: { night: '#0b1026' } },
 };
 const mix = (a, b, t) => '#' + [0, 2, 4].map((i) => Math.round(parseInt(a.slice(1 + i, 3 + i), 16) * t + parseInt(b.slice(1 + i, 3 + i), 16) * (1 - t)).toString(16).padStart(2, '0')).join('');
+// Every status chip tone (src/components/StatusChip.tsx), ink on its tint, both themes.
+// Draft/Denied/Expired/Void use muted on a ≤12% fog tint; Final · No uses text on fog-100 8%.
+const STATUS_TONES = {
+  fog: { dark: ['#9ba5d0', '#7a86b8', 0.12], light: ['#4a5480', '#7a86b8', 0.12] },
+  ghost: { dark: ['#b8a9ff', '#b8a9ff', 0.12], light: ['#5a45c9', '#b8a9ff', 0.12] },
+  clue: { dark: ['#2ec4b6', '#2ec4b6', 0.12], light: ['#0b7369', '#2ec4b6', 0.12] },
+  beam: { dark: ['#ffc857', '#ffc857', 0.14], light: ['#8a5a00', '#ffc857', 0.14] },
+  mask: { dark: ['#ff7a52', '#e4572e', 0.14], light: ['#9c2d0f', '#e4572e', 0.14] },
+  cleared: { dark: ['#e8ecff', '#e8ecff', 0.08], light: ['#0b1026', '#e8ecff', 0.08] },
+};
+const PAGE = { dark: '#0b1026', light: '#f6f1e3' };
 const chipPairs = [
   ['mask-chip', '#9c2d0f', mix('#e4572e', '#f6f1e3', 0.14)],
   ['beam-chip', '#8a5a00', mix('#ffc857', '#f6f1e3', 0.14)],
@@ -22,6 +33,8 @@ const chipPairs = [
   ['dark-mask-chip', '#ff7a52', mix('#e4572e', '#151b3d', 0.14)],
   ['dark-clue-chip', '#2ec4b6', mix('#2ec4b6', '#151b3d', 0.12)],
 ];
+for (const [tone, themes] of Object.entries(STATUS_TONES))
+  for (const [theme, [ink, tint, t]] of Object.entries(themes)) chipPairs.push([`status-${tone}-${theme}`, ink, mix(tint, PAGE[theme], t)]);
 let fail = 0;
 for (const [n, f, b] of chipPairs) {
   const r = ratio(f, b); if (r < 4.5) fail++;

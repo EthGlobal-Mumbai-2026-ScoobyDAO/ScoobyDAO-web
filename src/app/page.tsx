@@ -3,7 +3,7 @@ import { Hero } from '@/components/landing/Hero';
 import { HeroSceneGate } from '@/components/landing/HeroSceneGate';
 import { HowItWorks } from '@/components/landing/HowItWorks';
 import { StatsStrip } from '@/components/landing/StatsStrip';
-import { TrustSection } from '@/components/landing/TrustSection';
+import { BuiltWith, TrustSection } from '@/components/landing/TrustSection';
 
 export default function Home() {
   return (
@@ -12,6 +12,7 @@ export default function Home() {
         <Hero scene={<HeroSceneGate />} />
         <StatsStrip />
         <HowItWorks />
+        <BuiltWith />
         <TrustSection />
       </main>
       <Footer />

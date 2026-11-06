@@ -36,6 +36,7 @@
     "axe-core": "^4.14.0",
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.4.5",
+    "json-schema-to-typescript": "^15.0.4",
     "lighthouse": "^13.6.0",
     "prettier": "^3.9.10",
     "prettier-plugin-tailwindcss": "^0.8.1",

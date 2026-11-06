@@ -2,84 +2,98 @@
 
 import Link from 'next/link';
 import { Countdown } from '@/components/Countdown';
+import { DemoClockLabel } from '@/components/HonestyLabels';
 import { StatusChip } from '@/components/StatusChip';
-import { TxLink } from '@/components/TxLink';
-import { CLAIM_TYPE_LABEL } from '@/lib/claimText';
-import { shortHex } from '@/lib/format';
-import type { ClaimView, Report } from '@/lib/types';
+import { formatDate } from '@/lib/format';
+import type { WebReport } from '@/lib/types';
+import { nextDeadline, type MarketView } from '@/protocol';
+import { useChainTime } from '@/protocol/hooks';
 
-export function CaseHeader({
-  claim,
-  report,
-  tab,
-}: {
-  claim: ClaimView;
-  report?: Report;
-  tab: 'stake' | 'market';
-}) {
-  const types = report?.manifest.claims.map((c) => CLAIM_TYPE_LABEL[c.type]) ?? [];
+const TABS = [
+  ['stake', 'Stake'],
+  ['market', 'Trade YT'],
+  ['result', 'Result & claims'],
+] as const;
+
+export function CaseHeader({ market: m, report, tab }: { market: MarketView; report?: WebReport; tab: (typeof TABS)[number][0] }) {
+  const now = useChainTime();
+  const next = nextDeadline(m);
   return (
     <header className="space-y-5">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
-        <h1 className="font-display text-4xl sm:text-5xl">Case #{claim.claimId}</h1>
-        <StatusChip status={claim.status} size="lg" />
+        <h1 className="font-display text-4xl sm:text-5xl">
+          {report?.claimManifest.symbol ? `${report.claimManifest.symbol} · ` : ''}Case #{m.reportId.toString()}
+        </h1>
+        <StatusChip status={m.phase} size="lg" />
+        {m.demoClock && <DemoClockLabel />}
       </div>
+      {report && <p className="max-w-3xl text-lg">{report.claimManifest.claimText}</p>}
       <dl className="grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
         <div>
-          <dt className="text-muted">Token</dt>
-          <dd className="mt-0.5">
-            <TxLink kind="token" value={claim.token} />
-          </dd>
+          <dt className="text-muted">Cross-chain cutoff</dt>
+          <dd className="mt-0.5">{formatDate(m.crossChainCutoff)}</dd>
         </div>
         <div>
-          <dt className="text-muted">Claim</dt>
-          <dd className="mt-0.5">{types.length ? types.join(', ') : '—'}</dd>
+          <dt className="text-muted">Lock</dt>
+          <dd className="mt-0.5">{formatDate(m.lockTime)}</dd>
         </div>
-        {claim.status === 'Open' && (
+        <div>
+          <dt className="text-muted">Maturity</dt>
+          <dd className="mt-0.5">{formatDate(m.maturity)}</dd>
+        </div>
+        {next && (
           <div>
-            <dt className="text-muted">Staking closes in</dt>
+            <dt className="text-muted">{next.label} in</dt>
             <dd className="mt-0.5 text-base font-semibold">
-              <Countdown to={claim.windowEnd} endedLabel="Closed" />
-            </dd>
-          </div>
-        )}
-        {claim.evidenceHash && (
-          <div>
-            <dt className="text-muted">Evidence hash</dt>
-            <dd className="num mt-0.5" title={claim.evidenceHash}>
-              {shortHex(claim.evidenceHash, 10, 6)}
-            </dd>
-          </div>
-        )}
-        {claim.triggerTxHash && (
-          <div>
-            <dt className="text-muted">Trigger tx</dt>
-            <dd className="mt-0.5">
-              <TxLink value={claim.triggerTxHash} />
+              <Countdown to={next.at} now={now} endedLabel="now" />
             </dd>
           </div>
         )}
       </dl>
-      <nav aria-label="Case sections" className="border-line flex gap-1 border-b text-sm">
+      <nav aria-label="Case sections" className="border-line flex gap-1 overflow-x-auto border-b text-sm">
         {report && (
-          <Link
-            href={`/cases/${report.id}`}
-            className="text-muted hover:text-text -mb-px border-b-2 border-transparent px-3 py-2"
-          >
+          <Link href={`/cases/${encodeURIComponent(report.id)}`} className="text-muted hover:text-text -mb-px shrink-0 border-b-2 border-transparent px-3 py-2">
             Case file
           </Link>
         )}
-        {(['stake', 'market'] as const).map((t) => (
+        {TABS.map(([t, label]) => (
           <Link
             key={t}
-            href={`/case/${claim.claimId}/${t}`}
+            href={`/case/${m.reportId}/${t}`}
             aria-current={tab === t ? 'page' : undefined}
-            className={`-mb-px border-b-2 px-3 py-2 ${tab === t ? 'border-beam text-text' : 'text-muted hover:text-text border-transparent'}`}
+            className={`-mb-px shrink-0 border-b-2 px-3 py-2 ${tab === t ? 'border-beam text-text' : 'text-muted hover:text-text border-transparent'}`}
           >
-            {t === 'stake' ? 'Stake' : 'Trade shares'}
+            {label}
           </Link>
         ))}
       </nav>
     </header>
   );
+}
+
+/** Shared loading / error frame for /case/[id]/* pages. */
+export function CaseFrame({ state, children }: { state: { isError: boolean; error?: Error | null; data?: unknown }; children: React.ReactNode }) {
+  if (state.isError)
+    return (
+      <main className="mx-auto max-w-6xl px-4 py-10">
+        <div role="alert" className="glass p-6">
+          <p className="font-display text-2xl">This case went cold.</p>
+          <p className="text-muted mt-2">{state.error?.message}</p>
+          <Link href="/cases" className="text-beam-ink mt-4 inline-block underline">
+            Back to the case board
+          </Link>
+        </div>
+      </main>
+    );
+  if (!state.data)
+    return (
+      <main className="mx-auto max-w-6xl space-y-6 px-4 py-10" aria-busy="true" aria-label="Loading case">
+        <div className="sweep h-12 w-96" />
+        <div className="grid gap-6 lg:grid-cols-[1.3fr_1fr]">
+          <div className="sweep h-96" />
+          <div className="sweep h-72" />
+        </div>
+      </main>
+    );
+  return <>{children}</>;
 }

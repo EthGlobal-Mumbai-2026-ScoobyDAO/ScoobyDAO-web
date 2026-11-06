@@ -7,11 +7,14 @@ import { Banner } from '@/components/Banner';
 import { Countdown } from '@/components/Countdown';
 import { HashText } from '@/components/HashText';
 import { TxLink } from '@/components/TxLink';
-import { hashMatches } from '@/lib/canonical';
-import { claimSentence } from '@/lib/claimText';
-import { ApiError } from '@/lib/api';
-import { useApproval, useReport } from '@/lib/queries';
-import type { Approval, Report } from '@/lib/types';
+import { useEffect, useState } from 'react';
+import { DemoIdentityLabel } from '@/components/HonestyLabels';
+import { ClaimCard } from '@/components/report/ClaimCard';
+import { ApiError, type ReportWithRaw } from '@/lib/api';
+import { chainName } from '@/lib/explorer';
+import { claimHashOf, sameHash } from '@/lib/hash';
+import { useApproval, useFixturesMode, useReport } from '@/lib/queries';
+import type { Approval, Hex } from '@/lib/types';
 
 // Projector screen for the World Agent Pass sign-off. Display only: every state shown
 // here comes from GET /approvals/:id (polled every 2s); the UI never decides approval.
@@ -20,11 +23,8 @@ export function ApproveScreen({ id }: { id: string }) {
   const approval = useApproval(id);
   const a = approval.data;
   const final = a && a.status !== 'pending';
-  const approved = a?.status === 'approved' || a?.status === 'spent';
-  // After approval, keep polling the report until the backend has a claimId to link to.
-  const report = useReport(a?.reportId, {
-    pollMs: approved ? (q) => (q.state.data?.claimId ? false : 3000) : false,
-  });
+  const report = useReport(a?.reportId);
+  const fixtures = useFixturesMode().data ?? false;
   const r = report.data;
 
   if (approval.isError) {
@@ -53,14 +53,14 @@ export function ApproveScreen({ id }: { id: string }) {
     );
 
   return (
-    <Shell status={a.status}>
+    <Shell status={a.status} demoIdentity={a.demoIdentity}>
       <div className="grid gap-8 lg:grid-cols-[1.25fr_1fr] lg:gap-12">
         <ClaimToCheck approval={a} report={r} />
         <div
           className={`lg:sticky lg:top-24 lg:self-start ${final ? 'order-first lg:order-none' : ''}`}
         >
           {final ? (
-            <Result approval={a} report={r} onRefresh={() => report.refetch()} />
+            <Result approval={a} simulated={fixtures} />
           ) : (
             <CodePanel approval={a} />
           )}
@@ -70,19 +70,24 @@ export function ApproveScreen({ id }: { id: string }) {
   );
 }
 
-function Shell({ children, status }: { children: React.ReactNode; status?: Approval['status'] }) {
+function Shell({ children, status, demoIdentity }: { children: React.ReactNode; status?: Approval['status']; demoIdentity?: boolean }) {
   return (
     <main className="mx-auto max-w-7xl px-4 py-8 text-lg sm:px-6 sm:py-12">
       <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="font-display text-4xl sm:text-5xl">Human sign-off</h1>
           <p className="text-muted mt-2 max-w-2xl text-xl">
-            No agent can open a case alone. A registered reviewer checks this claim and approves or
-            denies it in World App.
+            No agent can open a case alone. An enrolled reviewer checks this exact report and claim and
+            approves or denies it in World App.
           </p>
         </div>
         {status && <ApprovalChip status={status} />}
       </header>
+      {demoIdentity && (
+        <p className="mb-6">
+          <DemoIdentityLabel />
+        </p>
+      )}
       {children}
     </main>
   );
@@ -93,12 +98,16 @@ const CHIP: Record<Approval['status'], { label: string; cls: string }> = {
     label: 'Waiting for the reviewer',
     cls: 'text-ghost-ink border-[color-mix(in_srgb,var(--ghost-300)_50%,transparent)]',
   },
+  error: {
+    label: 'Verification unavailable',
+    cls: 'text-mask-ink border-[color-mix(in_srgb,var(--mask-500)_55%,transparent)]',
+  },
   approved: {
-    label: 'Approved',
+    label: 'Approved · publishing',
     cls: 'text-clue-ink border-[color-mix(in_srgb,var(--clue-500)_55%,transparent)]',
   },
   spent: {
-    label: 'Approved · published',
+    label: 'Published onchain',
     cls: 'text-clue-ink border-[color-mix(in_srgb,var(--clue-500)_55%,transparent)]',
   },
   denied: {
@@ -110,7 +119,7 @@ const CHIP: Record<Approval['status'], { label: string; cls: string }> = {
     cls: 'text-beam-ink border-[color-mix(in_srgb,var(--beam-400)_55%,transparent)]',
   },
   rejected_not_reviewer: {
-    label: 'Not a reviewer',
+    label: 'Not an enrolled reviewer',
     cls: 'text-mask-ink border-[color-mix(in_srgb,var(--mask-500)_55%,transparent)]',
   },
 };
@@ -138,88 +147,74 @@ function ApprovalChip({ status }: { status: Approval['status'] }) {
   );
 }
 
-function ClaimToCheck({ approval, report }: { approval: Approval; report?: Report }) {
-  const m = report?.manifest;
+function ClaimToCheck({ approval, report }: { approval: Approval; report?: ReportWithRaw }) {
+  const [recomputed, setRecomputed] = useState<Hex | null>(null);
+  useEffect(() => {
+    if (report) void claimHashOf(report.claimManifest).then(setRecomputed).catch(() => setRecomputed(null));
+  }, [report]);
   const hashOk = report
-    ? approval.manifestHash.toLowerCase() === report.manifestHash.toLowerCase() &&
-      hashMatches(report.manifest, report.manifestHash)
+    ? sameHash(approval.claimHash, report.claimHash) && (!recomputed || sameHash(recomputed, report.claimHash))
     : undefined;
+  const reportSha = approval.reportSha256 ?? report?.reportSha256;
 
   return (
     <section aria-labelledby="claim-h" className="glass p-6 sm:p-8">
       <h2 id="claim-h" className="text-muted text-xl font-semibold">
-        {approval.status === 'pending'
-          ? 'Check this claim before approving'
-          : 'The claim the reviewer saw'}
+        {approval.status === 'pending' ? 'Check this claim before approving' : 'The claim the reviewer saw'}
       </h2>
 
       <dl className="mt-6 space-y-6">
         <div>
-          <dt className="text-muted text-base">Token</dt>
+          <dt className="text-muted text-base">Report</dt>
           <dd className="mt-1 text-xl">
             {report ? (
-              <TxLink kind="token" value={report.token} full />
+              <>
+                <span className="font-semibold">{report.report.identity.symbol}</span>{' '}
+                <span className="text-muted">on {chainName(report.report.identity.chain_id)}</span>
+                <span className="num mt-1 block text-base break-all">{report.report.identity.address}</span>
+              </>
             ) : (
               <span className="sweep inline-block h-7 w-96 max-w-full" />
             )}
           </dd>
-          <dd className="text-muted mt-1 text-base">
-            Chain: Sepolia testnet <span className="num">({report?.chainId ?? 11155111})</span>
-          </dd>
-        </div>
-
-        <div>
-          <dt className="text-muted text-base">
-            {m && m.claims.length > 1 ? `Claims (${m.claims.length})` : 'Claim'}
-          </dt>
-          <dd className="mt-2">
-            {m ? (
-              <ol className="space-y-3">
-                {m.claims.map((c) => (
-                  <li
-                    key={c.id}
-                    className="flex gap-3 text-2xl leading-snug font-medium sm:text-[1.7rem]"
-                  >
-                    {m.claims.length > 1 && (
-                      <span className="num text-muted pt-1 text-lg">{c.id + 1}.</span>
-                    )}
-                    <span>{claimSentence(c)}</span>
-                  </li>
-                ))}
-              </ol>
-            ) : (
-              <span className="sweep block h-16" />
-            )}
-          </dd>
-          {m && (
-            <dd className="text-muted mt-3 text-base">
-              Case window: <span className="num">{Math.round(m.windowSeconds / 3600)}</span> hours ·
-              Wallets barred from betting: <span className="num">{m.excludedWallets.length}</span>
+          {report && (
+            <dd className="text-muted mt-1 text-base">
+              Version <span className="num text-text">{report.version}</span> · schema v{report.report.schema_version}
             </dd>
           )}
         </div>
 
         <div>
-          <dt className="text-muted text-base">Manifest hash (goes onchain)</dt>
+          <dt className="sr-only">Claim</dt>
+          <dd>{report ? <ClaimCard manifest={report.claimManifest} size="xl" /> : <span className="sweep block h-40" />}</dd>
+        </div>
+
+        <div>
+          <dt className="text-muted text-base">Claim hash (goes onchain as claimHash)</dt>
           <dd className="mt-1">
-            <HashText value={approval.manifestHash} size="xl" label="manifest hash" />
+            <HashText value={approval.claimHash} size="xl" label="claim hash" />
           </dd>
           {hashOk !== undefined && (
-            <dd
-              className={`mt-2 inline-flex items-center gap-2 text-base ${hashOk ? 'text-clue-ink' : 'text-mask-ink'}`}
-            >
+            <dd className={`mt-2 inline-flex items-center gap-2 text-base ${hashOk ? 'text-clue-ink' : 'text-mask-ink'}`}>
               {hashOk ? <CheckCircle2 size={18} aria-hidden /> : <XCircle size={18} aria-hidden />}
-              {hashOk
-                ? 'Matches the case file (recomputed in this browser)'
-                : "Doesn't match the case file. Don't approve."}
+              {hashOk ? 'Matches the case file (recomputed in this browser)' : "Doesn't match the case file. Don't approve."}
             </dd>
           )}
         </div>
+
+        {reportSha && (
+          <div>
+            <dt className="text-muted text-base">Report SHA-256 (goes onchain as reportHash)</dt>
+            <dd className="mt-1">
+              <HashText value={reportSha} size="xl" label="report SHA-256" />
+            </dd>
+          </div>
+        )}
       </dl>
 
       {report && (
         <p className="mt-6 text-base">
-          <Link href={`/cases/${report.id}`} className="text-beam-ink underline underline-offset-4">
+          <Link href={`/cases/${encodeURIComponent(report.id)}`} className="text-beam-ink underline underline-offset-4">
             Open the full case file
           </Link>
         </p>
@@ -228,7 +223,7 @@ function ClaimToCheck({ approval, report }: { approval: Approval; report?: Repor
   );
 }
 
-function CodePanel({ approval }: { approval: Approval }) {
+export function CodePanel({ approval }: { approval: Approval }) {
   return (
     <section
       aria-labelledby="code-h"
@@ -249,11 +244,11 @@ function CodePanel({ approval }: { approval: Approval }) {
         World App shows only the requester and this code. Check the claim above before approving.
       </p>
 
-      {approval.verificationUri && (
+      {(approval.verificationUriComplete ?? approval.verificationUri) && (
         <div className="mt-6 flex flex-col gap-6 sm:flex-row sm:items-center">
           <div className="w-fit rounded-xl bg-white p-3">
             <QRCodeSVG
-              value={approval.verificationUri}
+              value={approval.verificationUriComplete ?? approval.verificationUri!}
               size={176}
               marginSize={0}
               level="M"
@@ -261,7 +256,7 @@ function CodePanel({ approval }: { approval: Approval }) {
             />
           </div>
           <a
-            href={approval.verificationUri}
+            href={approval.verificationUri ?? approval.verificationUriComplete}
             target="_blank"
             rel="noreferrer"
             className="bg-beam text-on-beam inline-flex items-center justify-center gap-2 rounded-xl px-6 py-4 text-lg font-semibold hover:brightness-105"
@@ -284,94 +279,68 @@ function CodePanel({ approval }: { approval: Approval }) {
   );
 }
 
-function Result({
-  approval,
-  report,
-  onRefresh,
-}: {
-  approval: Approval;
-  report?: Report;
-  onRefresh: () => void;
-}) {
+export function Result({ approval, simulated }: { approval: Approval; simulated?: boolean }) {
   switch (approval.status) {
     case 'approved':
+      return (
+        <Banner tone="success" size="xl" title="Approved — publishing…">
+          <p>The reviewer approved this exact claim. The backend is publishing it onchain.</p>
+          {approval.publishTxHash && (
+            <p className="mt-3 text-base">
+              Publish tx: <TxLink value={approval.publishTxHash} simulated={simulated} />
+            </p>
+          )}
+          <p className="text-muted mt-3 text-base">This page keeps checking every 2 seconds.</p>
+        </Banner>
+      );
     case 'spent':
-      return <ApprovedResult approval={approval} report={report} onRefresh={onRefresh} />;
+      return (
+        <Banner tone="success" size="xl" title="Published onchain">
+          {approval.publishTxHash && (
+            <p className="text-base">
+              Publish tx: <TxLink value={approval.publishTxHash} simulated={simulated} />
+            </p>
+          )}
+          {approval.onchainReportId ? (
+            <Link
+              href={`/case/${approval.onchainReportId}`}
+              className="bg-beam text-on-beam mt-5 inline-flex items-center gap-2 rounded-xl px-6 py-3 text-lg font-semibold hover:brightness-105"
+            >
+              Go to case #{approval.onchainReportId}
+            </Link>
+          ) : (
+            <p className="text-muted mt-4 text-base">The case link appears once the backend reports the onchain id.</p>
+          )}
+        </Banner>
+      );
     case 'denied':
       return (
-        <Banner tone="danger" size="xl" title="Denied — no case opened">
-          <p>Denied — draft only, no market opened</p>
-          <p className="text-muted mt-2 text-base">
-            The reviewer turned this claim down. It stays a draft in the case files; nothing was
-            published onchain.
-          </p>
+        <Banner tone="danger" size="xl" title="Denied — no case opened.">
+          <p>Draft only, no market opened.</p>
+          <p className="text-muted mt-2 text-base">The reviewer turned this claim down. Nothing was published onchain.</p>
         </Banner>
       );
     case 'expired':
       return (
-        <Banner tone="warning" size="xl" title="Expired — no case opened">
-          <p>Expired — draft only, no market opened</p>
-          <p className="text-muted mt-2 text-base">
-            Nobody approved before the code ran out. Request a new sign-off from the case file to
-            try again.
-          </p>
+        <Banner tone="warning" size="xl" title="Expired — no case opened.">
+          <p className="text-muted text-base">Nobody approved before the code ran out. Request a new approval from the case file.</p>
         </Banner>
       );
     case 'rejected_not_reviewer':
       return (
-        <Banner
-          tone="danger"
-          size="xl"
-          icon={UserX}
-          title="Not a registered reviewer — nothing published"
-        >
-          <p>This World ID isn&apos;t a registered reviewer — nothing published</p>
+        <Banner tone="danger" size="xl" icon={UserX} title="This World ID isn't an enrolled reviewer — nothing published.">
+          <p className="text-muted text-base">Only enrolled reviewers can approve a claim.</p>
+        </Banner>
+      );
+    case 'error':
+      return (
+        <Banner tone="danger" size="xl" title="World verification unavailable — nothing published.">
+          {approval.detail && <p className="text-muted text-base">{approval.detail}</p>}
         </Banner>
       );
     default:
       return null;
   }
-}
-
-function ApprovedResult({
-  approval,
-  report,
-  onRefresh,
-}: {
-  approval: Approval;
-  report?: Report;
-  onRefresh: () => void;
-}) {
-  const claimId = report?.claimId;
-  return (
-    <Banner tone="success" size="xl" title="Case opened">
-      <p>Approved — claim published</p>
-      {approval.publishTxHash && (
-        <p className="mt-3 text-base">
-          Publish tx: <TxLink value={approval.publishTxHash} />
-        </p>
-      )}
-      {claimId ? (
-        <Link
-          href={`/case/${claimId}/stake`}
-          className="bg-beam text-on-beam mt-5 inline-flex items-center gap-2 rounded-xl px-6 py-3 text-lg font-semibold hover:brightness-105"
-        >
-          Go to case #{claimId}
-        </Link>
-      ) : (
-        <p className="text-muted mt-4 text-base">
-          The case link appears once the publish transaction confirms.{' '}
-          <button
-            type="button"
-            onClick={onRefresh}
-            className="text-beam-ink underline underline-offset-4"
-          >
-            Check again
-          </button>
-        </p>
-      )}
-    </Banner>
-  );
 }
 
 function Skeleton() {

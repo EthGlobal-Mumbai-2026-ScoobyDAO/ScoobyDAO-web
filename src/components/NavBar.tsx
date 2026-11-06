@@ -11,6 +11,7 @@ import { WalletButton } from './WalletButton';
 const LINKS = [
   { href: '/cases', label: 'Cases' },
   { href: '/reports', label: 'Reports' },
+  { href: '/me', label: 'My positions' },
   { href: '/#how-it-works', label: 'How it works', section: 'how-it-works' },
 ] as const;
 
@@ -52,7 +53,9 @@ export function NavBar() {
                 ? pathname.startsWith('/case')
                 : l.href === '/reports'
                   ? pathname.startsWith('/reports')
-                  : false;
+                  : l.href === '/me'
+                    ? pathname === '/me'
+                    : false;
             return (
               <li key={l.href}>
                 <NavLink
