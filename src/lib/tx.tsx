@@ -41,6 +41,12 @@ export interface TxSpec {
   force?: boolean;
   /** Called with the decoded revert reason when the tx fails. */
   onFailed?: (reason: string) => void;
+  /**
+   * Called when the tx was broadcast but its outcome could not be read (receipt wait threw:
+   * RPC error, timeout, dropped connection). `run` still resolves false, but the tx may yet be
+   * mined, so callers must not undo local state that a mined tx depends on.
+   */
+  onOutcomeUnknown?: (hash: Hex) => void;
 }
 
 // Call sites build params from the typed ABIs in src/contracts; the runner only forwards them.
@@ -112,7 +118,14 @@ export function TxProvider({ children }: { children: ReactNode }) {
         update(id, { phase: 'confirmed' });
         return true;
       } catch (e) {
-        return fail(revertReason(e), hash);
+        if (hash) {
+          spec.onOutcomeUnknown?.(hash);
+          return fail(
+            `${revertReason(e)} — the transaction was sent; check its status on the explorer`,
+            hash,
+          );
+        }
+        return fail(revertReason(e));
       }
     },
     [simulated, update],

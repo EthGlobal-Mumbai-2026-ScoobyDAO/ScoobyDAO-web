@@ -86,8 +86,14 @@ export function CommitForm({
         });
         if (!ok) return clearStake(chainId, claim.claimId, account);
       }
+      // A commit that was sent but not confirmed may still be mined. Its salt is the only way to
+      // reveal it, so keep the saved salt (and backup) unless the commit definitely failed.
+      let commitMaybeMined = false;
       const ok = await run({
         label: 'Commit sealed stake',
+        onOutcomeUnknown: () => {
+          commitMaybeMined = true;
+        },
         live: () => ({
           address: addresses.VerdictMarket,
           abi: verdictMarketAbi,
@@ -96,7 +102,13 @@ export function CommitForm({
         }),
         fixture: () => fixtureChain.commit(claim.claimId, account, commitment, amount),
       });
-      if (!ok) return clearStake(chainId, claim.claimId, account);
+      if (!ok) {
+        if (commitMaybeMined) {
+          onCommitted(stake); // show the sealed stake so the user can reveal once it lands
+          return;
+        }
+        return clearStake(chainId, claim.claimId, account);
+      }
       onCommitted(stake);
     } finally {
       setBusy(false);
