@@ -39,6 +39,8 @@ export interface TxSpec {
   fixture: () => void;
   /** Send without a pre-flight simulation (the "force it anyway" demo on a frozen pool). */
   force?: boolean;
+  /** Called with the decoded revert reason when the tx fails. */
+  onFailed?: (reason: string) => void;
 }
 
 // Call sites build params from the typed ABIs in src/contracts; the runner only forwards them.
@@ -65,6 +67,11 @@ export function TxProvider({ children }: { children: ReactNode }) {
   const run = useCallback(
     async (spec: TxSpec): Promise<boolean> => {
       const id = Date.now() + Math.random();
+      const fail = (reason: string, hash?: Hex) => {
+        update(id, { phase: 'failed', reason, ...(hash ? { hash } : {}) });
+        spec.onFailed?.(reason);
+        return false;
+      };
       setToasts((ts) => [...ts.slice(-3), { id, label: spec.label, phase: 'wallet', simulated }]);
 
       if (simulated) {
@@ -77,11 +84,7 @@ export function TxProvider({ children }: { children: ReactNode }) {
           update(id, { phase: 'confirmed' });
           return true;
         } catch (e) {
-          update(id, {
-            phase: 'failed',
-            reason: e instanceof FixtureRevert ? e.reason : revertReason(e),
-          });
-          return false;
+          return fail(e instanceof FixtureRevert ? e.reason : revertReason(e));
         }
       }
 
@@ -104,14 +107,12 @@ export function TxProvider({ children }: { children: ReactNode }) {
           } catch (e) {
             reason = revertReason(e);
           }
-          update(id, { phase: 'failed', reason });
-          return false;
+          return fail(reason);
         }
         update(id, { phase: 'confirmed' });
         return true;
       } catch (e) {
-        update(id, { phase: 'failed', hash, reason: revertReason(e) });
-        return false;
+        return fail(revertReason(e), hash);
       }
     },
     [simulated, update],

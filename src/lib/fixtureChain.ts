@@ -122,6 +122,34 @@ export const fixtureChain = {
     else t.againstRevealed = String(BigInt(t.againstRevealed) + amount);
     emit();
   },
+  /** Simple quote around the implied probability with 0.3% fee and linear price impact. */
+  quote(claimId: string, side: 0 | 1, buy: boolean, amountIn: bigint): bigint {
+    const c = claims.find((x) => x.claimId === claimId);
+    const pFor = c?.impliedForProbability ?? 0.5;
+    const price = side === 0 ? pFor : 1 - pFor; // USDC per share
+    const depth = 20_000n * U;
+    const impact = Number((amountIn * 10_000n) / (depth + amountIn)) / 10_000;
+    const afterFee = (Number(amountIn) * 0.997 * (1 - impact)) / 1;
+    return BigInt(Math.floor(buy ? afterFee / Math.max(price, 0.01) : afterFee * price));
+  },
+  swap(claimId: string, a: string, side: 0 | 1, buy: boolean, amountIn: bigint, minOut: bigint) {
+    if (statusOf(claimId) !== 'Open') throw new FixtureRevert('RiskFi: claim frozen');
+    const p = this.position(claimId, a);
+    const out = this.quote(claimId, side, buy, amountIn);
+    if (out < minOut) throw new FixtureRevert('V4TooLittleReceived');
+    const key2 = side === 0 ? 'forShares' : 'againstShares';
+    if (buy) {
+      if (this.usdcBalance(a) < amountIn)
+        throw new FixtureRevert('ERC20: transfer amount exceeds balance');
+      state.usdc.set(a.toLowerCase(), this.usdcBalance(a) - amountIn);
+      state.positions.set(key(claimId, a), { ...p, [key2]: p[key2] + out });
+    } else {
+      if (p[key2] < amountIn) throw new FixtureRevert('ERC20: transfer amount exceeds balance');
+      state.positions.set(key(claimId, a), { ...p, [key2]: p[key2] - amountIn });
+      state.usdc.set(a.toLowerCase(), this.usdcBalance(a) + out);
+    }
+    emit();
+  },
   redeem(claimId: string, a: string, payout: bigint) {
     const p = this.position(claimId, a);
     if (payout === 0n) throw new FixtureRevert('RiskFi: nothing to redeem');

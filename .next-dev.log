@@ -171,3 +171,31 @@
 ✓ Compiled in 431ms
 ✓ Compiled in 46ms
 ✓ Compiled in 21ms
+ GET /cases/rpt-lantern 200 in 30ms (next.js: 3ms, application-code: 27ms)
+[browser] Lit is in dev mode. Not recommended for production! See https://lit.dev/msg/dev-mode for more information.
+[browser] [Reown Config] Failed to fetch remote project configuration. Using local/default values. Error: HTTP status code: 403
+ GET /approve/apr-req-rpt-lantern-1793942590 200 in 21ms (next.js: 5ms, application-code: 16ms)
+✓ Compiled in 127ms
+✓ Compiled in 124ms
+ GET /approve/apr-req-rpt-lantern-1793942590 200 in 22ms (next.js: 5ms, application-code: 18ms)
+ GET /approve/apr-req-rpt-lantern-1793942590 200 in 15ms (next.js: 0.8ms, application-code: 14ms)
+ GET /case/1/market 200 in 184ms (next.js: 159ms, application-code: 25ms)
+[browser] Lit is in dev mode. Not recommended for production! See https://lit.dev/msg/dev-mode for more information.
+[browser] [Reown Config] Failed to fetch remote project configuration. Using local/default values. Error: HTTP status code: 403
+ GET /case/2/market 200 in 19ms (next.js: 1.7ms, application-code: 18ms)
+[browser] Lit is in dev mode. Not recommended for production! See https://lit.dev/msg/dev-mode for more information.
+[browser] [Reown Config] Failed to fetch remote project configuration. Using local/default values. Error: HTTP status code: 403
+✓ Compiled in 76ms
+ GET /case/1/market 200 in 24ms (next.js: 3ms, application-code: 21ms)
+[browser] Lit is in dev mode. Not recommended for production! See https://lit.dev/msg/dev-mode for more information.
+[browser] [Reown Config] Failed to fetch remote project configuration. Using local/default values. Error: HTTP status code: 403
+ GET /case/2/market 200 in 23ms (next.js: 1.6ms, application-code: 21ms)
+[browser] Lit is in dev mode. Not recommended for production! See https://lit.dev/msg/dev-mode for more information.
+[browser] [Reown Config] Failed to fetch remote project configuration. Using local/default values. Error: HTTP status code: 403
+ GET /case/3/market 200 in 21ms (next.js: 2ms, application-code: 19ms)
+[browser] Lit is in dev mode. Not recommended for production! See https://lit.dev/msg/dev-mode for more information.
+[browser] [Reown Config] Failed to fetch remote project configuration. Using local/default values. Error: HTTP status code: 403
+✓ Compiled in 155ms
+✓ Compiled in 22ms
+ GET /case/3/market 200 in 15ms (next.js: 3ms, application-code: 12ms)
+✓ Compiled in 45ms
