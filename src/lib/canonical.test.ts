@@ -14,7 +14,9 @@ describe('canonicalJSON', () => {
   });
 
   it('escapes strings like JSON.stringify', () => {
-    expect(canonicalJSON({ s: 'quote " and \n newline' })).toBe('{"s":"quote \\" and \\n newline"}');
+    expect(canonicalJSON({ s: 'quote " and \n newline' })).toBe(
+      '{"s":"quote \\" and \\n newline"}',
+    );
   });
 
   it('drops undefined object fields', () => {
@@ -25,7 +27,9 @@ describe('canonicalJSON', () => {
 describe('manifestHash', () => {
   it('is keccak256 of the utf8 canonical JSON', () => {
     const m = { version: 1, chainId: 11155111, token: '0xabc' };
-    expect(manifestHash(m)).toBe(keccak256(stringToHex('{"chainId":11155111,"token":"0xabc","version":1}')));
+    expect(manifestHash(m)).toBe(
+      keccak256(stringToHex('{"chainId":11155111,"token":"0xabc","version":1}')),
+    );
   });
 
   it('matches every fixture report and detects tampering', () => {

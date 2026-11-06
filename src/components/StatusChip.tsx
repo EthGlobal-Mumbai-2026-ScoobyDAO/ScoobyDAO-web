@@ -24,7 +24,8 @@ export const STATUS_META: Record<
 const TONE_CLASS: Record<Tone, string> = {
   fog: 'text-muted border-line bg-[color-mix(in_srgb,var(--fog-400)_12%,transparent)]',
   dim: 'text-muted border-dashed border-line bg-transparent',
-  ghost: 'text-ghost-ink border-[color-mix(in_srgb,var(--ghost-300)_45%,transparent)] bg-[color-mix(in_srgb,var(--ghost-300)_12%,transparent)]',
+  ghost:
+    'text-ghost-ink border-[color-mix(in_srgb,var(--ghost-300)_45%,transparent)] bg-[color-mix(in_srgb,var(--ghost-300)_12%,transparent)]',
   clue: 'text-clue-ink border-[color-mix(in_srgb,var(--clue-500)_45%,transparent)] bg-[color-mix(in_srgb,var(--clue-500)_12%,transparent)]',
   mask: 'text-mask-ink border-[color-mix(in_srgb,var(--mask-500)_55%,transparent)] bg-[color-mix(in_srgb,var(--mask-500)_14%,transparent)]',
   beam: 'text-beam-ink border-[color-mix(in_srgb,var(--beam-400)_55%,transparent)] bg-[color-mix(in_srgb,var(--beam-400)_14%,transparent)]',

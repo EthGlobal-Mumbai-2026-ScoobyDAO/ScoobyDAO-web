@@ -42,12 +42,7 @@ export interface Report {
 }
 
 export type ApprovalStatus =
-  | 'pending'
-  | 'approved'
-  | 'denied'
-  | 'expired'
-  | 'rejected_not_reviewer'
-  | 'spent';
+  'pending' | 'approved' | 'denied' | 'expired' | 'rejected_not_reviewer' | 'spent';
 export interface Approval {
   id: string;
   reportId: string;
@@ -98,4 +93,11 @@ export enum Side {
   For = 0,
   Against = 1,
 }
-export const CHAIN_STATUS = ['None', 'Open', 'Frozen', 'ResolvedPass', 'ResolvedFail', 'Refunded'] as const;
+export const CHAIN_STATUS = [
+  'None',
+  'Open',
+  'Frozen',
+  'ResolvedPass',
+  'ResolvedFail',
+  'Refunded',
+] as const;

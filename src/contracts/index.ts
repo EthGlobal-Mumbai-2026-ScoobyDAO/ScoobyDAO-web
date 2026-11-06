@@ -8,4 +8,5 @@ export const deployments = sepoliaJson as Deployments;
 export const addresses = deployments.contracts;
 
 /** False while sepolia.json is the placeholder (all zero addresses). */
-export const contractsDeployed = addresses.VerdictMarket !== zeroAddress && addresses.ClaimRegistry !== zeroAddress;
+export const contractsDeployed =
+  addresses.VerdictMarket !== zeroAddress && addresses.ClaimRegistry !== zeroAddress;

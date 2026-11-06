@@ -48,3 +48,10 @@ Per the team: frontend-owned names use `scoobydao`.
 - Text-safe "ink" variants of each accent (`--beam-ink`, `--clue-ink`, `--mask-ink`, `--ghost-ink`) so status text passes 4.5:1 on every surface; the THEME.md accent hexes are kept for fills, bars and borders. `node scripts/contrast.mjs` checks every pair.
 - Light theme: `[data-theme="light"]` on `<html>`, toggled from the navbar, saved under `scoobydao:theme`. Paper "case file" surfaces stay paper in both themes.
 - `/styleguide` (noindex) renders every status chip and surface for visual checks.
+
+## Phase 3 decisions
+
+- **Fixture chain + demo wallets.** With no deployed contracts (or in fixtures mode) all reads/writes go to an in-memory chain (`src/lib/fixtureChain.ts`) that enforces the same rules the UI depends on (exclusion, commits only while Open, one commit, reveal must match). A "Fixture mode" bar lets you act as an honest or a deployer-linked wallet. It never appears once the API is live and contracts are synced, and a real connected wallet is used whenever no demo wallet is picked.
+- **Salt saved before the first tx**, cleared again if the approve/commit tx fails or is rejected. If localStorage is unavailable the backup file downloads automatically before the commit.
+- Approve page shows THEME.md headline + CLAUDE.md exact line for every final state; approval polling stops on a final status; after approval it polls the report every 3s until `claimId` appears.
+- Reverted (mined) txs: the runner replays the call at the receipt's block to recover the revert string for the toast.

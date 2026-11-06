@@ -21,18 +21,38 @@ describe('synced ABIs still match the typed interface (INTERFACES.md §2)', () =
     ['FreezeHook', freezeHookAbi],
   ] as const)('%s', (name, typed) => {
     const synced = new Set(load(name).map((f) => toFunctionSignature(f)));
-    for (const s of sigs(typed)) expect(synced, `${name}.${s} missing from abi/${name}.json`).toContain(s);
+    for (const s of sigs(typed))
+      expect(synced, `${name}.${s} missing from abi/${name}.json`).toContain(s);
   });
 
   it('has every artifact INTERFACES.md §1 lists', () => {
     const files = readdirSync(dir);
-    for (const n of ['ClaimRegistry', 'VerdictMarket', 'ShareToken', 'FreezeHook', 'Treasury', 'MockUSDC', 'HoneypotToken', 'HonestToken'])
+    for (const n of [
+      'ClaimRegistry',
+      'VerdictMarket',
+      'ShareToken',
+      'FreezeHook',
+      'Treasury',
+      'MockUSDC',
+      'HoneypotToken',
+      'HonestToken',
+    ])
       expect(files).toContain(`${n}.json`);
   });
 
   it('sepolia.json has every contract key', () => {
     expect(Object.keys(sepolia.contracts).sort()).toEqual(
-      ['ClaimRegistry', 'FreezeHook', 'HonestToken', 'HoneypotToken', 'PoolManager', 'SwapRouter', 'Treasury', 'USDC', 'VerdictMarket'].sort(),
+      [
+        'ClaimRegistry',
+        'FreezeHook',
+        'HonestToken',
+        'HoneypotToken',
+        'PoolManager',
+        'SwapRouter',
+        'Treasury',
+        'USDC',
+        'VerdictMarket',
+      ].sort(),
     );
   });
 });

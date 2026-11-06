@@ -10,7 +10,8 @@ describe('winningPayout', () => {
 
   it('pays everything except the fee back across winners (no overpay)', () => {
     let seed = 7n;
-    const rnd = (max: bigint) => (seed = (seed * 6364136223846793005n + 1442695040888963407n) % 2n ** 63n) % max;
+    const rnd = (max: bigint) =>
+      (seed = (seed * 6364136223846793005n + 1442695040888963407n) % 2n ** 63n) % max;
     for (let i = 0; i < 200; i++) {
       const stakes = Array.from({ length: Number(rnd(5n)) + 1 }, () => rnd(1_000_000n * U) + 1n);
       const W = stakes.reduce((a, b) => a + b, 0n);

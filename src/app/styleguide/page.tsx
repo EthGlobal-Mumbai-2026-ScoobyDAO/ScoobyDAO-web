@@ -26,18 +26,20 @@ export default function Styleguide() {
       <section className="grid gap-6 md:grid-cols-2">
         <div className="glass p-6">
           <h2 className="font-display text-2xl">Glass card</h2>
-          <p className="mt-2 text-muted">Muted body text on glass over fog.</p>
+          <p className="text-muted mt-2">Muted body text on glass over fog.</p>
           <p className="num mt-3 text-sm">0x9f2c…41ab · 1,250.000000 USDC</p>
           <div className="mt-4 flex gap-3">
-            <button className="rounded-lg bg-beam px-4 py-2 font-semibold text-on-beam">Primary</button>
-            <button className="rounded-lg border border-line px-4 py-2">Secondary</button>
+            <button className="bg-beam text-on-beam rounded-lg px-4 py-2 font-semibold">
+              Primary
+            </button>
+            <button className="border-line rounded-lg border px-4 py-2">Secondary</button>
           </div>
         </div>
         <div className="paper relative p-6 pl-14">
-          <span className="stamp absolute top-4 right-4 text-mask-ink">Evidence</span>
+          <span className="stamp text-mask-ink absolute top-4 right-4">Evidence</span>
           <h2 className="font-display text-2xl">Case file</h2>
           <p className="mt-2">Typed on paper. Stays paper in both themes.</p>
-          <p className="mt-2 text-muted">Muted note on paper.</p>
+          <p className="text-muted mt-2">Muted note on paper.</p>
           <p className="mt-3 flex gap-3 text-sm">
             <span className="text-clue-ink">For: teal ink</span>
             <span className="text-mask-ink">Against: red ink</span>

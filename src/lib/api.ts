@@ -22,7 +22,10 @@ let modePromise: Promise<boolean> | null = null;
 /** True when NEXT_PUBLIC_USE_FIXTURES=true or the API's /health is unreachable. Checked once per page load. */
 export function usingFixtures(): Promise<boolean> {
   if (env.forceFixtures) return Promise.resolve(true);
-  modePromise ??= fetch(`${env.apiUrl}/health`, { signal: AbortSignal.timeout(2500), cache: 'no-store' })
+  modePromise ??= fetch(`${env.apiUrl}/health`, {
+    signal: AbortSignal.timeout(2500),
+    cache: 'no-store',
+  })
     .then(async (r) => !(r.ok && (await r.json())?.ok === true))
     .catch(() => true);
   return modePromise;
@@ -31,7 +34,11 @@ export function usingFixtures(): Promise<boolean> {
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${env.apiUrl}${path}`, {
     ...init,
-    headers: { Accept: 'application/json', ...(init?.body ? { 'Content-Type': 'application/json' } : {}), ...init?.headers },
+    headers: {
+      Accept: 'application/json',
+      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+      ...init?.headers,
+    },
     cache: 'no-store',
   });
   if (!res.ok) {
@@ -148,7 +155,8 @@ const liveApi: typeof fixtureApi = {
   health: () => http<{ ok: true }>('/health'),
   getReports: () => http<Report[]>('/reports'),
   getReport: (id) => http<Report>(`/reports/${encodeURIComponent(id)}`),
-  requestApproval: (id) => http<Approval>(`/reports/${encodeURIComponent(id)}/approve`, { method: 'POST' }),
+  requestApproval: (id) =>
+    http<Approval>(`/reports/${encodeURIComponent(id)}/approve`, { method: 'POST' }),
   getApproval: (id) => http<Approval>(`/approvals/${encodeURIComponent(id)}`),
   getClaim: (claimId) => http<ClaimView>(`/claims/${encodeURIComponent(claimId)}`),
   getDeployments: () => http<Deployments>('/deployments'),

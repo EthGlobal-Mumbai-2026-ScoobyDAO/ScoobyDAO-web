@@ -15,7 +15,7 @@ export function NetworkBadge() {
         type="button"
         onClick={() => switchChain({ chainId: sepolia.id })}
         disabled={isPending}
-        className="inline-flex items-center gap-1.5 rounded-full border border-[color-mix(in_srgb,var(--mask-500)_55%,transparent)] px-2.5 py-1 text-xs font-medium text-mask-ink"
+        className="text-mask-ink inline-flex items-center gap-1.5 rounded-full border border-[color-mix(in_srgb,var(--mask-500)_55%,transparent)] px-2.5 py-1 text-xs font-medium"
       >
         <AlertTriangle size={14} aria-hidden />
         Wrong network — switch to Sepolia
@@ -23,8 +23,8 @@ export function NetworkBadge() {
     );
   }
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-line px-2.5 py-1 text-xs font-medium text-muted">
-      <span className="h-1.5 w-1.5 rounded-full bg-beam" aria-hidden />
+    <span className="border-line text-muted inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium">
+      <span className="bg-beam h-1.5 w-1.5 rounded-full" aria-hidden />
       Sepolia testnet
     </span>
   );

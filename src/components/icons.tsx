@@ -50,7 +50,13 @@ export function SniffHead({ size = 28, ...rest }: IconProps) {
       <path d="M9 10c0-4 3-6 7-6s7 2 7 6v8c0 5-3 9-7 9s-7-4-7-9Z" fill="#d9a066" />
       <path d="M12 19c0-1.5 1.8-2 4-2s4 .5 4 2v2c0 3-1.8 5-4 5s-4-2-4-5Z" fill="#f3e2c4" />
       <ellipse cx="16" cy="19" rx="2.2" ry="1.5" fill="#1b1410" />
-      <path d="M12 13.5q1.2-1 2.4 0M17.6 13.5q1.2-1 2.4 0" stroke="#1b1410" strokeWidth="1.4" fill="none" strokeLinecap="round" />
+      <path
+        d="M12 13.5q1.2-1 2.4 0M17.6 13.5q1.2-1 2.4 0"
+        stroke="#1b1410"
+        strokeWidth="1.4"
+        fill="none"
+        strokeLinecap="round"
+      />
       <path d="M8.5 9.5Q16 5 23.5 9.5L23 7Q16 2 9 7Z" fill="#2ec4b6" />
     </svg>
   );

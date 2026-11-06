@@ -5,10 +5,21 @@ import { RainbowKitProvider, darkTheme } from '@rainbow-me/rainbowkit';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
 import { WagmiProvider } from 'wagmi';
+import { DemoWalletProvider } from '@/lib/account';
+import { ApiError } from '@/lib/api';
+import { TxProvider } from '@/lib/tx';
 import { wagmiConfig } from '@/lib/wagmi';
 
 export function Providers({ children }: { children: ReactNode }) {
-  const [queryClient] = useState(() => new QueryClient());
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          // A missing record won't appear on retry; transient failures get one more try.
+          queries: { retry: (n, err) => !(err instanceof ApiError && err.status < 500) && n < 1 },
+        },
+      }),
+  );
   return (
     <WagmiProvider config={wagmiConfig}>
       <QueryClientProvider client={queryClient}>
@@ -19,7 +30,9 @@ export function Providers({ children }: { children: ReactNode }) {
             borderRadius: 'medium',
           })}
         >
-          {children}
+          <DemoWalletProvider>
+            <TxProvider>{children}</TxProvider>
+          </DemoWalletProvider>
         </RainbowKitProvider>
       </QueryClientProvider>
     </WagmiProvider>

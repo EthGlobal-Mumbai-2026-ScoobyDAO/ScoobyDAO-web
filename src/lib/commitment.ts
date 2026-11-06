@@ -1,4 +1,13 @@
-import { encodeAbiParameters, getAddress, isAddress, isHex, keccak256, toHex, type Address, type Hex } from 'viem';
+import {
+  encodeAbiParameters,
+  getAddress,
+  isAddress,
+  isHex,
+  keccak256,
+  toHex,
+  type Address,
+  type Hex,
+} from 'viem';
 import { Side } from './types';
 
 /** What we keep so the user can reveal later. Amount is in 6-decimal base units. */
@@ -34,7 +43,13 @@ export function computeCommitment(args: {
 }): Hex {
   return keccak256(
     encodeAbiParameters(
-      [{ type: 'uint256' }, { type: 'address' }, { type: 'uint8' }, { type: 'uint256' }, { type: 'bytes32' }],
+      [
+        { type: 'uint256' },
+        { type: 'address' },
+        { type: 'uint8' },
+        { type: 'uint256' },
+        { type: 'bytes32' },
+      ],
       [args.claimId, args.account, args.side, args.amount, args.salt],
     ),
   );
@@ -55,7 +70,12 @@ function defaultStorage(): KV | null {
 }
 
 /** Returns false if storage is unavailable (private mode, quota, blocked) — the UI then insists on the backup. */
-export function saveStake(chainId: number, account: string, stake: SealedStake, storage = defaultStorage()): boolean {
+export function saveStake(
+  chainId: number,
+  account: string,
+  stake: SealedStake,
+  storage = defaultStorage(),
+): boolean {
   if (!storage) return false;
   try {
     storage.setItem(storageKey(chainId, stake.claimId, account), JSON.stringify(stake));
@@ -65,7 +85,12 @@ export function saveStake(chainId: number, account: string, stake: SealedStake, 
   }
 }
 
-export function loadStake(chainId: number, claimId: string, account: string, storage = defaultStorage()): SealedStake | null {
+export function loadStake(
+  chainId: number,
+  claimId: string,
+  account: string,
+  storage = defaultStorage(),
+): SealedStake | null {
   if (!storage) return null;
   try {
     const raw = storage.getItem(storageKey(chainId, claimId, account));
@@ -76,7 +101,12 @@ export function loadStake(chainId: number, claimId: string, account: string, sto
   }
 }
 
-export function clearStake(chainId: number, claimId: string, account: string, storage = defaultStorage()): void {
+export function clearStake(
+  chainId: number,
+  claimId: string,
+  account: string,
+  storage = defaultStorage(),
+): void {
   try {
     storage?.removeItem(storageKey(chainId, claimId, account));
   } catch {
@@ -115,7 +145,10 @@ export function makeBackup(chainId: number, account: Address, stake: SealedStake
 export type BackupResult = { ok: true; backup: StakeBackup } | { ok: false; error: string };
 
 /** Parses an uploaded backup and checks it belongs to this claim, wallet and chain. */
-export function parseBackup(text: string, expect: { chainId: number; claimId: string; account: string }): BackupResult {
+export function parseBackup(
+  text: string,
+  expect: { chainId: number; claimId: string; account: string },
+): BackupResult {
   let json: unknown;
   try {
     json = JSON.parse(text);
@@ -127,10 +160,21 @@ export function parseBackup(text: string, expect: { chainId: number; claimId: st
   if (!stake || o.app !== 'unmasked' || typeof o.account !== 'string' || !isAddress(o.account)) {
     return { ok: false, error: "This file isn't an Unmasked stake backup." };
   }
-  if (o.chainId !== expect.chainId) return { ok: false, error: `This backup is for chain ${String(o.chainId)}, not ${expect.chainId}.` };
-  if (stake.claimId !== expect.claimId) return { ok: false, error: `This backup is for case #${stake.claimId}, not #${expect.claimId}.` };
+  if (o.chainId !== expect.chainId)
+    return {
+      ok: false,
+      error: `This backup is for chain ${String(o.chainId)}, not ${expect.chainId}.`,
+    };
+  if (stake.claimId !== expect.claimId)
+    return {
+      ok: false,
+      error: `This backup is for case #${stake.claimId}, not #${expect.claimId}.`,
+    };
   if (o.account.toLowerCase() !== expect.account.toLowerCase())
-    return { ok: false, error: 'This backup belongs to a different wallet. Connect that wallet to reveal.' };
+    return {
+      ok: false,
+      error: 'This backup belongs to a different wallet. Connect that wallet to reveal.',
+    };
   return { ok: true, backup: makeBackup(expect.chainId, o.account, stake) };
 }
 

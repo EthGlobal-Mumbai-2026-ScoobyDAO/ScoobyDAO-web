@@ -7,7 +7,12 @@ import { themeInitScript } from '@/components/ThemeToggle';
 import './globals.css';
 import { Providers } from './providers';
 
-const bungee = Bungee({ weight: '400', subsets: ['latin'], variable: '--font-bungee', display: 'swap' });
+const bungee = Bungee({
+  weight: '400',
+  subsets: ['latin'],
+  variable: '--font-bungee',
+  display: 'swap',
+});
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' });
 const mono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-jetbrains', display: 'swap' });
 
@@ -21,12 +26,19 @@ export const viewport: Viewport = { themeColor: '#0B1026' };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={`${bungee.variable} ${inter.variable} ${mono.variable}`} suppressHydrationWarning>
+    <html
+      lang="en"
+      className={`${bungee.variable} ${inter.variable} ${mono.variable}`}
+      suppressHydrationWarning
+    >
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
       <body>
-        <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded focus:bg-beam focus:px-3 focus:py-2 focus:text-on-beam">
+        <a
+          href="#main"
+          className="focus:bg-beam focus:text-on-beam sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded focus:px-3 focus:py-2"
+        >
           Skip to content
         </a>
         <Providers>

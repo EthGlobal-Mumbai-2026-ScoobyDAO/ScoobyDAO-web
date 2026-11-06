@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { api, usingFixtures } from './api';
-import type { Approval } from './types';
+import type { Approval, Report } from './types';
 
 export const qk = {
   reports: ['reports'] as const,
@@ -13,10 +13,19 @@ export const qk = {
   mode: ['api-mode'] as const,
 };
 
-export const useFixturesMode = () => useQuery({ queryKey: qk.mode, queryFn: usingFixtures, staleTime: Infinity });
+export const useFixturesMode = () =>
+  useQuery({ queryKey: qk.mode, queryFn: usingFixtures, staleTime: Infinity });
 export const useReports = () => useQuery({ queryKey: qk.reports, queryFn: () => api.getReports() });
-export const useReport = (id: string | undefined) =>
-  useQuery({ queryKey: qk.report(id ?? ''), queryFn: () => api.getReport(id!), enabled: !!id });
+export const useReport = (
+  id: string | undefined,
+  opts: { pollMs?: number | false | ((q: { state: { data?: Report } }) => number | false) } = {},
+) =>
+  useQuery({
+    queryKey: qk.report(id ?? ''),
+    queryFn: () => api.getReport(id!),
+    enabled: !!id,
+    refetchInterval: opts.pollMs ?? false,
+  });
 export const useClaim = (claimId: string | undefined, opts: { poll?: boolean } = {}) =>
   useQuery({
     queryKey: qk.claim(claimId ?? ''),
@@ -25,7 +34,13 @@ export const useClaim = (claimId: string | undefined, opts: { poll?: boolean } =
     refetchInterval: opts.poll ? 5000 : false,
   });
 
-const FINAL: Approval['status'][] = ['approved', 'spent', 'denied', 'expired', 'rejected_not_reviewer'];
+const FINAL: Approval['status'][] = [
+  'approved',
+  'spent',
+  'denied',
+  'expired',
+  'rejected_not_reviewer',
+];
 
 /** Polls GET /approvals/:id every 2s until the backend reports a final status. */
 export const useApproval = (id: string) =>

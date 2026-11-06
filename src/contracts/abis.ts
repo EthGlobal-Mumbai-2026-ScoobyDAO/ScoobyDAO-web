@@ -36,4 +36,7 @@ export const freezeHookAbi = parseAbi([
 ]);
 
 export const shareTokenAbi = erc20Abi;
-export const usdcAbi = [...erc20Abi, ...parseAbi(['function mint(address to, uint256 amount)'])] as const;
+export const usdcAbi = [
+  ...erc20Abi,
+  ...parseAbi(['function mint(address to, uint256 amount)']),
+] as const;

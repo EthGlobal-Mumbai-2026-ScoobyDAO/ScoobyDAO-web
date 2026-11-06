@@ -111,7 +111,9 @@ describe('backup', () => {
 
   it('rejects backups for another wallet, claim or chain', () => {
     const b = JSON.stringify(makeBackup(11155111, account, stake));
-    expect(parseBackup(b, { ...expect_, account: '0x2222222222222222222222222222222222222222' }).ok).toBe(false);
+    expect(
+      parseBackup(b, { ...expect_, account: '0x2222222222222222222222222222222222222222' }).ok,
+    ).toBe(false);
     expect(parseBackup(b, { ...expect_, claimId: '43' }).ok).toBe(false);
     expect(parseBackup(b, { ...expect_, chainId: 1 }).ok).toBe(false);
     expect(parseBackup('not json', expect_).ok).toBe(false);

@@ -8,7 +8,8 @@ export function revertReason(err: unknown): string {
       const r = reverted.reason ?? reverted.data?.errorName;
       if (r) return r;
     }
-    if (err.walk((e) => e instanceof UserRejectedRequestError)) return 'You rejected the request in your wallet.';
+    if (err.walk((e) => e instanceof UserRejectedRequestError))
+      return 'You rejected the request in your wallet.';
     return err.shortMessage || err.message;
   }
   if (err instanceof Error) return err.message;
