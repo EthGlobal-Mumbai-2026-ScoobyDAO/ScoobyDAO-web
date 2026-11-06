@@ -96,7 +96,7 @@ export function Verdict({ market: m }: { market: MarketView }) {
 type Step = { label: string; at?: number; note?: string; state: 'done' | 'current' | 'todo' };
 
 /**
- * Locked → Matured → Proposed → challenge window → (challenged: adjudicated) → Final or Void →
+ * Open → Locked → Matured → Proposed → challenge window → (challenged: adjudicated) → Final or Void →
  * claims close (finalized + 90 days). Future steps carry their dates; nothing here enables a button.
  */
 export function timelineSteps(m: MarketView, now: number): Step[] {
@@ -106,7 +106,8 @@ export function timelineSteps(m: MarketView, now: number): Step[] {
   const proposed = !!d && d.proposedAt > 0;
   const closes = claimsCloseAt(m);
   const steps: Step[] = [
-    { label: 'Locked', at: m.lockTime, state: now >= m.lockTime ? 'done' : 'current' },
+    ...(now < m.lockTime ? [{ label: 'Open to staking', state: 'current' as const }] : []),
+    { label: 'Locked', at: m.lockTime, state: now >= m.lockTime ? 'done' : 'todo' },
     { label: 'Matured', at: m.maturity, state: now >= m.maturity || proposed || final ? 'done' : now >= m.lockTime ? 'current' : 'todo' },
     {
       label: proposed ? `Proposed: ${d!.proposed?.toUpperCase() ?? '—'}` : 'Proposed',

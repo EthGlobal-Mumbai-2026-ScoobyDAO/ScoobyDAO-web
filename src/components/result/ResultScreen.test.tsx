@@ -15,12 +15,12 @@ beforeEach(() => {
 const states = (m: MarketView, t: number) => timelineSteps(m, t).map((s) => `${s.label}:${s.state}`);
 
 describe('result page per phase (fixture scenarios)', () => {
-  it('open: every later step is listed with its date or rule, none active', async () => {
+  it('open: staking is current and later steps show their dates or rules', async () => {
     const m = await fixture.getMarket(1n);
-    expect(states(m, now)).toEqual(['Locked:current', 'Matured:todo', 'Proposed:todo', 'Challenge window:todo', 'Final:todo']);
+    expect(states(m, now)).toEqual(['Open to staking:current', 'Locked:todo', 'Matured:todo', 'Proposed:todo', 'Challenge window:todo', 'Final:todo']);
     const steps = timelineSteps(m, now);
-    expect(steps[1].at).toBe(m.maturity);
-    expect(steps[2].note).toMatch(/from maturity/);
+    expect(steps[2].at).toBe(m.maturity);
+    expect(steps[3].note).toMatch(/from maturity/);
     expect(steps.at(-1)!.note).toMatch(/Void if nothing is final by the result deadline/);
     expect(canFinalize(m, now)).toBe(false);
   });
