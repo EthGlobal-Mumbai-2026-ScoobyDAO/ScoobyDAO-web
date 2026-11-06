@@ -145,13 +145,34 @@ export interface ReviewArtifacts {
 
 // ---------------------------------------------------------------- transport
 
-/**
- * Backend file paths (/web/v1/admin/…) resolved through the configured API base, so they work both with an absolute
- * NEXT_PUBLIC_API_URL (…/web/v1) and with the same-origin proxy (/api/backend).
- */
-export function backendUrl(path: string): string {
-  if (path.startsWith('/web/v1/')) return `${env.apiUrl}${path.slice('/web/v1'.length)}`;
-  return path;
+/** Map backend-relative paths through the configured API base, including the same-origin proxy. */
+export function backendUrl(path: string, apiBase = env.apiUrl): string {
+  if (
+    !path.startsWith('/web/v1/') ||
+    /[?#\\]/.test(path) ||
+    /%(?:2e|2f|5c)/i.test(path) ||
+    path.split('/').some((part) => part === '.' || part === '..')
+  )
+    throw new Error('Invalid report file path');
+  if (apiBase.startsWith('/')) {
+    if (
+      !/^\/(?!\/)[A-Za-z0-9/_-]+$/.test(apiBase) ||
+      apiBase.split('/').some((part) => part === '..')
+    )
+      throw new Error('Invalid API base');
+  } else {
+    const base = new URL(apiBase);
+    if (
+      !['https:', 'http:'].includes(base.protocol) ||
+      base.username ||
+      base.password ||
+      base.search ||
+      base.hash ||
+      base.pathname !== '/web/v1'
+    )
+      throw new Error('Invalid API base');
+  }
+  return apiBase + path.slice('/web/v1'.length);
 }
 
 async function call(
@@ -258,11 +279,13 @@ export const adminApi = {
       await call(`${reviewPath(id, version)}/artifacts`, {}, reportKey(id, version))
     ).json()) as ReviewArtifacts;
   },
+
   /** Fetches a rendered file with the report's session header (a plain link cannot send it) and returns its bytes. */
   async file(report: string, url: string): Promise<Blob> {
     const res = await fetch(backendUrl(url), {
       headers: adminAuthHeader(report),
       cache: 'no-store',
+      redirect: 'error',
     });
     if (!res.ok)
       throw new ApiError(res.status, `Couldn't load ${url.split('/').pop()} (${res.status})`);

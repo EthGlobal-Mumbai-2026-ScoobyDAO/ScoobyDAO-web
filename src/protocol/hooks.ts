@@ -1,12 +1,19 @@
 'use client';
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { createContext, createElement, useContext, useEffect, useSyncExternalStore, type ReactNode } from 'react';
+import {
+  createContext,
+  createElement,
+  useContext,
+  useEffect,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react';
 import type { Address, Hex } from 'viem';
 import { useAccount } from 'wagmi';
 import { fixture, FIXTURE_ACCOUNT, subscribeFixture } from './fixture';
 import { ccipPending, subscribeTracked, trackedSnapshot, type TrackedCcip } from './ccip';
-import { deploymentQueryFor, writeBlockReason } from './deployment';
+import { deploymentQuery, deploymentQueryFor, writeBlockReason } from './deployment';
 import { selectProtocol } from './index';
 import type { Protocol } from './types';
 import { v2Flexible } from './v2';
@@ -16,13 +23,30 @@ import { v2Flexible } from './v2';
 
 /** The chain protocol, from env only (NEXT_PUBLIC_CHAIN_MODE + NEXT_PUBLIC_PROTOCOL). */
 const ProtocolOverride = createContext<Protocol | null>(null);
-export function ProtocolOverrideProvider({ protocol, children }: { protocol: Protocol; children: ReactNode }) {
+export function ProtocolOverrideProvider({
+  protocol,
+  children,
+}: {
+  protocol: Protocol;
+  children: ReactNode;
+}) {
   return createElement(ProtocolOverride.Provider, { value: protocol }, children);
 }
 
-export function useProtocol(): { protocol: Protocol; fixtureMode: boolean; ready: boolean; deploymentKey: string } {
+export function useProtocol(): {
+  protocol: Protocol;
+  fixtureMode: boolean;
+  ready: boolean;
+  deploymentKey: string;
+} {
   const protocol = useContext(ProtocolOverride) ?? selectProtocol();
-  return { protocol, fixtureMode: protocol.kind === 'fixture', ready: true, deploymentKey: protocol.kind === 'v2' ? (protocol as typeof v2Flexible).deploymentKey : 'default' };
+  return {
+    protocol,
+    fixtureMode: protocol.kind === 'fixture',
+    ready: true,
+    deploymentKey:
+      protocol.kind === 'v2' ? (protocol as typeof v2Flexible).deploymentKey : 'default',
+  };
 }
 
 /** Mounted once (Providers): fixture-chain writes refresh every protocol query. */
@@ -31,7 +55,9 @@ export function useFixtureSync() {
   const qc = useQueryClient();
   useEffect(() => {
     if (protocol.kind !== 'fixture') return;
-    const unsubscribe = subscribeFixture(() => void qc.invalidateQueries({ queryKey: ['protocol'] }));
+    const unsubscribe = subscribeFixture(
+      () => void qc.invalidateQueries({ queryKey: ['protocol'] }),
+    );
     return () => {
       unsubscribe();
     };
@@ -41,7 +67,11 @@ export function useFixtureSync() {
 /** V2 only: the once-per-session check that the chain matches the handoff bundle. */
 export function useDeploymentCheck() {
   const { protocol } = useProtocol();
-  return useQuery({ ...deploymentQueryFor((protocol as typeof v2Flexible).deploymentBundle), enabled: protocol.kind === 'v2' });
+  const query =
+    protocol.kind === 'v2'
+      ? deploymentQueryFor((protocol as typeof v2Flexible).deploymentBundle)
+      : deploymentQuery;
+  return useQuery({ ...query, enabled: protocol.kind === 'v2' });
 }
 
 /** Whether wallet writes may run. V2 writes wait for a passing deployment check. */
@@ -64,7 +94,12 @@ export function useYtVolume() {
 }
 
 /** The connected wallet; in fixture mode without a wallet, the fixture's demo account. */
-export function useActiveAccount(): { address?: Address; connected: boolean; isFixtureAccount: boolean; chainId?: number } {
+export function useActiveAccount(): {
+  address?: Address;
+  connected: boolean;
+  isFixtureAccount: boolean;
+  chainId?: number;
+} {
   const { address, chainId } = useAccount();
   const { fixtureMode } = useProtocol();
   const a = address ?? (fixtureMode ? FIXTURE_ACCOUNT : undefined);
@@ -99,7 +134,15 @@ export function usePosition(id: bigint | undefined, block?: bigint) {
   const { protocol, ready, deploymentKey } = useProtocol();
   const { address } = useActiveAccount();
   return useQuery({
-    queryKey: ['protocol', protocol.kind, deploymentKey, 'position', id?.toString(), address, block?.toString()],
+    queryKey: [
+      'protocol',
+      protocol.kind,
+      deploymentKey,
+      'position',
+      id?.toString(),
+      address,
+      block?.toString(),
+    ],
     queryFn: () => protocol.getPosition(id!, address!),
     enabled: ready && id !== undefined && !!address,
     placeholderData: (prev) => prev,
@@ -147,6 +190,11 @@ export function useCcip(messageId: Hex | undefined) {
     queryKey: ['protocol', protocol.kind, deploymentKey, 'ccip', messageId],
     queryFn: async () => (await protocol.trackCcip(messageId!)) ?? null,
     enabled: ready && !!messageId,
-    refetchInterval: (q) => (ccipPending(q.state.data ?? undefined) ? (protocol.kind === 'fixture' ? 2_000 : 15_000) : false),
+    refetchInterval: (q) =>
+      ccipPending(q.state.data ?? undefined)
+        ? protocol.kind === 'fixture'
+          ? 2_000
+          : 15_000
+        : false,
   });
 }

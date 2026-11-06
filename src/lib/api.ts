@@ -24,11 +24,13 @@ export class ApiError extends Error {
 
 // ---------------------------------------------------------------- mode switch
 
+
 /**
  * Fixture backend data only with NEXT_PUBLIC_USE_FIXTURES=true. An unreachable or incompatible
  * backend is an error on the backend-sourced pages ("Research API unavailable"), never a silent
  * switch to fixtures, and it never affects the chain protocol (src/protocol/index.ts).
  */
+
 export function usingFixtures(): Promise<boolean> {
   return Promise.resolve(env.forceFixtures);
 }

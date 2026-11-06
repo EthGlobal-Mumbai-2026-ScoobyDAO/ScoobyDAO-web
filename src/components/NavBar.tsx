@@ -60,7 +60,9 @@ export function NavBar() {
               l.href === '/cases'
                 ? pathname.startsWith('/case')
                 : l.href === LIVE_MARKET
-                  ? pathname.startsWith('/markets') || pathname.startsWith('/onchain') || pathname.startsWith('/accelerated')
+                  ? pathname.startsWith('/markets') ||
+                    pathname.startsWith('/onchain') ||
+                    pathname.startsWith('/accelerated')
                   : l.href === '/reports'
                     ? pathname.startsWith('/reports')
                     : l.href === '/me' || l.href === '/operator'
@@ -68,6 +70,7 @@ export function NavBar() {
                       : l.href === '/admin'
                         ? pathname.startsWith('/admin')
                         : false;
+
             return (
               <li key={l.href}>
                 <NavLink
@@ -87,7 +90,7 @@ export function NavBar() {
           <WalletButton />
         </div>
       </nav>
-      <ul className="border-line flex gap-5 border-t px-4 py-2 text-sm sm:hidden">
+      <ul className="border-line flex gap-5 overflow-x-auto border-t px-4 py-2 text-sm whitespace-nowrap sm:hidden">
         {LINKS.map((l) => (
           <li key={l.href}>
             <NavLink link={l} className="text-muted hover:text-text" />

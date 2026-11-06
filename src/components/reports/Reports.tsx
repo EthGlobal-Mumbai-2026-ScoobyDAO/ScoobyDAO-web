@@ -23,6 +23,8 @@ export function Reports({
     queryFn: () =>
       id ? adapter.get(id).then((report) => (report ? [report] : [])) : adapter.list(),
     retry: false,
+    refetchInterval: 15000,
+    refetchIntervalInBackground: false,
   });
   const state = { loading: query.isPending, error: query.isError, reports: query.data ?? [] };
   const report = state.reports[0];
@@ -31,6 +33,15 @@ export function Reports({
   const pdf = report?.pdf ?? null;
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
+      {process.env.NEXT_PUBLIC_SYNTHETIC_JOURNEY === 'true' && (
+        <p
+          role="status"
+          className="border-mask text-mask-ink mb-6 rounded-xl border p-3 text-sm font-semibold"
+        >
+          Synthetic acceptance environment: World ID, case admission and model responses are
+          simulated.
+        </p>
+      )}
       <p className="text-beam-ink text-sm font-semibold">RESEARCH LIBRARY</p>
       <h1 className="font-display mt-2 text-4xl sm:text-5xl">{id ? 'Report' : 'Reports'}</h1>
       <p className="text-muted mt-3 max-w-3xl">
@@ -38,8 +49,7 @@ export function Reports({
         record does not establish authenticated approval.
       </p>
       <div className="border-line bg-surface mt-6 rounded-xl border p-4 text-sm" role="note">
-        This library is a local integration draft. Review and publication are separate from report
-        selection.
+        Review and publication are separate from report selection.
       </div>
       {!id && <AgentActivity />}
       {state.loading && (
@@ -59,16 +69,61 @@ export function Reports({
       )}
       {!id &&
         state.reports.map((item) => (
-          <article key={item.id} className="border-line bg-surface mt-6 rounded-xl border p-5">
+          <article
+            key={item.id}
+            className="border-line bg-surface mt-6 min-w-0 rounded-xl border p-5 [overflow-wrap:anywhere]"
+          >
             <p className="text-beam-ink text-sm">{item.context}</p>
             <h2 className="mt-2 text-2xl font-semibold">{item.title}</h2>
             <p className="text-muted mt-2 text-sm">{item.review}</p>
-            <Link
-              className="text-beam-ink mt-4 inline-block underline"
-              href={`/reports/${encodeURIComponent(item.id)}`}
-            >
-              View report <span className="sr-only">{item.title}</span> →
-            </Link>
+            {item.candidateId && (
+              <p className="text-muted mt-2 text-xs break-all">Candidate: {item.candidateId}</p>
+            )}
+            {item.reportId && (
+              <p className="text-muted mt-1 text-xs break-all">
+                Report: {item.reportId} · Version: {item.version}
+              </p>
+            )}
+            <p className="text-muted mt-1 text-xs">{item.observed}</p>
+            {item.fetched && <p className="text-muted mt-1 text-xs">{item.fetched}</p>}
+            {item.sourceContext && <p className="text-muted mt-1 text-xs">{item.sourceContext}</p>}
+            {item.diagnostic && <p className="mt-1 text-xs font-semibold">{item.diagnostic}</p>}
+            {item.diagnosticDescription && (
+              <p className="text-muted mt-1 text-xs">{item.diagnosticDescription}</p>
+            )}
+            {item.admission && <p className="text-muted mt-1 text-xs">{item.admission}</p>}
+            {item.runStatus && (
+              <p className="text-muted mt-1 text-xs">Investigation: {item.runStatus}</p>
+            )}
+            {item.coverage ? (
+              <p className="text-muted mt-1 text-xs">
+                Pillars:{' '}
+                {item.coverage
+                  .map((p) => `${p.pillar.replaceAll('_', ' ')}: ${p.status}`)
+                  .join(' · ')}
+              </p>
+            ) : (
+              <p className="text-muted mt-1 text-xs">
+                Pillar coverage is shown in the report; a library summary is not supplied.
+              </p>
+            )}
+            {item.listUnavailable ? (
+              <p role="status" className="text-mask-ink mt-4 text-sm">
+                This report is unavailable or its details are invalid. Other reports remain
+                accessible.
+              </p>
+            ) : (
+              <Link
+                className="text-beam-ink mt-4 inline-block underline"
+                href={`/reports/${encodeURIComponent(item.id)}`}
+              >
+                View report{' '}
+                <span className="sr-only">
+                  {item.title} {item.candidateId} {item.version}
+                </span>{' '}
+                →
+              </Link>
+            )}
           </article>
         ))}
       {id && report && (
@@ -83,6 +138,14 @@ export function Reports({
             <p className="text-beam-ink text-sm font-semibold">{report.context}</p>
             <h2 className="mt-2 text-2xl font-semibold">{report.title}</h2>
             <p className="mt-2">{report.review}</p>
+            {report.diagnostic && <p className="mt-2 text-sm font-semibold">{report.diagnostic}</p>}
+            {report.diagnosticDescription && (
+              <p className="text-muted mt-2 text-sm">{report.diagnosticDescription}</p>
+            )}
+            {report.sourceContext && (
+              <p className="text-muted mt-2 text-sm">{report.sourceContext}</p>
+            )}
+            {report.admission && <p className="text-muted mt-2 text-xs">{report.admission}</p>}
             <p className="text-muted mt-2 text-sm">{report.observed}</p>
             <dl className="text-muted mt-4 grid gap-2 text-xs">
               <div>

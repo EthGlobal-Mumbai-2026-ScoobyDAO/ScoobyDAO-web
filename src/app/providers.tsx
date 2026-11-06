@@ -8,6 +8,7 @@ import { WagmiProvider } from 'wagmi';
 import { ApiError } from '@/lib/api';
 import { TxProvider } from '@/lib/tx';
 import { wagmiConfig } from '@/lib/wagmi';
+import { AdminSessionProvider } from '@/components/AdminSession';
 import { useFixtureSync } from '@/protocol/hooks';
 
 function FixtureSync() {
@@ -37,7 +38,7 @@ export function Providers({ children }: { children: ReactNode }) {
         >
           <TxProvider>
             <FixtureSync />
-            {children}
+            <AdminSessionProvider>{children}</AdminSessionProvider>
           </TxProvider>
         </RainbowKitProvider>
       </QueryClientProvider>

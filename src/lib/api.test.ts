@@ -36,4 +36,17 @@ describe('approval fixture boundary', () => {
     );
     await expect(api.getReports()).rejects.toThrow('Unexpected API response');
   });
+  it('does not activate fixtures after a browser health failure or cached fixture marker', async () => {
+    const sessionStorage = {
+      getItem: vi.fn().mockReturnValue(JSON.stringify({ f: true, at: Date.now() })),
+      setItem: vi.fn(),
+    };
+    vi.stubGlobal('window', { sessionStorage });
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError('network down'));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(usingFixtures()).resolves.toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem).not.toHaveBeenCalled();
+    await expect(api.getApproval('demo-pending')).rejects.toThrow('network down');
+  });
 });

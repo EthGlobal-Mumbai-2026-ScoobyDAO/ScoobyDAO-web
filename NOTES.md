@@ -81,6 +81,9 @@ V2 (Ethereum Sepolia + Arbitrum Sepolia) is the live default, driven only by the
 40. **Requests — contracts team:** (a) an operator-run dUSD faucet or a minter-role faucet contract (`NEXT_PUBLIC_FAUCET_URL`); (b) a per-report deployment (vault, YT, hook + LP share, stake-and-sell router, CCIP receiver + sender) and a refreshed bundle for any new publication; (c) more YT liquidity before the judge demo (≥ ~250 YT), or demo buys of ≤ 0.9 dUSD; (d) optionally list the role holders (deployer) in `addresses.json`. The CCIP API's CORS works today; no request.
 41. **Requests — backend team:** (a) send `claimHashAlg` on report and approval DTOs; (b) send `onchainReportId` with `publishTxHash` on report DTOs (today `txHash` + `claimId`/`onchainReportId` once confirmed, which the web accepts); (c) the Revamp-section requests (item 19 etc.) still stand.
 
+## Scouting case board (Nov 2026)
+
+The scouting read model and authenticated continuation endpoint are proposed, not agreed or available at this checkpoint. `/cases` deliberately shows no fabricated live candidates when the service is unset. Existing fixture/demo case files are separated from fresh alerts. Backend fixture approvals now require explicit `NEXT_PUBLIC_USE_FIXTURES=true`; API health errors never enable them. The protocol may still use its separately labeled fixture chain when addresses are missing. Backend owns priority and qualification; human selection is not report approval. See HANDOFF-SCOUTING.md for the seam and caveats.
 ## Revamp (Nov 2026)
 
 Rebuilt against `../SmartContracts` (V1 deployed, V2 local) and `../ScoobyDAO-backend` (`/web/v1`). Where `FRONTEND_REVAMP.md` and the revamp prompt differ, the prompt won. Nothing was committed.
