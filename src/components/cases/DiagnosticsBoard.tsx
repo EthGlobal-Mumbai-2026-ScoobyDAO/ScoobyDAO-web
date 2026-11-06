@@ -68,7 +68,7 @@ export function DiagnosticsBoard({ origin }: { origin: string }) {
                   <p className="text-muted mt-3 text-xs">
                     {d.state === 'held_for_review'
                       ? 'Report held for review.'
-                      : 'No report available in the library.'}
+                      : 'No diagnostic report available in the library.'}
                   </p>
                 )}
               </article>
