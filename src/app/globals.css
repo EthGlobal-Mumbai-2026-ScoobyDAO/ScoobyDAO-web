@@ -1,1 +1,266 @@
 @import 'tailwindcss';
+
+/* ---------------------------------------------------------------------------
+   Tokens (THEME.md §2.2). Dark is the default; light swaps the surfaces.
+   The "-ink" tokens are text-safe variants of the accents (≥ 4.5:1 on the
+   surface they sit on); the bare accents are for fills, bars and borders.
+--------------------------------------------------------------------------- */
+:root {
+  --night-900: #0b1026;
+  --night-700: #151b3d;
+  --night-600: #1d2550;
+  --fog-400: #7a86b8;
+  --fog-100: #e8ecff;
+  --beam-400: #ffc857;
+  --clue-500: #2ec4b6;
+  --mask-500: #e4572e;
+  --ghost-300: #b8a9ff;
+  --paper-50: #f6f1e3;
+  --paper-200: #e9dfc4;
+  --paper-ink: #2a2418;
+
+  --bg: var(--night-900);
+  --surface: var(--night-700);
+  --surface-raised: var(--night-600);
+  --text: var(--fog-100);
+  --text-muted: #9ba5d0;
+  --border: color-mix(in srgb, var(--fog-400) 30%, transparent);
+  --glass-fill: color-mix(in srgb, white 8%, transparent);
+
+  --beam-ink: var(--beam-400);
+  --clue-ink: var(--clue-500);
+  --mask-ink: #ff7a52;
+  --ghost-ink: var(--ghost-300);
+
+  --on-beam: var(--night-900);
+  --focus: var(--beam-400);
+
+  color-scheme: dark;
+}
+
+[data-theme='light'] {
+  --bg: var(--paper-50);
+  --surface: #fffaf0;
+  --surface-raised: #ffffff;
+  --text: var(--night-900);
+  --text-muted: #4a5480;
+  --border: color-mix(in srgb, var(--night-900) 18%, transparent);
+  --glass-fill: color-mix(in srgb, white 55%, transparent);
+
+  --beam-ink: #8a5a00;
+  --clue-ink: #0b7369;
+  --mask-ink: #b23a17;
+  --ghost-ink: #5a45c9;
+  --focus: #8a5a00;
+
+  color-scheme: light;
+}
+
+@theme inline {
+  --color-night-900: var(--night-900);
+  --color-night-700: var(--night-700);
+  --color-fog-400: var(--fog-400);
+  --color-fog-100: var(--fog-100);
+  --color-beam: var(--beam-400);
+  --color-clue: var(--clue-500);
+  --color-mask: var(--mask-500);
+  --color-ghost: var(--ghost-300);
+  --color-paper: var(--paper-50);
+  --color-paper-200: var(--paper-200);
+  --color-paper-ink: var(--paper-ink);
+
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-text: var(--text);
+  --color-muted: var(--text-muted);
+  --color-line: var(--border);
+  --color-beam-ink: var(--beam-ink);
+  --color-clue-ink: var(--clue-ink);
+  --color-mask-ink: var(--mask-ink);
+  --color-ghost-ink: var(--ghost-ink);
+  --color-on-beam: var(--on-beam);
+
+  --font-display: var(--font-bungee), 'Bungee', system-ui, sans-serif;
+  --font-sans: var(--font-inter), 'Inter', system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), 'JetBrains Mono', ui-monospace, monospace;
+}
+
+/* --------------------------------------------------------------------------- */
+
+html {
+  background: var(--bg);
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  min-height: 100dvh;
+}
+
+/* Night fog behind everything in dark mode; paper fibres in light mode. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 60% at 15% 110%, color-mix(in srgb, var(--fog-400) 16%, transparent), transparent 60%),
+    radial-gradient(90% 50% at 90% 105%, color-mix(in srgb, var(--ghost-300) 10%, transparent), transparent 60%),
+    radial-gradient(60% 40% at 80% -10%, color-mix(in srgb, var(--beam-400) 6%, transparent), transparent 70%);
+}
+[data-theme='light'] body::before {
+  background: radial-gradient(100% 70% at 50% 0%, #fffdf6, transparent 70%);
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+::selection {
+  background: var(--beam-400);
+  color: var(--night-900);
+}
+
+/* Numbers and hashes: always tabular. */
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'zero' 1;
+}
+
+.font-display {
+  font-family: var(--font-display);
+  letter-spacing: 0.01em;
+  line-height: 1.05;
+}
+
+/* --- Surfaces ------------------------------------------------------------- */
+
+/* Glass card over fog (THEME.md §2.5). */
+.glass {
+  background: var(--glass-fill);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* Paper "case file": warm stock, ruled margin, slight stack shadow. Stays
+   paper-coloured in both themes since it's a physical prop. */
+.paper {
+  --text: var(--paper-ink);
+  --text-muted: #5b5140;
+  --border: color-mix(in srgb, var(--paper-ink) 22%, transparent);
+  --beam-ink: #8a5a00;
+  --clue-ink: #0b7369;
+  --mask-ink: #a8361a;
+  --ghost-ink: #5a45c9;
+  --focus: #8a5a00;
+  color: var(--paper-ink);
+  background:
+    linear-gradient(90deg, transparent 38px, color-mix(in srgb, var(--mask-500) 35%, transparent) 38px 39px, transparent 39px),
+    repeating-linear-gradient(180deg, transparent 0 27px, color-mix(in srgb, #6b8fc9 16%, transparent) 27px 28px),
+    var(--paper-50);
+  border-radius: 3px 3px 6px 6px;
+  box-shadow:
+    0 1px 0 var(--paper-200),
+    0 2px 0 -1px #d9cda9,
+    0 18px 40px -18px rgb(0 0 0 / 0.55);
+}
+.paper-plain {
+  --text: var(--paper-ink);
+  --text-muted: #5b5140;
+  --border: color-mix(in srgb, var(--paper-ink) 22%, transparent);
+  --beam-ink: #8a5a00;
+  --clue-ink: #0b7369;
+  --mask-ink: #a8361a;
+  --ghost-ink: #5a45c9;
+  color: var(--paper-ink);
+  background: var(--paper-50);
+  border-radius: 3px;
+  box-shadow: 0 14px 30px -16px rgb(0 0 0 / 0.5);
+}
+
+/* Rubber stamp label ("EVIDENCE", "CLASSIFIED", "UNMASKED"). Caps here are
+   the prop itself, not a UI label. */
+.stamp {
+  display: inline-block;
+  font-family: var(--font-display);
+  font-size: 0.8rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 0.2rem 0.55rem;
+  border: 2.5px solid currentColor;
+  border-radius: 4px;
+  transform: rotate(-4deg);
+  opacity: 0.9;
+  mix-blend-mode: multiply;
+}
+
+/* Film grain (THEME.md §2.5: 4–6% opacity). */
+.grain {
+  position: fixed;
+  inset: -50%;
+  z-index: 60;
+  pointer-events: none;
+  opacity: 0.05;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .9 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  animation: grain 1.2s steps(6) infinite;
+}
+[data-theme='light'] .grain {
+  opacity: 0.06;
+  mix-blend-mode: multiply;
+  filter: invert(1);
+}
+@keyframes grain {
+  0% { transform: translate(0, 0); }
+  20% { transform: translate(-3%, 2%); }
+  40% { transform: translate(2%, -4%); }
+  60% { transform: translate(-4%, -1%); }
+  80% { transform: translate(3%, 3%); }
+  100% { transform: translate(0, 0); }
+}
+
+/* Flashlight-sweep skeleton (THEME.md §5.8). */
+.sweep {
+  position: relative;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--fog-400) 14%, transparent);
+  border-radius: 8px;
+}
+.sweep::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(40% 120% at 50% 50%, color-mix(in srgb, var(--beam-400) 22%, transparent), transparent 70%);
+  transform: translateX(-100%);
+  animation: sweep 1.8s ease-in-out infinite;
+}
+@keyframes sweep {
+  to { transform: translateX(100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .grain {
+    animation: none;
+  }
+  .sweep::after {
+    animation: none;
+    transform: none;
+    opacity: 0.4;
+  }
+}

@@ -28,3 +28,10 @@ Per the team: frontend-owned names use `scoobydao`.
 - **`@coinbase/cdp-sdk` aliased to a stub** (`src/stubs/cdp-sdk.ts`, via `turbopack.resolveAlias` in `next.config.ts`). The RainbowKit barrel imports wagmi's `baseAccount` connector → `@base-org/account` → `@coinbase/cdp-sdk`, which imports optional `@x402/*` packages that aren't installed, so `next build` failed. `@base-org/account` only uses `CdpClient` for Base subscription payments, which we never use. Remove the alias if a future RainbowKit/wagmi release fixes this.
 - Wallet list is explicit (MetaMask, Rabby, WalletConnect, injected) via `connectorsForWallets`.
 - Next 16 removed `next lint`; `npm run lint` runs the ESLint CLI with `eslint-config-next` flat config.
+- `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` is empty in dev, so `src/lib/env.ts` falls back to a dummy id; WalletConnect's config/pulse endpoints then 403/400 in the console. Injected wallets (MetaMask, Rabby) still work. Set a real project id before the demo.
+
+## Design decisions
+
+- Text-safe "ink" variants of each accent (`--beam-ink`, `--clue-ink`, `--mask-ink`, `--ghost-ink`) so status text passes 4.5:1 on every surface; the THEME.md accent hexes are kept for fills, bars and borders. `node scripts/contrast.mjs` checks every pair.
+- Light theme: `[data-theme="light"]` on `<html>`, toggled from the navbar, saved under `scoobydao:theme`. Paper "case file" surfaces stay paper in both themes.
+- `/styleguide` (noindex) renders every status chip and surface for visual checks.
