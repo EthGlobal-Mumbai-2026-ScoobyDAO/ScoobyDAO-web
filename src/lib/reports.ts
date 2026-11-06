@@ -13,6 +13,7 @@ export type ReportEntry = {
   listUnavailable?: boolean;
   admission?: string;
   diagnostic?: string;
+  diagnosticDescription?: string;
   sourceContext?: string;
   fetched?: string;
   runStatus?: string;
@@ -191,6 +192,11 @@ export function backendReportAdapter(base: string): ReportAdapter {
         value.diagnostic?.case_admitted === false &&
         value.diagnostic?.world_verified === false
           ? `User-requested historical diagnostic · not case-admitted · World ID not verified${typeof value.diagnostic.model_status === 'string' ? ` · model status: ${value.diagnostic.model_status}` : ''}`
+          : undefined,
+      diagnosticDescription:
+        value.provenance === 'user_requested_historical_diagnostic' &&
+        typeof value.diagnostic?.description === 'string'
+          ? value.diagnostic.description
           : undefined,
       admission: `Admission: ${value.selection.kind.replaceAll('_', ' ')} · authentication: ${typeof value.selection.authentication === 'string' ? value.selection.authentication : 'not supplied'}`,
       fetched:

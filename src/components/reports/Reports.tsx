@@ -89,6 +89,9 @@ export function Reports({
             {item.fetched && <p className="text-muted mt-1 text-xs">{item.fetched}</p>}
             {item.sourceContext && <p className="text-muted mt-1 text-xs">{item.sourceContext}</p>}
             {item.diagnostic && <p className="mt-1 text-xs font-semibold">{item.diagnostic}</p>}
+            {item.diagnosticDescription && (
+              <p className="text-muted mt-1 text-xs">{item.diagnosticDescription}</p>
+            )}
             {item.admission && <p className="text-muted mt-1 text-xs">{item.admission}</p>}
             {item.runStatus && (
               <p className="text-muted mt-1 text-xs">Investigation: {item.runStatus}</p>
@@ -137,6 +140,9 @@ export function Reports({
             <h2 className="mt-2 text-2xl font-semibold">{report.title}</h2>
             <p className="mt-2">{report.review}</p>
             {report.diagnostic && <p className="mt-2 text-sm font-semibold">{report.diagnostic}</p>}
+            {report.diagnosticDescription && (
+              <p className="text-muted mt-2 text-sm">{report.diagnosticDescription}</p>
+            )}
             {report.sourceContext && (
               <p className="text-muted mt-2 text-sm">{report.sourceContext}</p>
             )}
