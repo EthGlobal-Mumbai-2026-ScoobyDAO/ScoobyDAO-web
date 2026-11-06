@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { env } from '@/lib/env';
-import { selectProtocol, V2_INFO } from '@/protocol';
+import { selectProtocol } from '@/protocol';
 import { Logo } from './Logo';
 import { SectionLink } from './SectionLink';
 import { NetworkBadge } from './NetworkBadge';
@@ -12,11 +12,10 @@ import { WalletButton } from './WalletButton';
 
 type NavItem = { href: string; label: string; section?: string };
 
-const LIVE_MARKET = `/onchain/${V2_INFO.reportId}`;
+const LIVE_MARKET = '/markets';
 const LINKS: NavItem[] = [
   { href: '/cases', label: 'Cases' },
   ...(selectProtocol().kind === 'v2' ? [{ href: LIVE_MARKET, label: 'Live market' }] : []),
-  { href: '/accelerated', label: '1-hour demo' },
   { href: '/reports', label: 'Reports' },
   { href: '/me', label: 'My positions' },
   { href: '/admin', label: 'Review desk' },
@@ -61,9 +60,7 @@ export function NavBar() {
               l.href === '/cases'
                 ? pathname.startsWith('/case')
                 : l.href === LIVE_MARKET
-                  ? pathname.startsWith('/onchain')
-                  : l.href === '/accelerated'
-                    ? pathname.startsWith('/accelerated')
+                  ? pathname.startsWith('/markets') || pathname.startsWith('/onchain') || pathname.startsWith('/accelerated')
                   : l.href === '/reports'
                     ? pathname.startsWith('/reports')
                     : l.href === '/me' || l.href === '/operator'
