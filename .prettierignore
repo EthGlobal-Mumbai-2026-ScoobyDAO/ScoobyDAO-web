@@ -1,0 +1,6 @@
+.next
+node_modules
+src/contracts/abi
+src/contracts/sepolia.json
+*.md
+prompt.txt

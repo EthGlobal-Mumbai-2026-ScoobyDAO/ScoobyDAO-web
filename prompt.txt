@@ -1,0 +1,116 @@
+You are building the riskfi-web frontend for our ETHGlobal Mumbai 2026 project.
+
+Before starting, load the frontend-design skill and the riskfi-ui project skill.
+After each page, use Playwright to open it at desktop and mobile widths, screenshot
+every state (including frozen, denied, expired), and fix anything that looks broken
+or off-theme before committing.
+
+Read these files completely before writing any code, in this order:
+1. CLAUDE.md      – repo rules, pages, stack, build order
+2. INTERFACES.md  – API types, contract ABIs/addresses format, units (6 decimals)
+3. THEME.md       – brand (Unmasked / mascot Sniff), design tokens, 3D plan, page features, component list
+
+If the files disagree: INTERFACES.md wins on data shapes, CLAUDE.md wins on rules and scope,
+THEME.md wins on look, copy and page features. Write any conflict you find in NOTES.md and keep going.
+
+Hard rules (do not break):
+- You can use Scooby-Doo or any other studio character, name, catchphrase or likeness
+  in code, copy, assets, metadata or favicon.
+- No secrets. Only NEXT_PUBLIC_* env vars. Never call World's token endpoint from the browser.
+- The UI never decides that something is approved; it only displays backend/chain state.
+- Call them "For/Against shares", never PT/YT.
+- Respect prefers-reduced-motion; status always uses text + icon, not color alone.
+- Don't change any type or route from INTERFACES.md. If something is missing, note it in NOTES.md.
+- Check current docs (wagmi, viem, RainbowKit, React Three Fiber/drei, Uniswap v4 router) before
+  using their APIs; don't rely on memory.
+
+Work in phases. After each phase: run `npm run lint`, `npm run typecheck` and `npm run build`,
+fix all errors, then make a small git commit with a clear message. Don't start the next phase
+until the current one builds.
+
+Phase 0 – Setup
+- Scaffold Next.js (App Router, TypeScript, src/), Tailwind, ESLint, Prettier.
+- Install: wagmi, viem, @rainbow-me/rainbowkit, @tanstack/react-query, framer-motion,
+  qrcode.react, lucide-react, @react-three/fiber, @react-three/drei, three.
+- Add .env.example exactly as in CLAUDE.md §6. Add package.json scripts: dev, build, lint,
+  typecheck (tsc --noEmit), sync:contracts (runs scripts/sync-contracts.sh).
+- Providers: wagmi (Sepolia only), RainbowKit, React Query.
+
+Phase 1 – Design system (THEME.md §2)
+- CSS variables for all color tokens, dark default + light variant.
+- Fonts via next/font: Bungee (display), Inter (body), JetBrains Mono (numbers/hashes).
+- GrainOverlay, glass card style, paper "case file" style, StatusChip using the status table
+  (color + icon + label for every status).
+- NavBar with Logo placeholder, Cases, How it works, Sepolia badge, wallet button.
+
+Phase 2 – Data layer (no backend needed yet)
+- src/lib/api.ts: typed client for every route in INTERFACES.md §4, base URL from
+  NEXT_PUBLIC_API_URL. Add a USE_FIXTURES switch (true when the API is unreachable or
+  NEXT_PUBLIC_USE_FIXTURES=true).
+- src/fixtures/: realistic Report, Approval and ClaimView data matching the types exactly,
+  covering every status (draft, awaiting_approval, denied, expired, published/Open, Frozen,
+  ResolvedPass, ResolvedFail, Refunded).
+- src/contracts/: typed ABI + address exports from abi/*.json and sepolia.json; if those
+  files don't exist yet, create placeholder files and log it in NOTES.md.
+- src/lib/commitment.ts: random 32-byte salt, commitment =
+  keccak256(encodeAbiParameters([uint256,address,uint8,uint256,bytes32],
+  [claimId, account, side, amount, salt])); save to localStorage in try/catch under
+  riskfi:<chainId>:<claimId>:<account>; "Download backup" JSON; restore from upload.
+  Add unit tests (vitest) for the hash and storage round trip.
+- src/lib/format.ts (6-decimal USDC), src/lib/explorer.ts (Sepolia Etherscan links).
+- Canonical JSON + keccak hash helper for the "Recompute hash" check
+  (sorted keys, no whitespace, per INTERFACES.md §3). Unit test it.
+
+Phase 3 – Demo-critical pages (build these first and make them solid)
+- /approve/[id] per THEME.md §5.4 and CLAUDE.md §3.3: no 3D, large projector type,
+  token + chain, exact claim text, manifest hash, user code, QR + button to verificationUri,
+  countdown, poll GET /approvals/:id every 2s, and all result states
+  (approved/spent, denied, expired, rejected_not_reviewer) with the exact banner copy.
+- /case/[claimId]/stake per THEME.md §5.5: header, barred-wallet banner (read isExcluded),
+  sealed commit form (USDC approve → commit), reveal, redeem with payout preview using the
+  formula payout = s + s*L*(10000-f)/(10000*W), totals, OddsBar, frozen banner.
+- Tx toasts for every write: pending → confirmed with explorer link → failed with the
+  decoded revert reason.
+
+Phase 4 – Cases
+- /cases corkboard grid (THEME.md §5.2): CaseCard, filters by status and claim type,
+  search by address, "Send Sniff to scan" button only when NEXT_PUBLIC_DEMO_MODE=true.
+- /cases/[id] case file (THEME.md §5.3): claim index cards, evidence with stamps,
+  AI summary labelled "Sniff's notes (AI-written; not the verdict)", ManifestViewer,
+  Recompute-hash check (✓/✗), barred-wallet list, "Request a human sign-off" →
+  POST /reports/:id/approve → redirect to /approve/[approvalId].
+
+Phase 5 – Market
+- /case/[claimId]/market: SwapPanel for For↔USDC and Against↔USDC using the v4 router
+  address from sepolia.json (read the current Uniswap v4 docs for the router/quoter calls).
+  Frozen state disables inputs and shows "🪤 Trap sprung — trading halted at block N";
+  show the revert reason if a forced tx fails.
+
+Phase 6 – Landing (2D first)
+- / per THEME.md §5.1 with HeroParallaxFallback (5 layered placeholders until real art
+  exists), headline, CTAs, StatsStrip, 4-step "How it works" scroll section,
+  "What we can't do" trust section, footer with repo links and contract addresses.
+- FlashlightCursor on the hero (radial gradient following the pointer; off with reduced motion).
+
+Phase 7 – 3D (only after phases 0–6 build and work)
+- HeroScene3D with React Three Fiber + drei, dynamically imported with ssr:false,
+  mounted after first paint. Load /models/sniff.glb if present (useGLTF + useAnimations,
+  clips idle/sniff/alert/triumph); otherwise render a stylised placeholder.
+  Spotlight "flashlight" follows the pointer; fog; frameloop "demand" and pause when off-screen.
+- Fallback to HeroParallaxFallback when WebGL is unavailable, reduced motion is on,
+  or hardwareConcurrency < 4.
+- MaskPop3D on resolve (with a CSS/Lottie fallback). Never mount 3D on /approve.
+
+Phase 8 – Polish and checks
+- Empty states, loading skeletons ("flashlight sweep"), 404 "This case went cold.",
+  mobile layouts.
+- Accessibility pass: focus states, aria labels on icon buttons, contrast ≥ 4.5:1.
+- Run Lighthouse on / and fix until performance ≥ 80.
+- Update README: how to run, env vars, fixtures mode, how to sync contracts, asset credits,
+  and a short demo walkthrough (cases → case file → approve deny/approve → stake →
+  market → frozen → redeem).
+- Work through THEME.md §9 checklist and report which items pass.
+
+When you finish each phase, give me a 3–5 line summary: what was built, what's mocked,
+anything blocked, and the next phase. If you're blocked by a missing backend route,
+contract artifact or asset, use fixtures/placeholders, log it in NOTES.md, and continue.
