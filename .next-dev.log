@@ -131,3 +131,43 @@
 ✓ Compiled in 279ms
 [browser] Lit is in dev mode. Not recommended for production! See https://lit.dev/msg/dev-mode for more information.
 [browser] [Reown Config] Failed to fetch remote project configuration. Using local/default values. Error: HTTP status code: 403
+⚠ Found a change in next.config.ts. Restarting the server to apply the changes...
+▲ Next.js 16.4.5 (Turbopack)
+- Local:         http://localhost:3100
+- Network:       http://10.219.167.60:3100
+✓ Ready in 158ms
+✓ Running next.config.ts took 16ms
+
+ GET /approve/apr-live 200 in 419ms (next.js: 253ms, application-code: 166ms)
+[browser] Lit is in dev mode. Not recommended for production! See https://lit.dev/msg/dev-mode for more information.
+[browser] [Reown Config] Failed to fetch remote project configuration. Using local/default values. Error: HTTP status code: 403
+✓ Compiled in 354ms
+✓ Compiled in 109ms
+ GET /approve/apr-live 200 in 20ms (next.js: 5ms, application-code: 16ms)
+✓ Compiled in 97ms
+ GET /approve/apr-live 200 in 39ms (next.js: 5ms, application-code: 34ms)
+ GET /approve/apr-live 200 in 12ms (next.js: 0.9ms, application-code: 11ms)
+ GET /cases 200 in 25ms (next.js: 4ms, application-code: 22ms)
+[browser] Lit is in dev mode. Not recommended for production! See https://lit.dev/msg/dev-mode for more information.
+[browser] [Reown Config] Failed to fetch remote project configuration. Using local/default values. Error: HTTP status code: 403
+ GET /cases 200 in 17ms (next.js: 0.6ms, application-code: 17ms)
+[browser] Lit is in dev mode. Not recommended for production! See https://lit.dev/msg/dev-mode for more information.
+[browser] [Reown Config] Failed to fetch remote project configuration. Using local/default values. Error: HTTP status code: 403
+ GET /cases 200 in 23ms (next.js: 0.6ms, application-code: 22ms)
+[browser] Lit is in dev mode. Not recommended for production! See https://lit.dev/msg/dev-mode for more information.
+[browser] [Reown Config] Failed to fetch remote project configuration. Using local/default values. Error: HTTP status code: 403
+ GET /cases/rpt-honeypot 200 in 238ms (next.js: 219ms, application-code: 19ms)
+[browser] Lit is in dev mode. Not recommended for production! See https://lit.dev/msg/dev-mode for more information.
+[browser] [Reown Config] Failed to fetch remote project configuration. Using local/default values. Error: HTTP status code: 403
+ GET /cases/rpt-lantern 200 in 17ms (next.js: 1.8ms, application-code: 16ms)
+[browser] Lit is in dev mode. Not recommended for production! See https://lit.dev/msg/dev-mode for more information.
+[browser] [Reown Config] Failed to fetch remote project configuration. Using local/default values. Error: HTTP status code: 403
+ GET /cases/rpt-moonbag 200 in 19ms (next.js: 2ms, application-code: 17ms)
+[browser] Lit is in dev mode. Not recommended for production! See https://lit.dev/msg/dev-mode for more information.
+[browser] [Reown Config] Failed to fetch remote project configuration. Using local/default values. Error: HTTP status code: 403
+ GET /cases/nope 200 in 16ms (next.js: 1.4ms, application-code: 15ms)
+[browser] Lit is in dev mode. Not recommended for production! See https://lit.dev/msg/dev-mode for more information.
+[browser] [Reown Config] Failed to fetch remote project configuration. Using local/default values. Error: HTTP status code: 403
+✓ Compiled in 431ms
+✓ Compiled in 46ms
+✓ Compiled in 21ms
