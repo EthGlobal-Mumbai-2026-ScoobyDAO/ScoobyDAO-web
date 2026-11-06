@@ -1,8 +1,8 @@
 # scoobydao-web — Unmasked
 
-## ACTIVE STATE — Reports integration
+## ACTIVE STATE — merged Reports checkpoint
 
-`/reports` presents a native five-pillar card reader, empty unless a trusted research API origin is explicitly configured. RAY is a pending, not gate-qualified local reference. The research API and legacy approval API use different contracts and configuration; neither a health response nor a local review assertion proves authenticated sign-off. See [reports handoff](HANDOFF-REPORTS.md) for tested state and continuation.
+`/reports` presents a native five-pillar card reader, empty unless a trusted research API origin is explicitly configured. RAY is a pending, not gate-qualified local reference. The research API and legacy approval API use different contracts and configuration; neither a health response nor a local review assertion proves authenticated sign-off. Reports PRs #1 and #2 are merged and CI passed. See [LIVE-STATE.md](LIVE-STATE.md) for current scope, deployment variables, backend asset transfer and remaining work, and [reports handoff](HANDOFF-REPORTS.md) for component ownership. No actual deployment or authenticated approval is claimed; World ID is deferred for this checkpoint.
 
 Frontend for **Unmasked** (ETHGlobal Mumbai 2026): AI agents and an original detective-hound mascot, Sniff, investigate suspicious tokens; a verified human signs off on each claim; people stake For/Against with sealed bets; a Uniswap v4 hook freezes trading the moment a claim triggers.
 
@@ -11,7 +11,7 @@ Sibling repos: `ScoobyDAO-contracts` (ABIs + addresses), `ScoobyDAO-backend` (AP
 ## Run it
 
 ```bash
-npm install
+npm ci
 cp .env.example .env.local      # then fill in the values below
 npm run dev                     # http://localhost:3000
 ```

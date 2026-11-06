@@ -1,0 +1,30 @@
+# Live state — 6 November 2026
+
+Our Reports integration [PR #1](https://github.com/EthGlobal-Mumbai-2026-ScoobyDAO/ScoobyDAO-web/pull/1) and activity [PR #2](https://github.com/EthGlobal-Mumbai-2026-ScoobyDAO/ScoobyDAO-web/pull/2) are merged. Source baseline: `fa0b1f0743e18841424ed467bcf8dbf7e374d157`. Later documentation commits may advance `main`. World ID integration is deferred by user instruction; no real sign-off or publication is claimed by these changes.
+
+| Capability | Current behavior |
+|---|---|
+| Reports | `/reports` library and `/reports/<report-id>~<version>` native five-pillar cards; TL;DR, insight/reasoning/citations, context-dependent supplied charts and deeper analysis |
+| Contract | Exact-byte SHA-256 checks for report, manifest, sidecars and evidence; immutable package identity; reasoning/1 and additive reasoning/2 accepted; proposed action/counterevidence/reversal data stays pending |
+| Downloads | Verified HTML/Markdown and explicitly available draft PDF from backend; source evidence comes from matching package |
+| Activity | Real generic worker heartbeat and queued/running job counts from `/status`; token-level screening is explicitly unavailable |
+| Failure behavior | Missing/untrusted research origin leaves library empty or reports an error. Legacy API failures do not silently simulate approval; fixtures require explicit opt-in |
+
+## Verification
+
+PR #2's exact final source head `d6a07a0cb30f1dde8eb8cebd8cb9bf547d88a42a` passed [tests, lint, production build and typecheck](https://github.com/EthGlobal-Mumbai-2026-ScoobyDAO/ScoobyDAO-web/actions/runs/42196509126). PR #1's UI source was separately checked with 43 Vitest tests before its CI-only follow-up. Actual browser checks covered 1440px/375px, keyboard card navigation, verified evidence download, no iframe/outer overflow, v2 text escaping and proposed-action drilldowns. Synthetic v1/v2 and 11 rejection fixtures produced all 13 expected outcomes. These are offline/reference integration checks, not new token research or authenticated review.
+
+## Deploy-time setup and data
+
+Use Node 24.13.1 as in CI, run `npm ci`, configure public build-time variables, then `npm test`, `npm run lint`, `npm run build`, `npm run typecheck`; start with `npm start`. A production build needs access to the configured Google Fonts through Next's font loader. No hosting target/domain has been provisioned by this checkpoint.
+
+- `NEXT_PUBLIC_REPORT_API_URL`: explicitly trusted research API HTTPS origin; HTTP only for loopback development. Package assets must stay on this exact origin. A remote browser's `127.0.0.1` addresses that browser's own computer, not the server.
+- Backend `SCOOBY_WEB_ORIGIN`: exact reachable web origin, with no trailing slash. CORS is not authentication. Coordinate a protected access topology before remote use; the current research API's operator routes must stay private.
+- `NEXT_PUBLIC_API_URL`: separate legacy case/approval API. The current research FastAPI service does not implement its keccak-based approval contract. Do not point both variables at the same service merely because `/health` works.
+- `NEXT_PUBLIC_USE_FIXTURES=false` for real integration. Set true only for visibly labeled demo/test, where sign-off is simulated. No secrets belong in public environment variables.
+
+Report JSON, evidence and rendered files are **served by the backend**, not copied into this web repo's public directory. The backend image includes code/templates/test fixtures; the authored RAY data currently lives in local workspaces and must be transferred/imported into its persistent `SCOOBY_DATA` volume. A fresh empty backend volume gives an empty library. See backend [storage/transfer](https://github.com/EthGlobal-Mumbai-2026-ScoobyDAO/ScoobyDAO-backend/blob/main/docs/report-assets.md), [live state](https://github.com/EthGlobal-Mumbai-2026-ScoobyDAO/ScoobyDAO-backend/blob/main/LIVE-STATE.md) and [private staging](https://github.com/EthGlobal-Mumbai-2026-ScoobyDAO/ScoobyDAO-backend/blob/main/DEPLOYMENT.md).
+
+RAY remains a source-curated reasoning/1 diagnostic reference, pending review, not gate-qualified, with current sell trap unproven. Its report SHA-256 is `69712a61331eb414d3eb0ff347c7bec12cb16cccb1f874779f695619d714649a`. No real reasoning/2 report was generated. PDF evidence bytes are in the matching companion bundle; PDF remains draft, opt-in on backend and subject to target rendering and detailed visual/accessibility QA.
+
+Next: launch the reviewed private backend target, import/render the source packet, set reachable origin/CORS, rebuild web and smoke-test all five pillars, chart/citation/evidence links, downloads, worker status, failures and restarts. Discovery's per-token event contract and actual five-pillar producers remain upstream work. Publication and authenticated human sign-off are the human teammate's separate scope. See [HANDOFF-REPORTS.md](HANDOFF-REPORTS.md) for component ownership and historical test context.
