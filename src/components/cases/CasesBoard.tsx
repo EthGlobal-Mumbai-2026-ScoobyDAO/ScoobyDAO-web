@@ -7,6 +7,7 @@ import { STATUS_META } from '@/components/StatusChip';
 import { chainName } from '@/lib/explorer';
 import { CASE_STATUSES, type CaseStatus } from '@/lib/status';
 import { useChainTime, useProtocol } from '@/protocol/hooks';
+import { ReferenceCases } from '@/components/reference/ReferenceCases';
 import { CaseCard } from './CaseCard';
 import { LiveMarketCard } from './LiveMarketCard';
 import { useCaseRows } from './useCaseRows';
@@ -55,6 +56,8 @@ export function CasesBoard() {
           <LiveMarketCard markets={markets} loading={marketsLoading} error={marketsError} now={now} />
         </div>
       )}
+
+      <ReferenceCases />
 
       <div className="mt-8 space-y-4">
         <div className="flex flex-wrap items-center gap-3">
