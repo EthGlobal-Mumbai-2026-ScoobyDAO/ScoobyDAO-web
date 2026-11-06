@@ -18,6 +18,16 @@ cp .env.example .env.local
 npm run dev                     # http://localhost:3000
 ```
 
+For PowerShell, run the following from the web repository. The example assumes a separately started combined backend at `http://127.0.0.1:8000`, configured to allow the web origin. It does not start or configure the backend:
+
+```powershell
+if (-not (Test-Path .env.local)) { Copy-Item .env.example .env.local }
+npm install
+npm run dev
+```
+
+`.env.example` and `WEB.env.example` contain the same shareable web settings; update both when the public configuration changes. Change `.env.local` for your own ports, public RPCs, or WalletConnect project ID and restart the dev server. `NEXT_PUBLIC_*` values are exposed to the browser and must not contain backend API keys or other secrets. A configured URL does not mean that the backend supports every workflow; the current scouting action and report-generation integrations remain in progress.
+
 | Script | What it does |
 |---|---|
 | `npm run dev` / `build` / `start` | Next.js 16 (Turbopack) |
@@ -43,7 +53,8 @@ Set `NEXT_PUBLIC_API_URL` to a running backend (`…/web/v1`) and leave `NEXT_PU
 | Variable | Purpose |
 |---|---|
 | `NEXT_PUBLIC_API_URL` | legacy backend `/web/v1` base (default `http://127.0.0.1:8000/web/v1`) |
-| `NEXT_PUBLIC_SCOUTING_API_URL` | proposed scouting API origin; blank means unavailable, not fixtures |
+| `NEXT_PUBLIC_REPORT_API_URL` | research reports API origin; blank leaves the report library empty |
+| `NEXT_PUBLIC_SCOUTING_API_URL` | scouting API origin; blank means unavailable, not fixtures |
 | `NEXT_PUBLIC_USE_FIXTURES` | `true` forces fixture mode |
 | `NEXT_PUBLIC_PROTOCOL` | `v1` (deployed) or `v2` (local only; shows "Not deployed yet" until addresses exist) |
 | `NEXT_PUBLIC_SEPOLIA_RPC_URL` · `NEXT_PUBLIC_ARB_SEPOLIA_RPC_URL` | optional RPCs |
