@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { AgentActivity } from './AgentActivity';
 import {
   defaultReportAdapter,
   verifyAsset,
@@ -39,6 +40,7 @@ export function Reports({
         This library is a local integration draft. Review and publication are separate from report
         selection.
       </div>
+      {!id && <AgentActivity />}
       {state.loading && (
         <p className="mt-8" role="status">
           Loading reports…

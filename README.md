@@ -40,6 +40,8 @@ Only `NEXT_PUBLIC_*` values; they are public by definition. No secrets live in t
 | `NEXT_PUBLIC_USE_FIXTURES` | `true` forces fixture mode (optional; not in `.env.example`) |
 | `CONTRACTS_REPO_PATH` | used only by `scripts/sync-contracts.sh` |
 
+The Reports page also has a read-only worker-status widget using `NEXT_PUBLIC_REPORT_API_URL`. It shows generic worker heartbeat and job counts; token-by-token discovery activity is not yet connected. See [the Reports handoff](HANDOFF-REPORTS.md) for scope and integration dependencies.
+
 ## Fixtures mode
 
 The app uses `src/fixtures/` instead of the API when `NEXT_PUBLIC_USE_FIXTURES=true` **or** `GET /health` is unreachable. Fixtures cover every status: draft, awaiting approval, denied, expired, Open, Frozen, Resolved Pass (Unmasked), Resolved Fail (Cleared), Refunded.
