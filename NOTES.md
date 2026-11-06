@@ -108,3 +108,12 @@ Gaps / assumptions (contracts repo please confirm):
 - **Hero background no longer swaps out.** 3D used to replace the whole 2D scene (new moon/mansion, CSS flashlight hidden) and Sniff popped in on top. Now the 2D night scene, parallax and CSS flashlight are always the background; Sniff has one slot in the yard: a 2D figure from first paint, and on capable desktops a *transparent* R3F canvas rendering only Sniff in the same box, crossfading in. He sits under the darkness layer, so the flashlight reveals him.
 - **"How it works" repeat clicks.** Next only scrolls on a hash *change*, so clicks after the first did nothing. `SectionLink` scrolls every time on `/` (instant under reduced motion), updates the hash and focuses the section; from other pages it navigates to `/#how-it-works`.
 - **Console noise.** WalletConnect only initialises with a real project id; the backend `/health` probe result is cached for 60s in sessionStorage (one `ERR_CONNECTION_REFUSED` per minute while the backend is down, instead of one per page load; set `NEXT_PUBLIC_USE_FIXTURES=true` in `.env.local` to skip it entirely); three.js pinned to 0.182 because r183 deprecated `THREE.Clock`, which React Three Fiber 9.8 still constructs.
+
+## Hero load latency (2026-11-06)
+
+Problem: on reload the 2D placeholder Sniff showed first and the 3D one swapped in only after the pointer moved (~1.15 s later, 700 ms of it crossfade).
+- Devices that will get 3D never show the 2D figure (CSS hides it from first paint; coarse pointer / reduced motion show it via a media query before JS; JS reveals it if WebGL or cores rule 3D out).
+- 3D code + model manifest load in parallel right after hydration (no pointer intent); fade 300 ms; dpr capped at 1.5.
+- glTF loader (drei `useGLTF`/`useAnimations`) split into `SniffModel.tsx`, fetched only when `manifest.json` says `sniff: true`.
+- Measured on the prod build at 1440×900: 3D Sniff visible 370–530 ms after navigation; 2D figure opacity stayed 0 in every sampled frame; flashlight sweep 8.3 ms p50 / 9.0 ms p95 frames; Lighthouse mobile 100 / desktop 96 (TBT 30 / 170 ms).
+- The dev server (`npm run dev`) compiles chunks on first request, so the first 3D load there is much slower than production.

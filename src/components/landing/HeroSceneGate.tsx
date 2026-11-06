@@ -1,68 +1,74 @@
 'use client';
 
-import dynamic from 'next/dynamic';
-import { useEffect, useRef, useState } from 'react';
-import { afterFirstPaint, canUse3D } from '@/lib/webgl';
+import { useEffect, useRef, useState, type ComponentType } from 'react';
+import { canUse3D } from '@/lib/webgl';
 import { HeroParallaxFallback } from './HeroParallaxFallback';
+import type { HeroScene3DProps } from './HeroScene3D';
 import { StandingSniff } from './StandingSniff';
 
-const HeroScene3D = dynamic(() => import('./HeroScene3D'), { ssr: false });
+type Scene = ComponentType<HeroScene3DProps>;
 
 /**
- * The 2D night scene, parallax and CSS flashlight are always the background. Sniff stands
- * in the yard as a 2D figure from first paint. On capable devices (WebGL, ≥4 cores, a fine
- * pointer, no reduced motion) a transparent 3D Sniff loads on the first pointer move over
- * the hero and crossfades in over the 2D one, in the same spot. Nothing else changes.
+ * The 2D night scene, parallax and CSS flashlight are always the background. Sniff has one
+ * slot in the yard:
+ * - Devices that will get 3D (fine pointer, no reduced motion, WebGL, ≥4 cores) never see the
+ *   2D figure: CSS hides it from first paint, the 3D chunk starts loading right after
+ *   hydration, and Sniff fades in once, in 3D.
+ * - Everyone else sees the 2D figure immediately (CSS shows it for coarse pointers and reduced
+ *   motion before JS runs; JS reveals it if WebGL/cores rule 3D out).
  */
 export function HeroSceneGate() {
   const ref = useRef<HTMLDivElement>(null);
-  const [mode, setMode] = useState<{ host: HTMLElement; hasModel: boolean } | null>(null);
+  const [scene, setScene] = useState<{ Scene: Scene; host: HTMLElement; hasModel: boolean } | null>(
+    null,
+  );
+  const [no3D, setNo3D] = useState(false);
   const [ready3D, setReady3D] = useState(false);
 
   useEffect(() => {
     const host = ref.current?.closest<HTMLElement>('.hero');
-    if (!host || !canUse3D().ok) return;
+    if (!host) return;
+    if (!canUse3D().ok) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- capability is only knowable in the browser
+      setNo3D(true);
+      return;
+    }
     let cancelled = false;
-    let stop = () => {};
-    const load = async () => {
-      // public/models/manifest.json lists which optional models exist (avoids a 404 probe).
-      const hasModel = await fetch('/models/manifest.json')
+    // Code and model manifest load in parallel, straight after hydration.
+    Promise.all([
+      import('./HeroScene3D'),
+      fetch('/models/manifest.json')
         .then((r) => (r.ok ? r.json() : {}))
         .then((m: { sniff?: boolean }) => m.sniff === true)
-        .catch(() => false);
-      if (!cancelled) setMode({ host, hasModel });
-    };
-    // Load three.js on intent (first pointer move over the hero), never during first load.
-    const onIntent = () => {
-      host.removeEventListener('pointermove', onIntent);
-      stop = afterFirstPaint(load);
-    };
-    host.addEventListener('pointermove', onIntent);
+        .catch(() => false),
+    ])
+      .then(([mod, hasModel]) => !cancelled && setScene({ Scene: mod.default, host, hasModel }))
+      .catch(() => !cancelled && setNo3D(true));
     return () => {
       cancelled = true;
-      host.removeEventListener('pointermove', onIntent);
-      stop();
     };
   }, []);
 
+  const Scene = scene?.Scene;
   return (
     <div ref={ref} aria-hidden className="absolute inset-0">
       <HeroParallaxFallback
         sniff={
           <>
             <div
-              className={`absolute inset-0 transition-opacity duration-700 ${ready3D ? 'opacity-0' : 'opacity-100'}`}
+              className={`hero-sniff-2d absolute inset-0 transition-opacity duration-300 ${no3D ? 'is-on' : ''}`}
             >
               <StandingSniff />
             </div>
-            {mode && (
+            {Scene && scene && (
               <div
-                className={`absolute inset-[-25%] transition-opacity duration-700 ${ready3D ? 'opacity-100' : 'opacity-0'}`}
+                className={`absolute inset-[-25%] transition-opacity duration-300 ${ready3D ? 'opacity-100' : 'opacity-0'}`}
               >
-                <HeroScene3D
-                  host={mode.host}
-                  hasModel={mode.hasModel}
+                <Scene
+                  host={scene.host}
+                  hasModel={scene.hasModel}
                   onReady={() => setReady3D(true)}
+                  onFail={() => setNo3D(true)}
                 />
               </div>
             )}

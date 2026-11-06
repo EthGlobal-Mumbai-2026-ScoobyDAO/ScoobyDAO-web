@@ -16,16 +16,3 @@ export function canUse3D(): { ok: boolean; reason?: string } {
   }
   return { ok: true };
 }
-
-/** Resolves after first paint and an idle slot, so 3D never competes with LCP. */
-export function afterFirstPaint(cb: () => void): () => void {
-  let idle: number | undefined;
-  const raf = requestAnimationFrame(() => {
-    const ric = window.requestIdleCallback ?? ((f: () => void) => window.setTimeout(f, 200));
-    idle = ric(cb, { timeout: 2000 } as IdleRequestOptions) as unknown as number;
-  });
-  return () => {
-    cancelAnimationFrame(raf);
-    if (idle !== undefined) (window.cancelIdleCallback ?? clearTimeout)(idle);
-  };
-}

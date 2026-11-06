@@ -1,30 +1,30 @@
 'use client';
 
-import { useAnimations, useGLTF } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Suspense, useEffect, useRef } from 'react';
+import { lazy, Suspense, useEffect, useRef } from 'react';
 import * as THREE from 'three';
 
 // Landing hero 3D Sniff (THEME.md §3). Loaded only on capable devices, on pointer intent.
 // Renders on demand: a driver requests frames only while the hero is on screen.
 
-export const SNIFF_MODEL_URL = '/models/sniff.glb';
+export type Pointer = { current: { x: number; y: number } };
 
-type Pointer = { current: { x: number; y: number } };
+// The glTF loader (drei useGLTF/useAnimations + three-stdlib) is its own chunk, fetched only
+// when public/models/manifest.json says sniff.glb exists.
+const SniffModel = lazy(() => import('./SniffModel'));
+
+export interface HeroScene3DProps {
+  host: HTMLElement;
+  hasModel: boolean;
+  onReady: () => void;
+  onFail: () => void;
+}
 
 /**
  * Transparent canvas that renders only Sniff, sized to his spot in the 2D scene. The night
  * scene, parallax and flashlight stay in the DOM layers around it.
  */
-export default function HeroScene3D({
-  host,
-  hasModel,
-  onReady,
-}: {
-  host: HTMLElement;
-  hasModel: boolean;
-  onReady: () => void;
-}) {
+export default function HeroScene3D({ host, hasModel, onReady, onFail }: HeroScene3DProps) {
   const pointer = useRef({ x: 0.4, y: -0.1 });
 
   useEffect(() => {
@@ -42,14 +42,16 @@ export default function HeroScene3D({
   return (
     <Canvas
       frameloop="demand"
-      dpr={[1, 1.75]}
+      dpr={[1, 1.5]}
       camera={{ position: [0, 1.1, 7.2], fov: 30 }}
       gl={{ alpha: true, antialias: true, powerPreference: 'low-power' }}
       onCreated={({ camera, gl }) => {
         camera.lookAt(0, 1.05, 0);
         gl.setClearColor(0x000000, 0);
-        requestAnimationFrame(onReady);
+        // Reveal once the first frame (and shader compile) has happened.
+        requestAnimationFrame(() => requestAnimationFrame(onReady));
       }}
+      onError={onFail}
       aria-hidden
     >
       <ambientLight intensity={0.55} color="#9aa6d8" />
@@ -97,31 +99,6 @@ function Driver({ host }: { host: HTMLElement }) {
     };
   }, [host, invalidate]);
   return null;
-}
-
-/** Real model: plays idle by default (clips: idle, sniff, alert, triumph). */
-function SniffModel({ pointer }: { pointer: Pointer }) {
-  const { scene, animations } = useGLTF(SNIFF_MODEL_URL);
-  const { actions, names } = useAnimations(animations, scene);
-  const group = useRef<THREE.Group>(null);
-  useEffect(() => {
-    const clip = actions.idle ?? (names[0] ? actions[names[0]] : undefined);
-    clip?.reset().fadeIn(0.3).play();
-    return () => void clip?.fadeOut(0.3);
-  }, [actions, names]);
-  useFrame(() => {
-    if (group.current)
-      group.current.rotation.y = THREE.MathUtils.lerp(
-        group.current.rotation.y,
-        pointer.current.x * 0.5,
-        0.08,
-      );
-  });
-  return (
-    <group ref={group} position={[0, 0, 0]}>
-      <primitive object={scene} />
-    </group>
-  );
 }
 
 /** Stylised stand-in until sniff.glb exists: low-poly hound head, ears, teal coat and hat. */

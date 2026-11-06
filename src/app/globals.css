@@ -379,3 +379,18 @@ body::before {
     opacity: 1;
   }
 }
+
+/* Hero Sniff: the 2D figure only shows where 3D won't load (decided by CSS before JS for
+   coarse pointers / reduced motion, and by JS via .is-on for missing WebGL or low cores). */
+.hero-sniff-2d {
+  opacity: 0;
+}
+.hero-sniff-2d.is-on {
+  opacity: 1;
+}
+@media (pointer: coarse), (prefers-reduced-motion: reduce) {
+  .hero-sniff-2d {
+    opacity: 1;
+    transition: none;
+  }
+}

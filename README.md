@@ -80,7 +80,7 @@ Legacy paths from the original spec (`/reports/:id`, `/claim/:id`, `/market/:id`
 - Status is always icon + text + colour (`StatusChip`, banners); every accent has a text-safe "ink" variant (`node scripts/contrast.mjs`).
 - `prefers-reduced-motion`: no parallax, fixed flashlight, no 3D, static mask; grain and skeleton sweeps stop.
 - axe (WCAG 2 A/AA + best practice): 0 violations on every page in dark and light themes.
-- Lighthouse on `/` (production build, fixtures): mobile performance 98, desktop 100. three.js loads only after a pointer move over the hero on a fine-pointer device with WebGL and ≥4 cores.
+- Lighthouse on `/` (production build, fixtures): mobile 100, desktop 96 (performance); accessibility and best practices 100. three.js loads right after hydration only on fine-pointer devices with WebGL and ≥4 cores; the 3D Sniff is visible ~0.4–0.5 s after navigation and the glTF loader is fetched only when `sniff.glb` exists.
 
 ## Asset credits
 
