@@ -5,7 +5,6 @@ const nextConfig: NextConfig = {
   // CLAUDE.md §2 page paths → THEME.md §5 routes (see NOTES.md).
   async redirects() {
     return [
-      { source: '/reports/:id', destination: '/cases/:id', permanent: false },
       { source: '/claim/:claimId', destination: '/case/:claimId/stake', permanent: false },
       { source: '/market/:claimId', destination: '/case/:claimId/market', permanent: false },
       { source: '/case/:claimId', destination: '/case/:claimId/stake', permanent: false },

@@ -10,6 +10,7 @@ import { WalletButton } from './WalletButton';
 
 const LINKS = [
   { href: '/cases', label: 'Cases' },
+  { href: '/reports', label: 'Reports' },
   { href: '/#how-it-works', label: 'How it works', section: 'how-it-works' },
 ] as const;
 
@@ -46,7 +47,12 @@ export function NavBar() {
         <Logo />
         <ul className="hidden items-center gap-5 text-sm sm:flex">
           {LINKS.map((l) => {
-            const active = l.href === '/cases' ? pathname.startsWith('/case') : false;
+            const active =
+              l.href === '/cases'
+                ? pathname.startsWith('/case')
+                : l.href === '/reports'
+                  ? pathname.startsWith('/reports')
+                  : false;
             return (
               <li key={l.href}>
                 <NavLink

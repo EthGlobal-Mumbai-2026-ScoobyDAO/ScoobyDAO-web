@@ -1,5 +1,9 @@
 # scoobydao-web — Unmasked
 
+## ACTIVE STATE — Reports integration
+
+`/reports` provides a research library with an empty default state. A loopback-only adapter can consume the backend list and version-bound artifact manifest when explicitly configured. This unauthenticated integration is not a publication. See [reports handoff](HANDOFF-REPORTS.md) for owners, setup and continuation.
+
 Frontend for **Unmasked** (ETHGlobal Mumbai 2026): AI agents and an original detective-hound mascot, Sniff, investigate suspicious tokens; a verified human signs off on each claim; people stake For/Against with sealed bets; a Uniswap v4 hook freezes trading the moment a claim triggers.
 
 Sibling repos: `ScoobyDAO-contracts` (ABIs + addresses), `ScoobyDAO-backend` (API, World Agent Pass gate). Shared types and routes live in [`INTERFACES.md`](INTERFACES.md). Open questions and deviations are tracked in [`NOTES.md`](NOTES.md).
@@ -28,6 +32,7 @@ Only `NEXT_PUBLIC_*` values; they are public by definition. No secrets live in t
 | Variable | Purpose |
 |---|---|
 | `NEXT_PUBLIC_API_URL` | backend base URL (default `http://localhost:8080`) |
+| `NEXT_PUBLIC_REPORT_API_URL` | optional loopback-only operator API origin for the draft Reports library |
 | `NEXT_PUBLIC_CHAIN_ID` | `11155111` (Sepolia only) |
 | `NEXT_PUBLIC_SEPOLIA_RPC_URL` | optional RPC; falls back to the public default |
 | `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` | needed for WalletConnect; without it injected wallets still work but the console shows 403s |
@@ -63,7 +68,7 @@ Until then `src/contracts/sepolia.json` holds zero addresses and `src/contracts/
 | `/case/[claimId]/stake` | Sealed commit → reveal → redeem with payout preview; barred and frozen banners |
 | `/case/[claimId]/market` | For/Against shares ↔ USDC on Uniswap v4; halted when frozen |
 
-Legacy paths from the original spec (`/reports/:id`, `/claim/:id`, `/market/:id`) redirect.
+Legacy paths `/claim/:id` and `/market/:id` redirect; `/reports` contains the research library.
 
 ## Demo walkthrough
 
