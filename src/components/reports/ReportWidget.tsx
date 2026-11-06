@@ -71,6 +71,7 @@ export function ReportWidget({ entry }: { entry: ReportEntry }) {
             className={`rounded-full border px-3 py-2 text-sm ${i === index ? 'border-beam bg-beam text-on-beam' : 'border-line bg-surface text-text'}`}
           >
             {label}
+            <span className="ml-1 text-xs opacity-80">· {report.pillars[id].status}</span>
           </button>
         ))}
       </div>

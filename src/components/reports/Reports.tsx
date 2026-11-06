@@ -47,8 +47,8 @@ export function Reports({
         record does not establish authenticated approval.
       </p>
       <div className="border-line bg-surface mt-6 rounded-xl border p-4 text-sm" role="note">
-        This library is a local integration draft. Review and publication are separate from report
-        selection.
+        Local admin prototype: private drafts and admin access controls are not yet protected.
+        Review and publication are separate from report selection.
       </div>
       {!id && <AgentActivity />}
       {state.loading && (
@@ -68,16 +68,42 @@ export function Reports({
       )}
       {!id &&
         state.reports.map((item) => (
-          <article key={item.id} className="border-line bg-surface mt-6 rounded-xl border p-5">
+          <article
+            key={item.id}
+            className="border-line bg-surface mt-6 min-w-0 rounded-xl border p-5 [overflow-wrap:anywhere]"
+          >
             <p className="text-beam-ink text-sm">{item.context}</p>
             <h2 className="mt-2 text-2xl font-semibold">{item.title}</h2>
             <p className="text-muted mt-2 text-sm">{item.review}</p>
-            <Link
-              className="text-beam-ink mt-4 inline-block underline"
-              href={`/reports/${encodeURIComponent(item.id)}`}
-            >
-              View report <span className="sr-only">{item.title}</span> →
-            </Link>
+            {item.candidateId && (
+              <p className="text-muted mt-2 text-xs break-all">Candidate: {item.candidateId}</p>
+            )}
+            {item.reportId && (
+              <p className="text-muted mt-1 text-xs break-all">
+                Report: {item.reportId} · Version: {item.version}
+              </p>
+            )}
+            <p className="text-muted mt-1 text-xs">{item.observed}</p>
+            <p className="text-muted mt-1 text-xs">
+              Pillar coverage is shown in the report; a library summary is not supplied.
+            </p>
+            {item.listUnavailable ? (
+              <p role="status" className="text-mask-ink mt-4 text-sm">
+                This report is unavailable or its details are invalid. Other reports remain
+                accessible.
+              </p>
+            ) : (
+              <Link
+                className="text-beam-ink mt-4 inline-block underline"
+                href={`/reports/${encodeURIComponent(item.id)}`}
+              >
+                View report{' '}
+                <span className="sr-only">
+                  {item.title} {item.candidateId} {item.version}
+                </span>{' '}
+                →
+              </Link>
+            )}
           </article>
         ))}
       {id && report && (

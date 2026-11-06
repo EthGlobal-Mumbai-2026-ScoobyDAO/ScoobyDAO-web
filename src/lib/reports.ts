@@ -10,6 +10,7 @@ export type ReportEntry = {
   context: string;
   observed: string;
   review: string;
+  listUnavailable?: boolean;
   packageUrl?: string;
   packageUnavailable?: boolean;
   html: ReportAsset | null;
@@ -128,82 +129,135 @@ export async function verifyAsset(item: ReportAsset): Promise<Blob> {
 }
 export function backendReportAdapter(base: string): ReportAdapter {
   if (reportApiBase(base) !== base) throw new Error('Invalid report API origin');
-  async function list(): Promise<ReportEntry[]> {
+  async function metadata(): Promise<unknown[]> {
     const items = await json(`${base}/reports`);
     if (!Array.isArray(items)) throw new Error('Invalid report list');
-    return Promise.all(
-      items.map(async (item: Metadata) => {
-        validateIdentity(item);
-        const detail = (await json(
-          `${base}/reports/${encodeURIComponent(item.report_id)}/${encodeURIComponent(item.report_version)}/artifacts`,
-        )) as Metadata;
-        validateIdentity(detail);
-        if (
-          ['report_id', 'report_version', 'candidate_id', 'report_sha256'].some(
-            (key) => item[key as keyof Metadata] !== detail[key as keyof Metadata],
-          )
-        )
-          throw new Error('Report identity mismatch');
-        let packageUrl: string | undefined;
-        if (detail.package?.availability === 'available') {
-          const pkg = detail.package;
-          if (
-            !pkg.package_sha256 ||
-            !hashPattern.test(pkg.package_sha256) ||
-            pkg.url !== `/packages/${pkg.package_sha256}`
-          )
-            throw new Error('Invalid package binding');
-          packageUrl = base + pkg.url;
-        }
-        const html = asset(base, detail, 'html');
-        const markdown = asset(base, detail, 'markdown');
-        const pdf = asset(base, detail, 'pdf');
-        if (html && !packageUrl && !detail.package) {
-          const reportUrl = html.url.replace(/index\.html$/, 'report.json');
-          const reportBlob = await verifyAsset({ url: reportUrl, sha256: detail.report_sha256 });
-          const report = JSON.parse(await reportBlob.text());
-          if (
-            report.report_id !== detail.report_id ||
-            report.report_version !== detail.report_version ||
-            report.candidate_id !== detail.candidate_id
-          )
-            throw new Error('Report bytes do not match identity');
-          await verifyAsset(html);
-        }
-        return {
-          id: `${detail.report_id}~${detail.report_version}`,
-          apiOrigin: base,
-          title: `${detail.identity.symbol} research report`,
-          reportId: detail.report_id,
-          version: detail.report_version,
-          candidateId: detail.candidate_id,
-          digest: detail.report_sha256,
-          context:
-            detail.provenance === 'source_curated_reference' ||
-            (detail.selection.kind === 'diagnostic_exception' &&
-              detail.selection.reason?.includes('reference report integration') &&
-              detail.selection.admission_qualified === false)
-              ? 'Labeled reference · integration only · not gate-qualified'
-              : 'Research draft · qualification unverified',
-          observed: detail.observation_times.length
-            ? `Source observations: ${detail.observation_times.join(', ')}`
-            : 'Observation time unavailable.',
-          review: `Review: ${detail.review.status} · local operator identity unverified; no authenticated sign-off.`,
-          packageUrl,
-          packageUnavailable: Boolean(
-            detail.package && detail.package.availability !== 'available',
-          ),
-          html,
-          markdown,
-          pdf,
-        };
-      }),
-    );
+    return items;
+  }
+  function entry(value: Metadata): ReportEntry {
+    return {
+      id: `${value.report_id}~${value.report_version}`,
+      apiOrigin: base,
+      title: `${value.identity.symbol || 'Symbol unknown'} research report`,
+      reportId: value.report_id,
+      version: value.report_version,
+      candidateId: value.candidate_id,
+      digest: value.report_sha256,
+      context:
+        value.provenance === 'source_curated_reference' ||
+        (value.selection.kind === 'diagnostic_exception' &&
+          value.selection.reason?.includes('reference report integration') &&
+          value.selection.admission_qualified === false)
+          ? 'Labeled reference · integration only · not gate-qualified'
+          : 'Research draft · qualification unverified',
+      observed: value.observation_times.length
+        ? `Source observations: ${value.observation_times.join(', ')}`
+        : 'Observation time unavailable.',
+      review: `Review: ${value.review.status} · local operator identity unverified; no authenticated sign-off.`,
+      html: null,
+      markdown: null,
+      pdf: null,
+    };
+  }
+  async function detail(item: Metadata, verifyBytes: boolean): Promise<ReportEntry> {
+    const value = (await json(
+      `${base}/reports/${encodeURIComponent(item.report_id)}/${encodeURIComponent(item.report_version)}/artifacts`,
+    )) as Metadata;
+    validateIdentity(value);
+    if (
+      ['report_id', 'report_version', 'candidate_id', 'report_sha256'].some(
+        (key) => item[key as keyof Metadata] !== value[key as keyof Metadata],
+      )
+    )
+      throw new Error('Report identity mismatch');
+    let packageUrl: string | undefined;
+    if (value.package?.availability === 'available') {
+      const pkg = value.package;
+      if (
+        !pkg.package_sha256 ||
+        !hashPattern.test(pkg.package_sha256) ||
+        pkg.url !== `/packages/${pkg.package_sha256}`
+      )
+        throw new Error('Invalid package binding');
+      packageUrl = base + pkg.url;
+    }
+    const html = asset(base, value, 'html');
+    const markdown = asset(base, value, 'markdown');
+    const pdf = asset(base, value, 'pdf');
+    if (verifyBytes && html && !packageUrl && !value.package) {
+      const reportUrl = html.url.replace(/index\.html$/, 'report.json');
+      const reportBlob = await verifyAsset({ url: reportUrl, sha256: value.report_sha256 });
+      const report = JSON.parse(await reportBlob.text());
+      if (
+        report.report_id !== value.report_id ||
+        report.report_version !== value.report_version ||
+        report.candidate_id !== value.candidate_id
+      )
+        throw new Error('Report bytes do not match identity');
+      await verifyAsset(html);
+    }
+    return {
+      ...entry(value),
+      packageUrl,
+      packageUnavailable: Boolean(value.package && value.package.availability !== 'available'),
+      html,
+      markdown,
+      pdf,
+    };
   }
   return {
-    list,
+    async list() {
+      const items = await metadata();
+      return Promise.all(
+        items.map(async (raw, index) => {
+          let item: Metadata;
+          try {
+            item = raw as Metadata;
+            validateIdentity(item);
+          } catch {
+            return {
+              id: `unavailable-${index}`,
+              apiOrigin: base,
+              title: 'Report unavailable',
+              reportId: '',
+              version: '',
+              candidateId: '',
+              digest: '',
+              context: 'Report metadata unavailable',
+              observed: 'Observation time unavailable.',
+              review: 'Review state unavailable.',
+              listUnavailable: true,
+              html: null,
+              markdown: null,
+              pdf: null,
+            };
+          }
+          try {
+            return await detail(item, false);
+          } catch {
+            return { ...entry(item), listUnavailable: true };
+          }
+        }),
+      );
+    },
     async get(id) {
-      return (await list()).find((entry) => entry.id === id) ?? null;
+      const items = await metadata();
+      for (const raw of items) {
+        try {
+          const item = raw as Metadata;
+          validateIdentity(item);
+          if (`${item.report_id}~${item.report_version}` === id) return await detail(item, true);
+        } catch (error) {
+          // A matching report failure must not silently resolve to another report.
+          if (
+            raw &&
+            typeof raw === 'object' &&
+            `${(raw as Metadata).report_id}~${(raw as Metadata).report_version}` === id
+          )
+            throw error;
+        }
+      }
+      return null;
     },
   };
 }
