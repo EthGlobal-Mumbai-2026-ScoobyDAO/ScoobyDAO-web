@@ -64,13 +64,13 @@ export function NavBar() {
                   ? pathname.startsWith('/onchain')
                   : l.href === '/accelerated'
                     ? pathname.startsWith('/accelerated')
-                  : l.href === '/reports'
-                    ? pathname.startsWith('/reports')
-                    : l.href === '/me' || l.href === '/operator'
-                      ? pathname === l.href
-                      : l.href === '/admin'
-                        ? pathname.startsWith('/admin')
-                        : false;
+                    : l.href === '/reports'
+                      ? pathname.startsWith('/reports')
+                      : l.href === '/me' || l.href === '/operator'
+                        ? pathname === l.href
+                        : l.href === '/admin'
+                          ? pathname.startsWith('/admin')
+                          : false;
             return (
               <li key={l.href}>
                 <NavLink
@@ -90,7 +90,7 @@ export function NavBar() {
           <WalletButton />
         </div>
       </nav>
-      <ul className="border-line flex gap-5 border-t px-4 py-2 text-sm sm:hidden">
+      <ul className="border-line flex gap-5 overflow-x-auto border-t px-4 py-2 text-sm whitespace-nowrap sm:hidden">
         {LINKS.map((l) => (
           <li key={l.href}>
             <NavLink link={l} className="text-muted hover:text-text" />

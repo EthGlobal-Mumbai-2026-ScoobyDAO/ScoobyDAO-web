@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { loadNativeReport, PILLARS, type NativeReport } from '@/lib/report-widget';
 import { verifyAsset, type ReportEntry } from '@/lib/reports';
+import { reportMath } from '@/lib/report-math';
 
 export function ReportWidget({ entry }: { entry: ReportEntry }) {
   const [index, setIndex] = useState(0);
@@ -120,6 +121,7 @@ export function ReportWidget({ entry }: { entry: ReportEntry }) {
             </button>
           </div>
         </div>
+        <EvidenceMath report={report} pillar={key} onSelect={setEvidenceId} />
         <div className="mt-6 grid gap-4 md:grid-cols-2">
           <div className="bg-surface-raised min-w-0 rounded-xl p-4">
             <h4 className="text-beam-ink text-xs font-semibold uppercase">Insight</h4>
@@ -144,7 +146,7 @@ export function ReportWidget({ entry }: { entry: ReportEntry }) {
         {pillar.series.map((series) => (
           <SeriesChart key={series.id} series={series} onSelect={setEvidenceId} />
         ))}
-        <details className="border-line mt-6 border-t pt-4">
+        <details className="border-line mt-6 border-t pt-4" open>
           <summary className="cursor-pointer font-semibold">
             View full analysis, measurements and claims
           </summary>
@@ -287,6 +289,178 @@ export function ReportWidget({ entry }: { entry: ReportEntry }) {
     </section>
   );
 }
+function EvidenceMath({
+  report,
+  pillar,
+  onSelect,
+}: {
+  report: NativeReport['report'];
+  pillar: string;
+  onSelect: (id: string) => void;
+}) {
+  const math = reportMath(report);
+  const numeric = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+  const usd = (value: number) =>
+    Math.abs(value) < 0.0001 && value !== 0
+      ? `$${value.toPrecision(5)}`
+      : `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const day = (value: string) => new Date(value).toISOString().slice(0, 10);
+  const fetched = (id: string) => report.evidence.find((item) => item.id === id)?.fetched_at;
+  const stamp = (id: string) => {
+    const value = fetched(id);
+    return value && Number.isFinite(Date.parse(value))
+      ? new Date(value).toISOString().replace('T', ' ').slice(0, 16) + ' UTC'
+      : 'time not supplied';
+  };
+  if (
+    pillar === 'microstructure' &&
+    (numeric(math.liquidity?.value) || numeric(math.volume?.value))
+  ) {
+    return (
+      <section className="border-line mt-6 rounded-xl border p-4" aria-label="Pool figures">
+        <h4 className="font-semibold">What the pool snapshot shows</h4>
+        <p className="text-muted mt-1 text-sm">
+          Provider snapshot fetched {stamp('pools')}; this is historical, not a current executable
+          quote.
+        </p>
+        <ul className="mt-3 list-disc space-y-1 pl-5 text-sm">
+          {numeric(math.liquidity?.value) && (
+            <li>
+              Reported pool reserve value:{' '}
+              <strong>
+                {usd(
+                  typeof math.displayLiquidity === 'number'
+                    ? math.displayLiquidity
+                    : math.liquidity.value,
+                )}
+              </strong>
+              .
+            </li>
+          )}
+          {numeric(math.volume?.value) && (
+            <li>
+              Reported 24-hour pool volume: <strong>{usd(math.volume.value)}</strong>.
+            </li>
+          )}
+        </ul>
+        <p className="text-muted mt-3 text-sm">
+          These figures cannot calculate the price impact of a trade. That requires current
+          reserves, the intended trade size, fees and route; other pools may differ.
+        </p>
+        <CitationLinks
+          ids={['pools'].filter((id) => report.evidence.some((source) => source.id === id))}
+          onSelect={onSelect}
+        />
+      </section>
+    );
+  }
+  if (pillar === 'onchain' && math.holders.length) {
+    return (
+      <section
+        className="border-line mt-6 rounded-xl border p-4"
+        aria-label="Reported holder fractions"
+      >
+        <h4 className="font-semibold">Reported token supply distribution</h4>
+        <p className="text-muted mt-1 text-sm">
+          Security provider snapshot fetched {stamp('security')}. Percentages below are the
+          provider&apos;s supply fractions multiplied by 100.
+        </p>
+        <ul className="mt-3 space-y-2 text-sm">
+          {math.holders.slice(0, 3).map((holder) => (
+            <li key={holder.address}>
+              <span className="break-all">{holder.address}</span>:{' '}
+              <strong>{holder.percent.toFixed(2)}%</strong>{' '}
+              {!holder.projected && '(display calculation)'}
+              {holder.statement.includes('tag = UniswapV2')
+                ? ' (provider labels this a Uniswap V2 pool)'
+                : ''}
+              {holder.address.toLowerCase() === '0x000000000000000000000000000000000000dead'
+                ? ' (dead address)'
+                : ''}
+              <CitationLinks ids={holder.evidenceIds} onSelect={onSelect} />
+            </li>
+          ))}
+        </ul>
+        <p className="text-muted mt-3 text-sm">
+          These are token-supply shares, not LP-token ownership. A pool or dead address should not
+          be described as an individual holder; the labels and control are not independently
+          verified.
+        </p>
+      </section>
+    );
+  }
+  if (pillar === 'statistical_risk' && report.pillars.statistical_risk.status === 'unavailable') {
+    return (
+      <section
+        className="border-line mt-6 rounded-xl border p-4"
+        aria-label="Why VaR is unavailable"
+      >
+        <h4 className="font-semibold">VaR was not calculated</h4>
+        {math.closeCount > 0 ? (
+          <p className="mt-2 text-sm">
+            The supplied history contains{' '}
+            <strong>{math.closeCount} dated price observations</strong> and{' '}
+            <strong>
+              {math.adjacentReturns} adjacent-day{' '}
+              {math.adjacentReturns === 1 ? 'return' : 'returns'}
+            </strong>
+            . This is not a completed, identity-bound VAE run.
+          </p>
+        ) : (
+          <p className="mt-2 text-sm">
+            No usable historical price series is supplied in this report.
+          </p>
+        )}
+        <p className="text-muted mt-2 text-sm">
+          A VaR value requires a defined horizon, adequate validated return history and an actual
+          model run. These counts alone do not establish a sufficient sample, and the available
+          evidence does not support a numerical risk estimate.
+        </p>
+        <CitationLinks ids={math.closes?.evidence_ids ?? []} onSelect={onSelect} />
+      </section>
+    );
+  }
+  if (
+    pillar === 'technical_health' &&
+    math.first &&
+    math.last &&
+    math.endpointChange !== null &&
+    math.closes?.unit === 'USD'
+  ) {
+    return (
+      <section
+        className="border-line mt-6 rounded-xl border p-4"
+        aria-label="Observed price calculation"
+      >
+        <h4 className="font-semibold">Observed prices: calculation and coverage</h4>
+        <p className="mt-2 text-sm">
+          First: <strong>{usd(math.first.value)}</strong> on {day(math.first.time)}. Last:{' '}
+          <strong>{usd(math.last.value)}</strong> on {day(math.last.time)}.
+        </p>
+        <p className="mt-2 text-sm">
+          Endpoint change = (last close ÷ first close − 1) × 100 = approximately{' '}
+          <strong>{math.endpointChange.toFixed(2)}%</strong>, using the supplied endpoint
+          measurement when available.
+        </p>
+        <p className="text-muted mt-2 text-sm">
+          The series has {math.closeCount} supplied closes and {math.adjacentReturns} adjacent-day{' '}
+          {math.adjacentReturns === 1 ? 'return' : 'returns'}.
+          {math.gapIntervals !== null && (
+            <>
+              {' '}
+              The producer reported {math.gapIntervals} gap intervals between observed dates; this
+              is not a count of missing days.
+            </>
+          )}{' '}
+          An endpoint comparison is not a daily return, a continuous trend, or a current executable
+          price; dates between observations may be missing.
+        </p>
+        <CitationLinks ids={math.closes?.evidence_ids ?? []} onSelect={onSelect} />
+      </section>
+    );
+  }
+  return null;
+}
 function InputRefs({ ids, report }: { ids?: string[]; report: NativeReport['report'] }) {
   if (!ids?.length) return null;
   const inputs = Object.values(report.pillars).flatMap((pillar) => [
@@ -425,6 +599,10 @@ function SeriesChart({
     maxT = Math.max(...times),
     minV = Math.min(...values),
     maxV = Math.max(...values);
+  const axisValue = (v: number) =>
+    Math.abs(v) < 0.0001 && v !== 0
+      ? v.toExponential(3)
+      : Number(v.toPrecision(5)).toLocaleString('en-US');
   return (
     <div className="border-line mt-6 min-w-0 rounded-xl border p-4">
       <h4 className="font-semibold break-words">{series.id}</h4>
@@ -459,7 +637,10 @@ function SeriesChart({
             ))}
           </svg>
           <p className="text-muted text-xs">
-            Observed points only; gaps are not filled or connected.
+            Vertical scale: {axisValue(minV)} to {axisValue(maxV)} {series.unit ?? '(unit unknown)'}
+            . Horizontal scale: {new Date(minT).toISOString().slice(0, 10)} to{' '}
+            {new Date(maxT).toISOString().slice(0, 10)} UTC. Observed points only; gaps are not
+            filled or connected.
           </p>
         </>
       ) : (

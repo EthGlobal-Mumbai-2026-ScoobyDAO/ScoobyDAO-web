@@ -18,6 +18,7 @@ import {
   type EvidenceReason,
 } from '@/lib/scouting';
 import { CasesBoard } from './CasesBoard';
+import { PitchCases } from './PitchCases';
 import { CaseWorldAction, RetryInvestigation } from './CaseWorldAction';
 import { useAdminSession } from '@/components/AdminSession';
 import { useChainTime, useProtocol } from '@/protocol/hooks';
@@ -99,6 +100,12 @@ export function ScoutingBoard() {
           timing matter; a candidate is not an approved report.
         </p>
       </header>
+      <PitchCases />
+      <p className="text-muted mt-5 text-sm">
+        Proposed activity screen: at least ₹1 crore in trailing 30-day trading volume. The current
+        scouting service does not provide a verified 30-day INR total; no candidate is shown as
+        passing this screen.
+      </p>
       {protocol.kind === 'v2' && (
         <div className="mt-6">
           <LiveMarketCard
