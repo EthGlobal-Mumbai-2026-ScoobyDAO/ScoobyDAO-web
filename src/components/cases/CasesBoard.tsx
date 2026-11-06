@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation, useQueries, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
 import { useState } from 'react';
 import { Banner } from '@/components/Banner';
@@ -10,9 +10,10 @@ import { STATUS_META } from '@/components/StatusChip';
 import { api } from '@/lib/api';
 import { CLAIM_TYPE_LABEL } from '@/lib/claimText';
 import { env } from '@/lib/env';
-import { qk, useReports } from '@/lib/queries';
-import { CASE_STATUSES, caseStatusOf, type CaseStatus } from '@/lib/status';
-import type { ClaimType, ClaimView } from '@/lib/types';
+import { qk } from '@/lib/queries';
+import { useCaseRows } from '@/lib/useCaseRows';
+import { CASE_STATUSES, type CaseStatus } from '@/lib/status';
+import type { ClaimType } from '@/lib/types';
 import { CaseCard } from './CaseCard';
 
 const STATUS_FILTERS: { key: 'all' | CaseStatus; label: string }[] = [
@@ -21,26 +22,12 @@ const STATUS_FILTERS: { key: 'all' | CaseStatus; label: string }[] = [
 ];
 
 export function CasesBoard() {
-  const reports = useReports();
+  const { reports, rows } = useCaseRows();
   const qc = useQueryClient();
-  const published = (reports.data ?? []).filter((r) => r.claimId);
-  const claimQs = useQueries({
-    queries: published.map((r) => ({
-      queryKey: qk.claim(r.claimId!),
-      queryFn: () => api.getClaim(r.claimId!),
-    })),
-  });
-  const claims = new Map<string, ClaimView>();
-  claimQs.forEach((q) => q.data && claims.set(q.data.claimId, q.data));
 
   const [status, setStatus] = useState<'all' | CaseStatus>('all');
   const [type, setType] = useState<'all' | ClaimType>('all');
   const [query, setQuery] = useState('');
-
-  const rows = (reports.data ?? []).map((r) => {
-    const claim = r.claimId ? claims.get(r.claimId) : undefined;
-    return { report: r, claim, status: caseStatusOf(r, claim?.status) };
-  });
 
   const q = query.trim().toLowerCase();
   const shown = rows.filter(

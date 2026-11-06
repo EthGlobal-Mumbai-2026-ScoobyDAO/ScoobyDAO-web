@@ -325,3 +325,42 @@ body::before {
     inset 0 0 0 6px #8a6440,
     inset 0 0 30px rgb(0 0 0 / 0.2);
 }
+
+/* Landing hero flashlight (THEME.md §2.5). --fx/--fy: beam centre; --r: beam radius. */
+.hero-dark {
+  background: rgb(3 5 16 / 0.72);
+  -webkit-mask-image: radial-gradient(
+    circle var(--r) at var(--fx) var(--fy),
+    transparent 0,
+    transparent 35%,
+    black 100%
+  );
+  mask-image: radial-gradient(
+    circle var(--r) at var(--fx) var(--fy),
+    transparent 0,
+    transparent 35%,
+    black 100%
+  );
+}
+.hero-beam {
+  background: radial-gradient(
+    circle var(--r) at var(--fx) var(--fy),
+    rgb(255 200 87 / 0.18),
+    transparent 70%
+  );
+  mix-blend-mode: screen;
+}
+.hero-clues {
+  -webkit-mask-image: radial-gradient(
+    circle calc(var(--r) * 0.9) at var(--fx) var(--fy),
+    black 0,
+    black 40%,
+    transparent 100%
+  );
+  mask-image: radial-gradient(
+    circle calc(var(--r) * 0.9) at var(--fx) var(--fy),
+    black 0,
+    black 40%,
+    transparent 100%
+  );
+}
