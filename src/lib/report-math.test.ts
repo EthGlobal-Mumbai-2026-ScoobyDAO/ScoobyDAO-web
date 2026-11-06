@@ -2,14 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { reportMath } from './report-math';
 import type { NativeReport } from './report-widget';
 
-function report(
-  points: { time: string; value: number | null }[],
-  fraction = '0.420735121185671944',
-) {
+function report(points: { time: string; value: number | null }[], fraction = '0.25') {
   return {
     pillars: {
       microstructure: {
-        measurements: [{ id: 'liquidity_usd', value: 43.5993399753, unit: 'USD' }],
+        measurements: [{ id: 'liquidity_usd', value: 75.25, unit: 'USD' }],
         claims: [],
         series: [],
       },
@@ -42,15 +39,15 @@ describe('report math from supplied evidence', () => {
   it('sorts observations and computes endpoint change without treating gaps as daily returns', () => {
     const value = reportMath(
       report([
-        { time: '2026-09-05T00:00:00Z', value: 9.365830996613419e-14 },
-        { time: '2025-10-02T00:00:00Z', value: 4.31055863021459e-13 },
+        { time: '2026-09-05T00:00:00Z', value: 1 },
+        { time: '2025-10-02T00:00:00Z', value: 4 },
       ]),
     );
-    expect(value.endpointChange).toBeCloseTo(-78.27, 1);
+    expect(value.endpointChange).toBeCloseTo(-75, 1);
     expect(value.closeCount).toBe(2);
     expect(value.adjacentReturns).toBe(1);
-    expect(value.holders[0].fraction * 100).toBeCloseTo(42.0735121);
-    expect(value.liquidity?.value).toBe(43.5993399753);
+    expect(value.holders[0].fraction * 100).toBeCloseTo(25);
+    expect(value.liquidity?.value).toBe(75.25);
   });
   it('does not fabricate an endpoint change or accept invalid supply fractions', () => {
     const value = reportMath(report([{ time: '2026-01-01T00:00:00Z', value: 0 }], '1.2'));
