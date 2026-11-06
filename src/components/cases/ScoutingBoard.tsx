@@ -20,7 +20,9 @@ import {
 import { CasesBoard } from './CasesBoard';
 import { CaseWorldAction, RetryInvestigation } from './CaseWorldAction';
 import { useAdminSession } from '@/components/AdminSession';
-import { useProtocol } from '@/protocol/hooks';
+import { useChainTime, useProtocol } from '@/protocol/hooks';
+import { LiveMarketCard } from './LiveMarketCard';
+import { useCaseRows } from './useCaseRows';
 
 const adapter = scoutingOrigin ? createScoutingAdapter(scoutingOrigin) : null;
 const subscribeClock = (notify: () => void) => {
@@ -32,6 +34,8 @@ const serverClock = () => 0;
 
 export function ScoutingBoard() {
   const { protocol } = useProtocol();
+  const { markets, marketsLoading, marketsError } = useCaseRows();
+  const chainTime = useChainTime();
   const [legacyOpen, setLegacyOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'attention' | 'research' | 'monitored'>('all');
@@ -83,8 +87,8 @@ export function ScoutingBoard() {
       )}
       <p className="border-line text-muted mb-6 rounded-xl border p-3 text-xs" role="note">
         Administrator actions require a configured, authorized service.
-        <Link href="/admin" className="ml-1 underline">
-          Administrator sign-in
+        <Link href="/case-admin" className="ml-1 underline">
+          Case administrator sign-in
         </Link>
       </p>
       <header>
@@ -96,21 +100,14 @@ export function ScoutingBoard() {
         </p>
       </header>
       {protocol.kind === 'v2' && (
-        <section
-          className="border-line bg-surface mt-6 rounded-xl border p-4"
-          aria-label="Live onchain market"
-        >
-          <h2 className="font-semibold">Live onchain market</h2>
-          <p className="text-muted mt-1 text-sm">
-            Demo report #1 on Ethereum Sepolia is separate from the scouting queue.
-          </p>
-          <Link
-            href="/onchain/1"
-            className="text-beam-ink mt-2 inline-block text-sm font-semibold underline"
-          >
-            Open the live market →
-          </Link>
-        </section>
+        <div className="mt-6">
+          <LiveMarketCard
+            markets={markets}
+            loading={marketsLoading}
+            error={marketsError}
+            now={chainTime}
+          />
+        </div>
       )}
       <div className="mt-8 space-y-4">
         <label className="relative block">

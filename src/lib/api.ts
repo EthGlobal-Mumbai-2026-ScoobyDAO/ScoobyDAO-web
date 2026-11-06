@@ -1,5 +1,6 @@
 import { buildFixtureCases, RAW_REPORT, type FixtureApproval, type FixtureCase } from '@/fixtures';
 import { fakeTxHash, publishFixture, setFixtureSeriesHashes } from '@/protocol/fixture';
+import { adminAuthHeader } from './adminToken';
 import { env } from './env';
 import { parseApproval, parseReport, parseReports, ShapeError } from './guards';
 import { toBytes32 } from './hash';
@@ -8,7 +9,7 @@ import type { Approval, ReportV02, ReputationBadgeAuthorizeResponse, WebReport }
 // Typed client for ScoobyDAO-backend /web/v1 (publication/web_adapter.py). Display only:
 // nothing here, or in the UI, decides that a report is approved.
 //   GET  /health · GET /reports · GET /reports/:id · GET /reports/:id/raw
-//   POST /reports/:id/approve · GET /approvals/:id
+//   POST /reports/:id/approve · GET /approvals/:id   (need a review-desk session with the publication scope)
 //   POST /reputation-badge/authorize  (V1 World ID badge; proposed, not implemented by the backend)
 
 export class ApiError extends Error {
@@ -228,8 +229,10 @@ const liveApi: typeof fixtureApi = {
     if (report?.schema_version !== '0.2') throw new ShapeError(`report schema_version ${String(report?.schema_version)} is not 0.2`);
     return { ...web, report, raw };
   },
-  requestApproval: async (id) => parseApproval(await json(`/reports/${enc(id)}/approve`, { method: 'POST' })),
-  getApproval: async (id) => parseApproval(await json(`/approvals/${enc(id)}`)),
+  // Publication sign-off is bound to the signed-in reviewer (backend: admin session with the publication scope).
+  requestApproval: async (id) =>
+    parseApproval(await json(`/reports/${enc(id)}/approve`, { method: 'POST', headers: adminAuthHeader() })),
+  getApproval: async (id) => parseApproval(await json(`/approvals/${enc(id)}`, { headers: adminAuthHeader() })),
   authorizeReputationBadge: async (body) =>
     (await json('/reputation-badge/authorize', { method: 'POST', body: JSON.stringify(body) })) as ReputationBadgeAuthorizeResponse,
 };

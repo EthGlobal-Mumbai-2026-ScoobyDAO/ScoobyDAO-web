@@ -30,6 +30,19 @@ export function ApproveScreen({ id }: { id: string }) {
 
   if (approval.isError) {
     const notFound = approval.error instanceof ApiError && approval.error.status === 404;
+    const signedOut = approval.error instanceof ApiError && (approval.error.status === 401 || approval.error.status === 403);
+    if (signedOut)
+      return (
+        <Shell>
+          <Banner tone="warning" title="Sign in at the review desk to follow this sign-off">
+            Only the reviewer who requested it can see this sign-off.{' '}
+            <Link href="/admin" className="underline underline-offset-4">
+              Sign in with World ID
+            </Link>{' '}
+            with the same World ID, then reopen this page.
+          </Banner>
+        </Shell>
+      );
     return (
       <Shell>
         <Banner

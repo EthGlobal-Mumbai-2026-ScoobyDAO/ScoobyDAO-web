@@ -49,7 +49,6 @@ export function Reports({
         record does not establish authenticated approval.
       </p>
       <div className="border-line bg-surface mt-6 rounded-xl border p-4 text-sm" role="note">
-        Local admin prototype: private drafts and admin access controls are not yet protected.
         Review and publication are separate from report selection.
       </div>
       {!id && <AgentActivity />}

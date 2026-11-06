@@ -16,8 +16,10 @@ const LIVE_MARKET = `/onchain/${V2_INFO.reportId}`;
 const LINKS: NavItem[] = [
   { href: '/cases', label: 'Cases' },
   ...(selectProtocol().kind === 'v2' ? [{ href: LIVE_MARKET, label: 'Live market' }] : []),
+  { href: '/accelerated', label: '1-hour demo' },
   { href: '/reports', label: 'Reports' },
   { href: '/me', label: 'My positions' },
+  { href: '/admin', label: 'Review desk' },
   ...(env.operatorView ? [{ href: '/operator', label: 'Operator' }] : []),
   { href: '/#how-it-works', label: 'How it works', section: 'how-it-works' },
 ];
@@ -60,11 +62,15 @@ export function NavBar() {
                 ? pathname.startsWith('/case')
                 : l.href === LIVE_MARKET
                   ? pathname.startsWith('/onchain')
+                  : l.href === '/accelerated'
+                    ? pathname.startsWith('/accelerated')
                   : l.href === '/reports'
                     ? pathname.startsWith('/reports')
                     : l.href === '/me' || l.href === '/operator'
                       ? pathname === l.href
-                      : false;
+                      : l.href === '/admin'
+                        ? pathname.startsWith('/admin')
+                        : false;
             return (
               <li key={l.href}>
                 <NavLink
