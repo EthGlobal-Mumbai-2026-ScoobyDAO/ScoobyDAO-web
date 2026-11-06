@@ -34,12 +34,12 @@ export function ApproveScreen({ id }: { id: string }) {
     if (signedOut)
       return (
         <Shell>
-          <Banner tone="warning" title="Sign in at the review desk to follow this sign-off">
-            Only the reviewer who requested it can see this sign-off.{' '}
+          <Banner tone="warning" title="Open the report at the review desk to follow this sign-off">
+            Only the reviewer who requested it can see this sign-off, from the same browser tab.{' '}
             <Link href="/admin" className="underline underline-offset-4">
-              Sign in with World ID
-            </Link>{' '}
-            with the same World ID, then reopen this page.
+              Go to the review desk
+            </Link>
+            , press Read on the report with the same World ID, then reopen this page.
           </Banner>
         </Shell>
       );

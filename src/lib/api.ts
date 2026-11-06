@@ -1,6 +1,6 @@
 import { buildFixtureCases, RAW_REPORT, type FixtureApproval, type FixtureCase } from '@/fixtures';
 import { fakeTxHash, publishFixture, setFixtureSeriesHashes } from '@/protocol/fixture';
-import { adminAuthHeader } from './adminToken';
+import { adminAuthHeader, publicationAttempts } from './adminToken';
 import { env } from './env';
 import { parseApproval, parseReport, parseReports, ShapeError } from './guards';
 import { toBytes32 } from './hash';
@@ -228,9 +228,14 @@ const liveApi: typeof fixtureApi = {
     return { ...web, report, raw };
   },
   // Publication sign-off is bound to the signed-in reviewer (backend: admin session with the publication scope).
-  requestApproval: async (id) =>
-    parseApproval(await json(`/reports/${enc(id)}/approve`, { method: 'POST', headers: adminAuthHeader() })),
-  getApproval: async (id) => parseApproval(await json(`/approvals/${enc(id)}`, { headers: adminAuthHeader() })),
+  // The web report id is `<report_id>@<version>`, the same key as the review desk session for that report.
+  async requestApproval(id) {
+    const a = parseApproval(await json(`/reports/${enc(id)}/approve`, { method: 'POST', headers: adminAuthHeader(id) }));
+    publicationAttempts.remember(a.id, id);
+    return a;
+  },
+  getApproval: async (id) =>
+    parseApproval(await json(`/approvals/${enc(id)}`, { headers: adminAuthHeader(publicationAttempts.reportFor(id)) })),
   authorizeReputationBadge: async (body) =>
     (await json('/reputation-badge/authorize', { method: 'POST', body: JSON.stringify(body) })) as ReputationBadgeAuthorizeResponse,
 };
