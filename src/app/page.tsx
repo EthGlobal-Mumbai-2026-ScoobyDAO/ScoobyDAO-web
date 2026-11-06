@@ -4,13 +4,17 @@ import { HeroSceneGate } from '@/components/landing/HeroSceneGate';
 import { HowItWorks } from '@/components/landing/HowItWorks';
 import { StatsStrip } from '@/components/landing/StatsStrip';
 import { BuiltWith, TrustSection } from '@/components/landing/TrustSection';
+import { listReportChoices } from '@/protocol/reportDiscovery';
 
-export default function Home() {
+export const dynamic = 'force-dynamic';
+
+export default async function Home() {
+  const reports = await listReportChoices();
   return (
     <>
       <main>
         <Hero scene={<HeroSceneGate />} />
-        <StatsStrip />
+        <StatsStrip reports={reports} />
         <HowItWorks />
         <BuiltWith />
         <TrustSection />
