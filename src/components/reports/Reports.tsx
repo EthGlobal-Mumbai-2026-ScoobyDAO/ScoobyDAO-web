@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import { ReportWidget } from './ReportWidget';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AgentActivity } from './AgentActivity';
@@ -111,24 +112,10 @@ export function Reports({
               {pdf ? <Download item={pdf} name="report.pdf" /> : <span>PDF unavailable</span>}
             </div>
           </section>
-          {html ? (
-            <section className="mt-6" aria-label="Report reader">
-              <h2 className="mb-3 text-xl font-semibold">Research reader</h2>
-              <p className="text-muted mb-3 text-sm">
-                The reader has its own scroll area and navigation. Use Tab to enter it.
-              </p>
-              <iframe
-                key={`${report.reportId}:${report.version}:${report.digest}`}
-                title={`${report.title} research reader`}
-                src={html.url}
-                sandbox="allow-scripts"
-                className="border-line w-full rounded-xl border bg-white"
-                style={{ height: '80vh', minHeight: 560 }}
-              />
-            </section>
-          ) : (
-            <p className="mt-6">Reader unavailable.</p>
-          )}
+          <ReportWidget
+            key={report.reportId + ':' + report.version + ':' + report.digest}
+            entry={report}
+          />
         </>
       )}
     </main>

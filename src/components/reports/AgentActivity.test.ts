@@ -41,7 +41,7 @@ describe('agent activity display', () => {
         React.createElement(AgentActivity),
       ),
     );
-    expect(html).toContain('Connect the local reports API to see worker status.');
+    expect(html).toContain('Connect the reports API to see worker status.');
     expect(html).not.toContain('Worker heartbeat active');
   });
 });

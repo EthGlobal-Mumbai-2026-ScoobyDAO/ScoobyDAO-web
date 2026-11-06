@@ -1,6 +1,7 @@
 export type ReportAsset = { url: string; sha256: string };
 export type ReportEntry = {
   id: string;
+  apiOrigin: string;
   title: string;
   reportId: string;
   version: string;
@@ -9,6 +10,8 @@ export type ReportEntry = {
   context: string;
   observed: string;
   review: string;
+  packageUrl?: string;
+  packageUnavailable?: boolean;
   html: ReportAsset | null;
   markdown: ReportAsset | null;
   pdf: ReportAsset | null;
@@ -27,6 +30,7 @@ type Metadata = {
   observation_times: string[];
   selection: { kind: string; reason?: string; admission_qualified: boolean | null };
   review: { status: string };
+  package?: { availability: string; package_sha256: string | null; url: string | null };
   artifacts?: Record<
     string,
     { availability: string; sha256: string | null; url: string | null; report_sha256: string }
@@ -42,8 +46,10 @@ export function reportApiBase(raw: string | undefined): string | null {
   try {
     const url = new URL(raw);
     if (
-      url.protocol !== 'http:' ||
-      !['127.0.0.1', 'localhost'].includes(url.hostname) ||
+      !(
+        url.protocol === 'https:' ||
+        (url.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(url.hostname))
+      ) ||
       url.username ||
       url.password ||
       url.pathname !== '/' ||
@@ -94,12 +100,20 @@ function asset(base: string, value: Metadata, name: string): ReportAsset | null 
   return { url: base + item.url, sha256: item.sha256 };
 }
 async function json(url: string): Promise<unknown> {
-  const response = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(15000) });
+  const response = await fetch(url, {
+    cache: 'no-store',
+    redirect: 'error',
+    signal: AbortSignal.timeout(15000),
+  });
   if (!response.ok) throw new Error('Reports API unavailable');
   return response.json();
 }
 export async function verifyAsset(item: ReportAsset): Promise<Blob> {
-  const response = await fetch(item.url, { cache: 'no-store', signal: AbortSignal.timeout(15000) });
+  const response = await fetch(item.url, {
+    cache: 'no-store',
+    redirect: 'error',
+    signal: AbortSignal.timeout(15000),
+  });
   if (!response.ok) throw new Error('Artifact unavailable');
   const bytes = await response.arrayBuffer();
   const hash = await crypto.subtle.digest('SHA-256', bytes);
@@ -129,10 +143,21 @@ export function backendReportAdapter(base: string): ReportAdapter {
           )
         )
           throw new Error('Report identity mismatch');
+        let packageUrl: string | undefined;
+        if (detail.package?.availability === 'available') {
+          const pkg = detail.package;
+          if (
+            !pkg.package_sha256 ||
+            !hashPattern.test(pkg.package_sha256) ||
+            pkg.url !== `/packages/${pkg.package_sha256}`
+          )
+            throw new Error('Invalid package binding');
+          packageUrl = base + pkg.url;
+        }
         const html = asset(base, detail, 'html');
         const markdown = asset(base, detail, 'markdown');
         const pdf = asset(base, detail, 'pdf');
-        if (html) {
+        if (html && !packageUrl && !detail.package) {
           const reportUrl = html.url.replace(/index\.html$/, 'report.json');
           const reportBlob = await verifyAsset({ url: reportUrl, sha256: detail.report_sha256 });
           const report = JSON.parse(await reportBlob.text());
@@ -146,6 +171,7 @@ export function backendReportAdapter(base: string): ReportAdapter {
         }
         return {
           id: `${detail.report_id}~${detail.report_version}`,
+          apiOrigin: base,
           title: `${detail.identity.symbol} research report`,
           reportId: detail.report_id,
           version: detail.report_version,
@@ -161,6 +187,10 @@ export function backendReportAdapter(base: string): ReportAdapter {
             ? `Source observations: ${detail.observation_times.join(', ')}`
             : 'Observation time unavailable.',
           review: `Review: ${detail.review.status} · local operator identity unverified; no authenticated sign-off.`,
+          packageUrl,
+          packageUnavailable: Boolean(
+            detail.package && detail.package.availability !== 'available',
+          ),
           html,
           markdown,
           pdf,

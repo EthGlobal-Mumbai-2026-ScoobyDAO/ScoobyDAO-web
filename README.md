@@ -2,7 +2,7 @@
 
 ## ACTIVE STATE — Reports integration
 
-`/reports` provides a research library with an empty default state. A loopback-only adapter can consume the backend list and version-bound artifact manifest when explicitly configured. This unauthenticated integration is not a publication. See [reports handoff](HANDOFF-REPORTS.md) for owners, setup and continuation.
+`/reports` presents a native five-pillar card reader, empty unless a trusted research API origin is explicitly configured. RAY is a pending, not gate-qualified local reference. The research API and legacy approval API use different contracts and configuration; neither a health response nor a local review assertion proves authenticated sign-off. See [reports handoff](HANDOFF-REPORTS.md) for tested state and continuation.
 
 Frontend for **Unmasked** (ETHGlobal Mumbai 2026): AI agents and an original detective-hound mascot, Sniff, investigate suspicious tokens; a verified human signs off on each claim; people stake For/Against with sealed bets; a Uniswap v4 hook freezes trading the moment a claim triggers.
 
@@ -32,19 +32,19 @@ Only `NEXT_PUBLIC_*` values; they are public by definition. No secrets live in t
 | Variable | Purpose |
 |---|---|
 | `NEXT_PUBLIC_API_URL` | backend base URL (default `http://localhost:8080`) |
-| `NEXT_PUBLIC_REPORT_API_URL` | optional loopback-only operator API origin for the draft Reports library |
+| `NEXT_PUBLIC_REPORT_API_URL` | optional trusted HTTPS research API origin (or loopback HTTP for local development) |
 | `NEXT_PUBLIC_CHAIN_ID` | `11155111` (Sepolia only) |
 | `NEXT_PUBLIC_SEPOLIA_RPC_URL` | optional RPC; falls back to the public default |
 | `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` | needed for WalletConnect; without it injected wallets still work but the console shows 403s |
 | `NEXT_PUBLIC_DEMO_MODE` | `true` shows "Send Sniff to scan" (`POST /demo/scan`) |
-| `NEXT_PUBLIC_USE_FIXTURES` | `true` forces fixture mode (optional; not in `.env.example`) |
+| `NEXT_PUBLIC_USE_FIXTURES` | `true` explicitly enables sample data and simulated sign-off for demo/test only |
 | `CONTRACTS_REPO_PATH` | used only by `scripts/sync-contracts.sh` |
 
 The Reports page also has a read-only worker-status widget using `NEXT_PUBLIC_REPORT_API_URL`. It shows generic worker heartbeat and job counts; token-by-token discovery activity is not yet connected. See [the Reports handoff](HANDOFF-REPORTS.md) for scope and integration dependencies.
 
 ## Fixtures mode
 
-The app uses `src/fixtures/` instead of the API when `NEXT_PUBLIC_USE_FIXTURES=true` **or** `GET /health` is unreachable. Fixtures cover every status: draft, awaiting approval, denied, expired, Open, Frozen, Resolved Pass (Unmasked), Resolved Fail (Cleared), Refunded.
+The app uses `src/fixtures/` only when `NEXT_PUBLIC_USE_FIXTURES=true` is explicitly set for a demo or test. API failures and incompatible approval responses surface as errors; they do not enable fixtures. Fixtures cover every status: draft, awaiting approval, denied, expired, Open, Frozen, Resolved Pass (Unmasked), Resolved Fail (Cleared), Refunded.
 
 While fixtures are on, or until real contract addresses are synced, reads and writes go to an in-memory chain (`src/lib/fixtureChain.ts`) and a dashed **Fixture mode** bar lets you act as an honest or a deployer-linked wallet. Transactions show the full toast flow but are marked "fixture, no real tx".
 

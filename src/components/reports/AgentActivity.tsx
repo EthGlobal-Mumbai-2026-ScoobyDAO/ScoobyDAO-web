@@ -54,7 +54,7 @@ export function AgentActivity() {
           <p className="text-sm">
             {configured
               ? 'Activity API configuration is invalid.'
-              : 'Connect the local reports API to see worker status.'}
+              : 'Connect the reports API to see worker status.'}
           </p>
         ) : query.isPending ? (
           <p className="text-sm">Checking worker status…</p>

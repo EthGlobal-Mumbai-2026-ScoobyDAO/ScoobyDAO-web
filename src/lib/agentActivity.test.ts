@@ -33,21 +33,32 @@ describe('worker activity status', () => {
     ])
       expect(() => parseAgentActivity(value)).toThrow();
   });
-  it('only calls the explicit loopback status endpoint', async () => {
+  it('accepts configured HTTPS or loopback HTTP and rejects redirects and credentials', async () => {
     const fetch = vi
       .fn()
-      .mockResolvedValue(
-        new Response(JSON.stringify({ queue: {}, worker: null, worker_fresh: false })),
+      .mockImplementation(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ queue: {}, worker: null, worker_fresh: false })),
+        ),
       );
     vi.stubGlobal('fetch', fetch);
     await expect(fetchAgentActivity('http://127.0.0.1:50653')).resolves.toMatchObject({
       lastHeartbeat: null,
     });
-    expect(fetch).toHaveBeenCalledWith('http://127.0.0.1:50653/status', expect.any(Object));
-    await expect(fetchAgentActivity('https://example.com')).rejects.toThrow(
-      'Invalid local API origin',
+    expect(fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:50653/status',
+      expect.objectContaining({ redirect: 'error', credentials: 'omit' }),
     );
-    expect(fetch).toHaveBeenCalledTimes(1);
+    await expect(fetchAgentActivity('https://research.example')).resolves.toMatchObject({
+      lastHeartbeat: null,
+    });
+    await expect(fetchAgentActivity('http://research.example')).rejects.toThrow(
+      'Invalid API origin',
+    );
+    await expect(fetchAgentActivity('https://user:password@research.example')).rejects.toThrow(
+      'Invalid API origin',
+    );
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
   it('does not silently replace unavailable backend data with a fixture', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('', { status: 503 })));
