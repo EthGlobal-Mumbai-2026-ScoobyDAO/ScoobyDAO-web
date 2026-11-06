@@ -17,20 +17,10 @@ export class ApiError extends Error {
 
 // ---------------------------------------------------------------- mode switch
 
-let modePromise: Promise<boolean> | null = null;
-
-/** True when NEXT_PUBLIC_USE_FIXTURES=true or the API's /health is unreachable. Checked once per page load. */
+/** Fixture behavior is opt-in only; network failures never enable simulated approvals. */
 export function usingFixtures(): Promise<boolean> {
-  if (env.forceFixtures) return Promise.resolve(true);
-  modePromise ??= fetch(`${env.apiUrl}/health`, {
-    signal: AbortSignal.timeout(2500),
-    cache: 'no-store',
-  })
-    .then(async (r) => !(r.ok && (await r.json())?.ok === true))
-    .catch(() => true);
-  return modePromise;
+  return Promise.resolve(env.forceFixtures);
 }
-
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${env.apiUrl}${path}`, {
     ...init,
@@ -149,15 +139,69 @@ const fixtureApi = {
   },
 };
 
+function checkedReport(value: unknown, expectedId?: string): Report {
+  if (!value || typeof value !== 'object') throw new ApiError(502, 'Incompatible case response');
+  const report = value as Partial<Report>;
+  if (
+    typeof report.id !== 'string' ||
+    !report.id ||
+    (expectedId && report.id !== expectedId) ||
+    typeof report.token !== 'string' ||
+    typeof report.chainId !== 'number' ||
+    !report.status ||
+    !['draft', 'awaiting_approval', 'denied', 'expired', 'published'].includes(report.status) ||
+    typeof report.manifestHash !== 'string' ||
+    !/^0x[0-9a-fA-F]{64}$/.test(report.manifestHash) ||
+    !report.manifest ||
+    !Array.isArray(report.manifest.claims) ||
+    !Array.isArray(report.manifest.evidence) ||
+    !Array.isArray(report.manifest.excludedWallets) ||
+    typeof report.createdAt !== 'number'
+  )
+    throw new ApiError(502, 'Incompatible case response');
+  return report as Report;
+}
+function checkedApproval(value: unknown, expectedId?: string, expectedReport?: string): Approval {
+  if (!value || typeof value !== 'object')
+    throw new ApiError(502, 'Incompatible sign-off response');
+  const approval = value as Partial<Approval>;
+  const statuses = ['pending', 'approved', 'denied', 'expired', 'rejected_not_reviewer', 'spent'];
+  if (
+    typeof approval.id !== 'string' ||
+    !approval.id ||
+    (expectedId && approval.id !== expectedId) ||
+    typeof approval.reportId !== 'string' ||
+    !approval.reportId ||
+    (expectedReport && approval.reportId !== expectedReport) ||
+    typeof approval.manifestHash !== 'string' ||
+    !/^0x[0-9a-fA-F]{64}$/.test(approval.manifestHash) ||
+    typeof approval.expiresAt !== 'number' ||
+    !Number.isFinite(approval.expiresAt) ||
+    !approval.status ||
+    !statuses.includes(approval.status)
+  )
+    throw new ApiError(502, 'Incompatible sign-off response');
+  return approval as Approval;
+}
 // ----------------------------------------------------------------- live API
 
 const liveApi: typeof fixtureApi = {
   health: () => http<{ ok: true }>('/health'),
-  getReports: () => http<Report[]>('/reports'),
-  getReport: (id) => http<Report>(`/reports/${encodeURIComponent(id)}`),
+  getReports: () =>
+    http<unknown>('/reports').then((value) => {
+      if (!Array.isArray(value)) throw new ApiError(502, 'Incompatible case response');
+      return value.map((item) => checkedReport(item));
+    }),
+  getReport: (id) =>
+    http<unknown>(`/reports/${encodeURIComponent(id)}`).then((value) => checkedReport(value, id)),
   requestApproval: (id) =>
-    http<Approval>(`/reports/${encodeURIComponent(id)}/approve`, { method: 'POST' }),
-  getApproval: (id) => http<Approval>(`/approvals/${encodeURIComponent(id)}`),
+    http<unknown>(`/reports/${encodeURIComponent(id)}/approve`, { method: 'POST' }).then((value) =>
+      checkedApproval(value, undefined, id),
+    ),
+  getApproval: (id) =>
+    http<unknown>(`/approvals/${encodeURIComponent(id)}`).then((value) =>
+      checkedApproval(value, id),
+    ),
   getClaim: (claimId) => http<ClaimView>(`/claims/${encodeURIComponent(claimId)}`),
   getDeployments: () => http<Deployments>('/deployments'),
   demoScan: () => http<unknown>('/demo/scan', { method: 'POST' }),
@@ -165,7 +209,7 @@ const liveApi: typeof fixtureApi = {
 
 type Api = typeof fixtureApi;
 
-/** Every method picks live vs fixtures on call, so a backend that comes up later is picked up on reload. */
+/** Fixture mode is explicit; live API errors propagate to the caller. */
 export const api: Api = new Proxy({} as Api, {
   get(_t, key: keyof Api) {
     return async (...args: unknown[]) => {
