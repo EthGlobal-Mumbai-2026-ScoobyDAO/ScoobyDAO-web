@@ -12,7 +12,7 @@ import { wagmiConfig } from '@/lib/wagmi';
 const CHAIN = 11155111;
 const client = getPublicClient(wagmiConfig, { chainId: CHAIN }) as PublicClient;
 const link = (address: string) => `https://sepolia.etherscan.io/address/${address}`;
-const date = (s: number) => new Date(s * 1000).toLocaleString();
+const date = (s: number) => new Date(s * 1000).toISOString().replace('T', ' ').replace('.000Z', ' UTC');
 type Call = { address: Address; abi: Abi; functionName: string; args?: readonly unknown[] };
 
 export default function AcceleratedPage() {
@@ -141,7 +141,7 @@ export default function AcceleratedPage() {
       <button disabled={busy || outcome === 0 || no === 0n} className="border-line rounded-lg border px-4 py-2 disabled:opacity-50" onClick={() => void execute(() => claim(false, no))}>Claim No principal</button></section>
     <section className="glass space-y-2 p-5"><h2 className="text-xl font-semibold">Onchain contracts</h2>
       <p><a className="text-beam-ink underline" href={link(a.registry)} target="_blank" rel="noreferrer">Flexible registry</a> · <a className="text-beam-ink underline" href={link(a.vault)} target="_blank" rel="noreferrer">Vault</a> · <a className="text-beam-ink underline" href={link(a.hook)} target="_blank" rel="noreferrer">Uniswap v4 hook</a></p>
-      <p className="text-muted text-sm">Arbitrum Sepolia CCIP sender: {a.sender}. Ethereum Sepolia receiver: {a.receiver}.</p><p className="text-muted text-sm">Report hash: {a.reportHash}. Claim hash: {a.claimHash}.</p></section>
+      <p className="text-muted text-sm">Arbitrum Sepolia CCIP sender: {a.sender}. Ethereum Sepolia receiver: {a.receiver}. Cross-chain stake cutoff: {date(a.times.crossChainCutoff)}.</p><p className="text-muted text-sm">Report hash: {a.reportHash}. Claim hash: {a.claimHash}.</p></section>
     {message && <p role="status" className="text-sm">{message}</p>}{lastTx && <a className="text-beam-ink underline" href={`https://sepolia.etherscan.io/tx/${lastTx}`} target="_blank" rel="noreferrer">View last transaction ↗</a>}
   </main>;
 }
