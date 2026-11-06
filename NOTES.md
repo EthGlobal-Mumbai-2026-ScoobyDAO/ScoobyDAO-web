@@ -35,6 +35,15 @@ Per the team: frontend-owned names use `scoobydao`.
 - Manifest field types aren't specified (INTERFACES.md §3 is an example). `params` is typed `Record<string, number | string | boolean>`.
 - **Canonical JSON must match byte-for-byte across backend and web.** Web uses JS `JSON.stringify` escaping with keys sorted by UTF-16 code unit. If the backend is Python, `json.dumps(..., sort_keys=True, separators=(',',':'), ensure_ascii=False)` matches for ASCII keys and integer numbers; floats and non-ASCII may differ. Recommend RFC 8785 (JCS) on both sides, or integers only.
 
+## Mismatch with the deployed V2 contracts (flagged for SmartContracts)
+
+The contracts repo (`EthGlobal-Mumbai-2026-ScoobyDAO/SmartContracts`) deployed a different design from INTERFACES.md §1–2. Not patched around here; it needs a team decision.
+
+- **Contracts:** deployed are `ReportRegistry`, `RiskFiStakeVaultV2`, `StakeReceiptREP`, `StakerYieldToken`, `YieldCurveHookV2`, `YieldSwapRouter`, `StakeAndSellRouterV2`, CCIP sender/receiver. The web ABIs are `ClaimRegistry`, `VerdictMarket`, `FreezeHook`, `Treasury`, and `src/contracts/sepolia.json` is all zero addresses. V2 has no freeze, no commit/reveal and no `isExcluded`, so the "trigger → halted market → `RiskFi: claim frozen`" demo step cannot run against it.
+- **Approval binding:** `ReportRegistry.publish` takes a reviewer ECDSA signature over the report struct; it has no `approvalId` or `manifestHash`, so the reviewed manifest hash isn't recorded onchain the way INTERFACES.md §1 expects.
+- **Payout formula:** `src/lib/payout.ts` implements the VerdictMarket spec (`s + s·L·(10000−f)/(10000·W)`, fee taken from one-sided refunds). V2 `claimPrincipal` pays `amount + amount·(L − L/5)/W`, refunds Void and one-sided reports **in full**, then scales every payout by `principalAvailable / totalPrincipal`. Rewrite `payout.ts` if the UI moves to V2.
+- **Swaps:** the V2 hook takes the input during `beforeSwap`, so swaps must go through the deployed `YieldSwapRouter`, not the v4 periphery router CLAUDE.md §3.5 assumes.
+
 ## Dependency decisions
 
 - **wagmi pinned to 2.x** (2.19.x): RainbowKit 2.2.11 peer-depends on `wagmi ^2.9.0`; wagmi 3.x is not supported yet.
@@ -52,7 +61,7 @@ Per the team: frontend-owned names use `scoobydao`.
 ## Phase 3 decisions
 
 - **Fixture chain + demo wallets.** With no deployed contracts (or in fixtures mode) all reads/writes go to an in-memory chain (`src/lib/fixtureChain.ts`) that enforces the same rules the UI depends on (exclusion, commits only while Open, one commit, reveal must match). A "Fixture mode" bar lets you act as an honest or a deployer-linked wallet. It never appears once the API is live and contracts are synced, and a real connected wallet is used whenever no demo wallet is picked.
-- **Salt saved before the first tx**, cleared again if the approve/commit tx fails or is rejected. If localStorage is unavailable the backup file downloads automatically before the commit.
+- **Salt saved before the first tx**, cleared again only if the approve/commit definitely did not happen: rejected in the wallet, failed simulation, or a mined-but-reverted receipt. If the commit was **broadcast but its receipt couldn't be read** (RPC error, timeout), the runner calls `onOutcomeUnknown` and the salt is kept and the sealed panel shown, because the tx may still be mined and the salt is the only way to reveal it. If localStorage is unavailable the backup file downloads automatically before the commit. Follow-up: if such a commit was actually dropped, the sealed panel has no "discard" action; add one that checks the chain has no commitment first.
 - Approve page shows THEME.md headline + CLAUDE.md exact line for every final state; approval polling stops on a final status; after approval it polls the report every 3s until `claimId` appears.
 - Reverted (mined) txs: the runner replays the call at the receipt's block to recover the revert string for the toast.
 
