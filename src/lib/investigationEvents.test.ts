@@ -54,6 +54,40 @@ describe('investigation events', () => {
     expect(
       eventDescription({
         ...stage,
+        kind: 'research_stage_completed',
+        detail: JSON.stringify({
+          stage: 'sources',
+          state: 'completed',
+          mode: 'captured_replay',
+          captured: 4,
+        }),
+      }),
+    ).toContain('captured evidence replay');
+    expect(
+      eventDescription({
+        ...stage,
+        kind: 'model_stage_failed',
+        detail: JSON.stringify({
+          stage: 'reasoning',
+          state: 'failed',
+          reason: 'model_identifier_mismatch',
+        }),
+      }),
+    ).toContain('different model identity');
+    expect(
+      eventDescription({
+        ...stage,
+        kind: 'model_stage_failed',
+        detail: JSON.stringify({
+          stage: 'reasoning',
+          state: 'failed',
+          reason: 'incomplete_output',
+        }),
+      }),
+    ).toContain('incomplete or truncated');
+    expect(
+      eventDescription({
+        ...stage,
         kind: 'model_stage_failed',
         detail: JSON.stringify({ stage: 'reasoning', state: 'failed', reason: 'truncated' }),
       }),

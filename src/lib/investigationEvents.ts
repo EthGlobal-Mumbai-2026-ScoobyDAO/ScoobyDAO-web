@@ -53,14 +53,15 @@ export async function fetchInvestigationEvents(
 }
 /** Format only the backend's allowlisted structured model-stage fields. */
 export function eventDescription(event: InvestigationEvent): string {
-  if (!event.kind.startsWith('model_stage_')) return event.detail;
+  if (!event.kind.startsWith('model_stage_') && !event.kind.startsWith('research_stage_'))
+    return event.detail;
   try {
     const value: unknown = JSON.parse(event.detail);
     if (!record(value)) throw new Error('Invalid model stage');
     const parts: string[] = [];
     if (
       typeof value.stage === 'string' &&
-      ['reasoning', 'pillar', 'conclusion'].includes(value.stage)
+      ['reasoning', 'pillar', 'conclusion', 'sources', 'source', 'report'].includes(value.stage)
     )
       parts.push(
         value.stage === 'conclusion'
@@ -91,6 +92,11 @@ export function eventDescription(event: InvestigationEvent): string {
         'resumed',
         'analyzed',
         'validated_shared_output',
+        'captured_replay',
+        'captured',
+        'skipped_budget',
+        'blocked',
+        'validated',
         'proposed',
       ].includes(value.state)
     )
@@ -101,10 +107,19 @@ export function eventDescription(event: InvestigationEvent): string {
             ? 'shared output validated'
             : value.state,
       );
+    if (
+      typeof value.source === 'string' &&
+      ['market', 'security', 'source', 'pools', 'daily'].includes(value.source)
+    )
+      parts.push(value.source);
+    if (value.mode === 'captured_replay') parts.push('captured evidence replay');
+    if (value.mode === 'bounded_fetch') parts.push('bounded source collection');
     if (value.stage === 'reasoning')
       parts.push('one model invocation for all pillars and final synthesis');
     if (value.model === 'gpt-6.1-terra') parts.push('model: gpt-6.1-terra');
     for (const [key, label] of [
+      ['attempts', 'source attempts'],
+      ['captured', 'captured sources'],
       ['budget_calls', 'model call budget'],
       ['attempts_used', 'attempts used'],
       ['max_output_tokens', 'maximum output tokens'],
@@ -131,6 +146,12 @@ export function eventDescription(event: InvestigationEvent): string {
       client_retries_not_disabled: 'Model client retry policy is not configured safely',
       refused: 'Model refused the request',
       truncated: 'Model response was truncated',
+      incomplete_output: 'Model response was incomplete or truncated',
+      invalid_or_unlinked_output: 'Model output failed evidence validation',
+      provider_failure: 'Model provider request failed',
+      model_identifier_mismatch: 'The provider returned a different model identity',
+      no_identity_bound_source_evidence: 'No identity-bound source evidence available',
+      sources_contain_no_usable_pillar_observation: 'Sources contain no usable pillar observations',
       provider_error: 'Model provider request failed',
       validation_failed: 'Model output failed validation',
       cancelled: 'Cancelled',

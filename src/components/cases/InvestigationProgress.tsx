@@ -69,7 +69,9 @@ export function InvestigationProgress({
                 <strong>
                   {event.kind.startsWith('model_stage_')
                     ? 'Model activity'
-                    : event.kind.replaceAll('_', ' ')}
+                    : event.kind.startsWith('research_stage_')
+                      ? 'Research activity'
+                      : event.kind.replaceAll('_', ' ')}
                   :
                 </strong>{' '}
                 {eventDescription(event)}{' '}
