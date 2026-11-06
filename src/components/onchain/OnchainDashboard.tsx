@@ -5,7 +5,7 @@ import { ArrowRightLeft, Gavel, Globe2, Scale } from 'lucide-react';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { Banner } from '@/components/Banner';
-import { CaseFrame, CaseHeader, casePath } from '@/components/case/CaseHeader';
+import { CaseFrame, CaseHeader, casePath, type CaseBase } from '@/components/case/CaseHeader';
 import { useCase } from '@/components/case/useCase';
 import { Countdown } from '@/components/Countdown';
 import { DeploymentCheckCard } from '@/components/DeploymentCheck';
@@ -16,22 +16,25 @@ import { OddsBar } from '@/components/OddsBar';
 import { TxLink } from '@/components/TxLink';
 import { formatDate, formatDuration, formatEth, formatUsdc, formatWad } from '@/lib/format';
 import { claimsCloseAt, formatRateWad, isSameAddress, remoteCutoffOf, V2_INFO, type MarketView } from '@/protocol';
+import { useProtocol } from '@/protocol/hooks';
 import { useActiveAccount, useChainTime, usePosition } from '@/protocol/hooks';
 
 const SEPOLIA = 11155111;
 const ARB = 421614;
 
 /** /onchain/[reportId]: everything read from chain for one V2 report. Never mapped to a backend report. */
-export function OnchainDashboard({ id }: { id: string }) {
-  const { market } = useCase(id, '/onchain');
-  return <CaseFrame state={market}>{market.data && <Dashboard m={market.data} />}</CaseFrame>;
+export function OnchainDashboard({ id, base = '/onchain' }: { id: string; base?: CaseBase }) {
+  const { market } = useCase(id, base);
+  return <CaseFrame state={market}>{market.data && <Dashboard m={market.data} base={base} />}</CaseFrame>;
 }
 
-function Dashboard({ m }: { m: MarketView }) {
+function Dashboard({ m, base }: { m: MarketView; base: CaseBase }) {
+  const { protocol } = useProtocol();
+  const info = protocol.kind === 'v2' ? (protocol as typeof import('@/protocol/v2').v2).deploymentBundle : V2_INFO;
   const series = m.series !== false;
   return (
     <main className="mx-auto max-w-6xl space-y-8 px-4 py-8 sm:py-10">
-      <CaseHeader market={m} tab="overview" base="/onchain" />
+      <CaseHeader market={m} tab="overview" base={base} />
       <div className="flex flex-wrap gap-2">
         {m.demoReport && <DemoReportLabel id={m.reportId} />}
         <PublicStakesLabel />
@@ -50,23 +53,23 @@ function Dashboard({ m }: { m: MarketView }) {
         {series && <VaultCard m={m} />}
         {series && <PoolCard m={m} />}
         {series && <PositionCard m={m} />}
-        <DeploymentCheckCard />
-        <ContractsCard />
+        {series && <DeploymentCheckCard />}
+        {series && <ContractsCard info={info} />}
       </div>
       {series && (
         <nav aria-label="Report actions" className="flex flex-wrap gap-3">
-          <Link href={casePath('/onchain', m.reportId, 'stake')} className="bg-beam text-on-beam inline-flex items-center gap-2 rounded-xl px-4 py-2.5 font-semibold hover:brightness-105">
+          <Link href={casePath(base, m.reportId, 'stake')} className="bg-beam text-on-beam inline-flex items-center gap-2 rounded-xl px-4 py-2.5 font-semibold hover:brightness-105">
             <Scale size={16} aria-hidden /> Stake Yes / No
           </Link>
-          <Link href={casePath('/onchain', m.reportId, 'market')} className="border-line inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 font-semibold hover:border-[var(--fog-400)]">
+          <Link href={casePath(base, m.reportId, 'market')} className="border-line inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 font-semibold hover:border-[var(--fog-400)]">
             <ArrowRightLeft size={16} aria-hidden /> Trade YT
           </Link>
-          <Link href={casePath('/onchain', m.reportId, 'result')} className="border-line inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 font-semibold hover:border-[var(--fog-400)]">
+          <Link href={casePath(base, m.reportId, 'result')} className="border-line inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 font-semibold hover:border-[var(--fog-400)]">
             <Gavel size={16} aria-hidden /> Result &amp; claims
           </Link>
-          <Link href={`/tx/ccip/${V2_INFO.exampleCCIP.messageId}`} className="border-line inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 font-semibold hover:border-[var(--fog-400)]">
+          {info.exampleCCIP.messageId !== `0x${'0'.repeat(64)}` && <Link href={`/tx/ccip/${info.exampleCCIP.messageId}`} className="border-line inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 font-semibold hover:border-[var(--fog-400)]">
             <Globe2 size={16} aria-hidden /> See a delivered CCIP example
-          </Link>
+          </Link>}
         </nav>
       )}
     </main>
@@ -305,23 +308,23 @@ function PositionCard({ m }: { m: MarketView }) {
   );
 }
 
-function ContractsCard() {
+function ContractsCard({ info }: { info: typeof V2_INFO | typeof import('@/contracts/v2').v2 }) {
   const rows: [string, string, number][] = [
-    ['ReportRegistry (V2)', V2_INFO.sepolia.ReportRegistry, SEPOLIA],
-    ['RiskFiStakeVaultV2', V2_INFO.sepolia.RiskFiStakeVaultV2, SEPOLIA],
-    ['StakeReceiptREP', V2_INFO.sepolia.StakeReceiptREP, SEPOLIA],
-    ['StakerYieldToken (YT)', V2_INFO.sepolia.StakerYieldToken, SEPOLIA],
-    ['YieldCurveHookV2', V2_INFO.sepolia.YieldCurveHookV2, SEPOLIA],
-    ['YieldLPShare (RF-YLP)', V2_INFO.sepolia.YieldLPShare, SEPOLIA],
-    ['YieldSwapRouter', V2_INFO.sepolia.YieldSwapRouter, SEPOLIA],
-    ['StakeAndSellRouterV2', V2_INFO.sepolia.StakeAndSellRouterV2, SEPOLIA],
-    ['CCIPStakeReceiverV2', V2_INFO.sepolia.CCIPStakeReceiverV2, SEPOLIA],
-    ['DemoUSD (dUSD, test token)', V2_INFO.sepolia.DemoUSD, SEPOLIA],
-    ['CCIPStakeSenderV2', V2_INFO.arbitrumSepolia.CCIPStakeSenderV2, ARB],
-    ['DemoUSD (dUSD, test token)', V2_INFO.arbitrumSepolia.DemoUSD, ARB],
+    ['ReportRegistry (V2)', info.sepolia.ReportRegistry, SEPOLIA],
+    ['RiskFiStakeVaultV2', info.sepolia.RiskFiStakeVaultV2, SEPOLIA],
+    ['StakeReceiptREP', info.sepolia.StakeReceiptREP, SEPOLIA],
+    ['StakerYieldToken (YT)', info.sepolia.StakerYieldToken, SEPOLIA],
+    ['YieldCurveHookV2', info.sepolia.YieldCurveHookV2, SEPOLIA],
+    ['YieldLPShare (RF-YLP)', info.sepolia.YieldLPShare, SEPOLIA],
+    ['YieldSwapRouter', info.sepolia.YieldSwapRouter, SEPOLIA],
+    ['StakeAndSellRouterV2', info.sepolia.StakeAndSellRouterV2, SEPOLIA],
+    ['CCIPStakeReceiverV2', info.sepolia.CCIPStakeReceiverV2, SEPOLIA],
+    ['DemoUSD (dUSD, test token)', info.sepolia.DemoUSD, SEPOLIA],
+    ['CCIPStakeSenderV2', info.arbitrumSepolia.CCIPStakeSenderV2, ARB],
+    ['DemoUSD (dUSD, test token)', info.arbitrumSepolia.DemoUSD, ARB],
   ];
   return (
-    <Card title={`Contracts (handoff bundle ${V2_INFO.version})`} chains={[SEPOLIA, ARB]}>
+    <Card title={`Contracts (handoff bundle ${info.version})`} chains={[SEPOLIA, ARB]}>
       <dl className="space-y-1.5 text-sm">
         {rows.map(([name, address, chainId]) => (
           <div key={`${chainId}:${name}`} className="flex flex-wrap justify-between gap-x-3">
@@ -335,7 +338,7 @@ function ContractsCard() {
         ))}
       </dl>
       <p className="text-muted text-xs">
-        Pool key: dUSD/YT, fee 0, tick spacing 1, hooks = YieldCurveHookV2 (hash <span className="num">{V2_INFO.poolKeyHash.slice(0, 10)}…</span>). Liquidity is hook-owned.
+        Pool key: dUSD/YT, fee 0, tick spacing 1, hooks = YieldCurveHookV2 (hash <span className="num">{info.poolKeyHash.slice(0, 10)}…</span>). Liquidity is hook-owned.
       </p>
     </Card>
   );

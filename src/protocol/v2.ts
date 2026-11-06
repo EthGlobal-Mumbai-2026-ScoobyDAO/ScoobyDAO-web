@@ -1,5 +1,5 @@
 import { formatEther, formatUnits, isAddressEqual, zeroAddress, type Address, type Hex, type Log, type PublicClient } from 'viem';
-import { ARB_SEPOLIA_ID, SEPOLIA_ID, v2 as bundle } from '@/contracts/v2';
+import { ARB_SEPOLIA_ID, SEPOLIA_ID, v2 as defaultBundle, v2Flexible as flexibleBundle, type V2Bundle } from '@/contracts/v2';
 import { env } from '@/lib/env';
 import { estimatePaid } from '@/lib/payout';
 import { approvalStep, type Token } from './approvals';
@@ -36,7 +36,7 @@ import {
   type TxEffect,
   type TxStep,
 } from './types';
-import { dusdReceived, eventTopic, logsOf, read, V2, write } from './v2contracts';
+import { dusdReceived as defaultDusdReceived, eventTopic as defaultEventTopic, logsOf as defaultLogsOf, makeV2Handles, read as defaultRead, write as defaultWrite, type V2Event, type V2Fn, type V2Handle } from './v2contracts';
 
 // Live adapter for the deployed V2 demo (Ethereum Sepolia + Arbitrum Sepolia). Every address,
 // ABI and the pool key come from the handoff bundle via ./v2contracts. One vault serves one report
@@ -48,6 +48,7 @@ export interface V2Deps {
   eth: () => PublicClient;
   arb: () => PublicClient;
   fetchCcip: (messageId: Hex) => Promise<CcipApiResult>;
+  bundle?: V2Bundle;
 }
 
 type Report = {
@@ -67,12 +68,6 @@ const DECIMALS = 6;
 const fmt = (v: bigint) => formatUnits(v, DECIMALS);
 const side = (yes: boolean) => (yes ? 'Yes' : 'No');
 
-const DUSD: Token = { address: V2.dusd.address, abi: V2.dusd.abi, symbol: 'dUSD', decimals: DECIMALS };
-const DUSD_ARB: Token = { address: V2.dusdArb.address, abi: V2.dusdArb.abi, symbol: 'dUSD', decimals: DECIMALS };
-const YT: Token = { address: V2.yt.address, abi: V2.yt.abi, symbol: 'YT', decimals: DECIMALS };
-const REP_TOKEN: Token = { address: V2.rep.address, abi: V2.rep.abi, symbol: 'REP', decimals: DECIMALS };
-const LP_TOKEN: Token = { address: V2.lp.address, abi: V2.lp.abi, symbol: 'RF-YLP', decimals: DECIMALS };
-
 async function readOne<T>(client: PublicClient, call: ReadCall): Promise<T> {
   return (await client.readContract(call as never)) as T;
 }
@@ -89,7 +84,19 @@ const need = <T>(r: ReadResult, what: string): T => {
 };
 const maybe = <T>(r: ReadResult): T | undefined => (r.ok ? (r.result as T) : undefined);
 
-export function createV2(deps: V2Deps): Protocol & { kind: 'v2' } {
+export function createV2(deps: V2Deps): Protocol & { kind: 'v2'; deploymentKey: string; deploymentBundle: V2Bundle } {
+  const bundle = deps.bundle ?? defaultBundle;
+  const V2 = makeV2Handles(bundle);
+  const read = <H extends V2Handle>(h: H, fn: V2Fn<H>, args: readonly unknown[] = []) => defaultRead(h, fn, args, V2);
+  const write = <H extends V2Handle>(h: H, fn: V2Fn<H>, args: readonly unknown[] = [], value?: bigint) => defaultWrite(h, fn, args, value, V2);
+  const logsOf = <H extends V2Handle>(h: H, event: V2Event<H>, logs: Log[]) => defaultLogsOf(h, event, logs, V2);
+  const eventTopic = <H extends V2Handle>(h: H, event: V2Event<H>) => defaultEventTopic(h, event, V2);
+  const dusdReceived = (logs: Log[], from: Address, to: Address) => defaultDusdReceived(logs, from, to, V2);
+  const DUSD: Token = { address: V2.dusd.address, abi: V2.dusd.abi, symbol: 'dUSD', decimals: DECIMALS };
+  const DUSD_ARB: Token = { address: V2.dusdArb.address, abi: V2.dusdArb.abi, symbol: 'dUSD', decimals: DECIMALS };
+  const YT: Token = { address: V2.yt.address, abi: V2.yt.abi, symbol: 'YT', decimals: DECIMALS };
+  const REP_TOKEN: Token = { address: V2.rep.address, abi: V2.rep.abi, symbol: 'REP', decimals: DECIMALS };
+  const LP_TOKEN: Token = { address: V2.lp.address, abi: V2.lp.abi, symbol: 'RF-YLP', decimals: DECIMALS };
   const eth = () => deps.eth();
   const arb = () => deps.arb();
 
@@ -255,8 +262,10 @@ export function createV2(deps: V2Deps): Protocol & { kind: 'v2' } {
 
   // ---------------------------------------------------------------------------- the protocol
 
-  const api: Protocol & { kind: 'v2' } = {
+  const api: Protocol & { kind: 'v2'; deploymentKey: string; deploymentBundle: V2Bundle } = {
     kind: 'v2',
+    deploymentKey: bundle.version,
+    deploymentBundle: bundle,
     dusd: V2.dusd.address,
 
     async listPublished() {
@@ -773,19 +782,41 @@ export const v2 = createV2({
   fetchCcip: (messageId) => fetchCcipMessage(messageId, { base: env.ccipApiUrl }),
 });
 
+export const v2Flexible = createV2({
+  eth: sepoliaClient,
+  arb: arbClient,
+  fetchCcip: (messageId) => fetchCcipMessage(messageId, { base: env.ccipApiUrl }),
+  bundle: flexibleBundle,
+});
+
+export function v2ForBundle(bundle: V2Bundle) {
+  return createV2({ eth: sepoliaClient, arb: arbClient, fetchCcip: (messageId) => fetchCcipMessage(messageId, { base: env.ccipApiUrl }), bundle });
+}
+
 /** Public bundle facts the UI may show (addresses, pool key, the delivered example message). */
 export const V2_INFO = {
-  version: bundle.version,
-  chainIds: bundle.chainIds,
-  sepolia: bundle.sepolia,
-  arbitrumSepolia: bundle.arbitrumSepolia,
-  poolKey: bundle.poolKey,
-  poolKeyHash: bundle.poolKeyHash,
-  reportId: bundle.reportId,
-  deployer: bundle.report.reviewer,
-  exampleCCIP: bundle.exampleCCIP,
+  version: defaultBundle.version,
+  chainIds: defaultBundle.chainIds,
+  sepolia: defaultBundle.sepolia,
+  arbitrumSepolia: defaultBundle.arbitrumSepolia,
+  poolKey: defaultBundle.poolKey,
+  poolKeyHash: defaultBundle.poolKeyHash,
+  reportId: defaultBundle.reportId,
+  deployer: defaultBundle.report.reviewer,
+  exampleCCIP: defaultBundle.exampleCCIP,
+} as const;
+export const V2_FLEX_INFO = {
+  version: flexibleBundle.version,
+  chainIds: flexibleBundle.chainIds,
+  sepolia: flexibleBundle.sepolia,
+  arbitrumSepolia: flexibleBundle.arbitrumSepolia,
+  poolKey: flexibleBundle.poolKey,
+  poolKeyHash: flexibleBundle.poolKeyHash,
+  reportId: flexibleBundle.reportId,
+  deployer: flexibleBundle.report.reviewer,
+  exampleCCIP: flexibleBundle.exampleCCIP,
 } as const;
 
-export const isV2Example = (messageId: string) => messageId.toLowerCase() === bundle.exampleCCIP.messageId.toLowerCase();
+export const isV2Example = (messageId: string) => messageId.toLowerCase() === defaultBundle.exampleCCIP.messageId.toLowerCase();
 
 export const isSameAddress = (a?: string, b?: string) => !!a && !!b && /^0x[0-9a-fA-F]{40}$/.test(a) && /^0x[0-9a-fA-F]{40}$/.test(b) && isAddressEqual(a as Address, b as Address);

@@ -163,7 +163,8 @@ function summarizeTimes(label: string, times: string[]): string {
   return `${label}: ${times.length} timestamps, ${parsed[0].value} to ${parsed[parsed.length - 1].value}`;
 }
 export function backendReportAdapter(base: string): ReportAdapter {
-  if (reportApiBase(base) !== base) throw new Error('Invalid report API origin');
+  if (base !== '/api/research' && reportApiBase(base) !== base)
+    throw new Error('Invalid report API origin');
   async function metadata(): Promise<unknown[]> {
     const items = await json(`${base}/reports`);
     if (!Array.isArray(items)) throw new Error('Invalid report list');
@@ -352,7 +353,7 @@ const invalidAdapter: ReportAdapter = {
   },
 };
 export const defaultReportAdapter: ReportAdapter = base
-  ? backendReportAdapter(base)
+  ? backendReportAdapter(new URL(base).protocol === 'http:' ? base : '/api/research')
   : configured
     ? invalidAdapter
     : emptyAdapter;

@@ -6,7 +6,7 @@ Pushes to `main` deploy to Vercel production; pull requests receive preview depl
 
 Frontend for **Unmasked** (ETHGlobal Mumbai 2026). AI agents and an original detective-hound mascot, Sniff, research suspicious tokens and write a five-pillar report. A reviewed report is published to a `ReportRegistry`, and anyone stakes **dUSD** on **Yes** or **No**, directly on Ethereum Sepolia or from Arbitrum Sepolia over Chainlink CCIP. Each stake records a non-transferable Yes/No position and mints the same amount of a transferable **yield token (YT)**, which trades on a Uniswap v4 hook market until maturity. After maturity a proposed result can be challenged before anyone finalizes it.
 
-The live default is the deployed **RiskFi V2** demo (report #1 on Ethereum Sepolia, CCIP sender on Arbitrum Sepolia), driven only by the contracts handoff bundle in `../v2`. `/reports` is a separate read-only research library, empty unless `NEXT_PUBLIC_REPORT_API_URL` points at a trusted research API (see [LIVE-STATE.md](LIVE-STATE.md) and [HANDOFF-REPORTS.md](HANDOFF-REPORTS.md)).
+The live default is **RiskFi V2**. `/markets` discovers both registries and offers the same Overview, Stake, Trade YT, Result, and Chains views for each report. `/reports` reads the separate research API through a same-origin proxy when `NEXT_PUBLIC_REPORT_API_URL` is configured (see [LIVE-STATE.md](LIVE-STATE.md) and [HANDOFF-REPORTS.md](HANDOFF-REPORTS.md)).
 
 Interfaces: [`INTERFACES.md`](INTERFACES.md) (v3). Decisions, gaps and requests to the other repos: [`NOTES.md`](NOTES.md) → "V2 live integration (Nov 2026)". Plan: [`docs/v2-integration-plan.md`](docs/v2-integration-plan.md).
 
@@ -40,6 +40,7 @@ npm run dev                     # http://localhost:3000
 | `NEXT_PUBLIC_CCIP_API` | Chainlink CCIP message API (default `https://api.ccip.chain.link`) |
 | `NEXT_PUBLIC_BACKEND_API_URL` | deployed backend `/web/v1` upstream used by the Next.js proxy |
 | `NEXT_PUBLIC_API_URL` | same-origin `/api/backend` path for case files and approvals |
+| `NEXT_PUBLIC_REPORT_API_URL` | research API origin; Next.js proxies `/reports`, `/status`, artifacts, and packages at `/api/research` |
 | `NEXT_PUBLIC_USE_FIXTURES` | `true` = demo backend data (opt-in; never automatic) |
 | `NEXT_PUBLIC_FAUCET_URL` | optional operator-run dUSD faucet |
 | `NEXT_PUBLIC_OPERATOR_VIEW` | `true` enables `/operator` (role-gated demo actions) |
@@ -74,7 +75,7 @@ Opt-in only: `NEXT_PUBLIC_CHAIN_MODE=fixture` (in-memory chain with a demo clock
 
 ## Known limits
 
-- **One series.** One V2 vault serves report #1. A report the backend publishes to the V2 registry has no vault, YT, pool or sender until a per-report deployment exists; the app shows "Published onchain — no market deployed for this report yet" and refuses stakes for it.
+- **Per-report setup.** Newly published reports appear in the dropdown immediately. The publisher must prepare a fresh vault and YT, deploy the v4 hook, activate the market, then seed dUSD/YT liquidity. CCIP requires a new Arbitrum sender and receiver configuration before the remote cutoff.
 - **Settlement after Dec 9.** Maturity is 30 days after the lock; nothing in the app bypasses it.
 - **Demo roles.** Reviewer, resolver, adjudicator, publisher and treasury are all the deployer wallet. Yield is simulated (`injectYield`), not lending income.
 - **Thin YT inventory** (~110 YT in the hook): buys above ~0.9 dUSD revert `YT_RESERVE` until more YT is sold into the pool or liquidity is added.
@@ -93,3 +94,11 @@ Opt-in only: `NEXT_PUBLIC_CHAIN_MODE=fixture` (in-memory chain with a demo clock
 - **Fonts:** Bungee, Inter, JetBrains Mono via Google Fonts (`next/font`), SIL Open Font License 1.1.
 - **Icons:** Lucide (ISC licence).
 - **Libraries:** Next.js, React, wagmi, viem, RainbowKit, TanStack Query, React Three Fiber, drei, three.js, qrcode.react, json-schema-to-typescript (dev); see `package.json`.
+
+## Dynamic V2 reports and publication
+
+`/markets` reads `reportCount`, `getReport`, and `maturity` from both the original and flexible Sepolia registries on each request. It joins each report to `V2PoolCatalog.getMarket`, and the client builds a V2 adapter from that market's actual addresses. The selector at the top switches reports without changing the Overview, Stake, Trade YT, Result, or Chains layout. The original and accelerated report #1 deployments remain available.
+
+`/markets/publish` lets the connected registry publisher and reviewer sign and submit report hashes, roles, and clocks. A backend case from `/web/v1/reports` supplies both hashes when available; a research API report supplies its SHA-256 only and still needs a manually verified claim hash. On success the new report appears in the market dropdown. The report page guides the publisher through `V2SeriesFactory.prepare`, `YieldCurveFactoryV2.deployAndInitialize`, `V2PoolCatalog.activate`, `V2CCIPSenderFactory.deploy` on Arbitrum Sepolia, and `CCIPStakeReceiverV2.configureSourceSender` on Ethereum Sepolia. Staking needs the first three steps; trading also needs YT/dUSD liquidity. CCIP needs the last two steps and a future remote cutoff.
+
+Infrastructure addresses and ABIs are in `src/contracts/market-infrastructure/`. The report discovery, bundle creation, publication signature, and setup calls are in `src/protocol/reportDiscovery.ts`, `dynamicMarket.ts`, `publish.ts`, and `marketSetup.ts`. Report publication and per-report setup require the publisher wallet; visitors cannot execute those writes. The research API is separate from `/web/v1`; its current live `/reports` and `/web/v1/reports` endpoints return empty arrays, so no backend report is available to select yet.

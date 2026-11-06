@@ -89,7 +89,7 @@ function closedReason(m: MarketView): string {
 }
 
 function StakePanel({ market: m, base }: { market: MarketView; base: CaseBase }) {
-  const { protocol, fixtureMode } = useProtocol();
+  const { protocol, fixtureMode, deploymentKey } = useProtocol();
   const { address, connected } = useActiveAccount();
   const position = usePosition(m.reportId, m.blockNumber);
   const now = useChainTime() ?? m.chainTime;
@@ -112,7 +112,7 @@ function StakePanel({ market: m, base }: { market: MarketView; base: CaseBase })
   const isV2 = protocol.kind === 'v2';
   const localOpen = localStakeOpen(m, now);
   const remoteCutoff = remoteCutoffOf(m);
-  const ccipOpen = !!protocol.stakeRemote && remoteSendOpen(m, now);
+  const ccipOpen = !!protocol.stakeRemote && remoteSendOpen(m, now) && (!isV2 || (protocol as typeof import('@/protocol/v2').v2).deploymentBundle.arbitrumSepolia.CCIPStakeSenderV2 !== '0x0000000000000000000000000000000000000000');
   const src: Source = source === 'ccip' && ccipOpen ? 'ccip' : 'local';
   const pos = position.data;
   const balance = src === 'ccip' ? pos?.remote?.dusdBalance : pos?.dusdBalance;
@@ -122,13 +122,13 @@ function StakePanel({ market: m, base }: { market: MarketView; base: CaseBase })
   const attempt: RemoteAttempt | undefined = recipient ? newRemoteAttempt({ lockTime: m.lockTime, recipient, nonce }) : undefined;
 
   const ccipQuote = useQuery({
-    queryKey: ['protocol', protocol.kind, 'ccipQuote', m.reportId.toString(), side, amount?.toString(), address, recipient, nonce.toString()],
+    queryKey: ['protocol', protocol.kind, deploymentKey, 'ccipQuote', m.reportId.toString(), side, amount?.toString(), address, recipient, nonce.toString()],
     queryFn: () => protocol.quoteRemote!(m.reportId, side === 'yes', amount!, address!, attempt),
     enabled: src === 'ccip' && !!side && !!amount && !!address && !!attempt && !!protocol.quoteRemote,
     refetchInterval: 30_000,
   });
   const sellQuote = useQuery({
-    queryKey: ['protocol', protocol.kind, 'sellQuote', amount?.toString(), m.blockNumber.toString()],
+    queryKey: ['protocol', protocol.kind, deploymentKey, 'sellQuote', amount?.toString(), m.blockNumber.toString()],
     queryFn: () => protocol.quoteStakeAndSell!(amount!),
     enabled: sell && !!amount && !!protocol.quoteStakeAndSell,
     refetchInterval: 15_000,
@@ -339,7 +339,7 @@ function StakePanel({ market: m, base }: { market: MarketView; base: CaseBase })
                 <p className="text-muted">Late arrivals become REP receipts for you, not a vote. Delivery usually takes 20–30 minutes.</p>
               )}
               <CcipNotVoteLabel />
-              {isV2 && (
+              {isV2 && deploymentKey === 'riskfi-v2-demo-1' && (
                 <p>
                   <Link href={`/tx/ccip/${V2_INFO.exampleCCIP.messageId}`} className="text-beam-ink underline">
                     See a delivered example

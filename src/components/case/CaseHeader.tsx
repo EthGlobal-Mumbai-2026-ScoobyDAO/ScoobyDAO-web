@@ -10,14 +10,15 @@ import type { WebReport } from '@/lib/types';
 import { nextDeadline, remoteCutoffOf, type MarketView } from '@/protocol';
 import { useChainTime } from '@/protocol/hooks';
 
-export type CaseTab = 'overview' | 'stake' | 'market' | 'result';
+export type CaseTab = 'overview' | 'stake' | 'market' | 'result' | 'chains';
 /** '/case' for V1 and the fixture chain; '/onchain' for V2 (never mapped to a backend report). */
-export type CaseBase = '/case' | '/onchain';
+export type CaseBase = '/case' | '/onchain' | `/markets/${string}`;
 
 const TABS: [CaseTab, string][] = [
   ['stake', 'Stake'],
   ['market', 'Trade YT'],
   ['result', 'Result & claims'],
+  ['chains', 'Chains'],
 ];
 
 export const casePath = (base: CaseBase, id: bigint | string, tab: CaseTab) => (tab === 'overview' ? `${base}/${id}` : `${base}/${id}/${tab}`);
@@ -26,13 +27,13 @@ export function CaseHeader({ market: m, report, tab, base = '/case' }: { market:
   const now = useChainTime();
   const next = nextDeadline(m);
   const remote = remoteCutoffOf(m);
-  const tabs: [CaseTab, string][] = base === '/onchain' ? [['overview', 'Overview'], ...TABS] : TABS;
+  const tabs: [CaseTab, string][] = base !== '/case' ? [['overview', 'Overview'], ...TABS] : TABS;
   return (
     <header className="space-y-5">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
         <h1 className="font-display text-4xl sm:text-5xl">
           {report?.claimManifest.symbol ? `${report.claimManifest.symbol} · ` : ''}
-          {base === '/onchain' ? 'Report' : 'Case'} #{m.reportId.toString()}
+          {base !== '/case' ? 'Report' : 'Case'} #{m.reportId.toString()}
         </h1>
         <StatusChip status={m.phase} size="lg" />
         {m.demoClock && <DemoClockLabel />}

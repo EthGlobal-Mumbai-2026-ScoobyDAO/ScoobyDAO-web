@@ -7,6 +7,8 @@ Running log for `scoobydao-web`. Precedence when docs disagree: INTERFACES.md (d
 ## Review desk (Nov 2026)
 
 - `/admin` and `/admin/reviews/[id]/[version]` consume the backend review desk (`/web/v1/admin`, contract `schemas/runtime/admin-checkpoints-v1.schema.json` in ScoobyDAO-backend). Client: `src/lib/adminApi.ts`; session token in `sessionStorage` only (`src/lib/adminToken.ts`), sent as `Authorization: Bearer`.
+- Per-report Read (backend PR #26): `/admin` lists `GET /web/v1/review-queue` anonymously (id, version, hash, state) with a Read button per report. Read starts a World login limited to that report version (`POST /admin/session` with `{report_id, version}`); its token is stored per report (`<report_id>@<version>` in `sessionStorage`) and opens nothing else. Backend `SCOOBY_REVIEW_PER_REPORT=true` makes this mandatory. Publication sign-off uses the session of the same report; `GET /approvals/:id` looks up which report an attempt belongs to.
+- Review file URLs (`/web/v1/admin/…`) are resolved through `NEXT_PUBLIC_API_URL`, so they work with the `/api/backend` proxy as well as an absolute base.
 - Sign-in is a World device login; the backend decides who may review. With backend `SCOOBY_OPEN_REVIEW=true` any World ID that passes login validation (Orb by default) gets `report_review` and `publication`; otherwise only enrolled reviewers. The UI never decides access or approval.
 - Every approve / reject / revise is a separate World App confirmation by the same World ID that signed in; the backend binds it to the review target digest the reviewer saw (`expected_target_digest`).
 - Full report files need the bearer header, so they are fetched and shown from a blob URL in a sandboxed iframe (`sandbox="allow-scripts"`, opaque origin).
@@ -273,3 +275,7 @@ Problem: on reload the 2D placeholder Sniff showed first and the 3D one swapped 
 - glTF loader (drei `useGLTF`/`useAnimations`) split into `SniffModel.tsx`, fetched only when `manifest.json` says `sniff: true`.
 - Measured on the prod build at 1440×900: 3D Sniff visible 370–530 ms after navigation; 2D figure opacity stayed 0 in every sampled frame; flashlight sweep 8.3 ms p50 / 9.0 ms p95 frames; Lighthouse mobile 100 / desktop 96 (TBT 30 / 170 ms).
 - The dev server (`npm run dev`) compiles chunks on first request, so the first 3D load there is much slower than production.
+
+## Dynamic V2 markets and research API (2026-11-06)
+
+The user's requested per-report flow extends the original one-series V2 handoff. `src/contracts/v2/index.ts` now accepts a validated runtime bundle built from the deployed `V2PoolCatalog`; the original handoff addresses and ABIs remain the reference for report #1. New infrastructure ABIs and deployment addresses are stored under `src/contracts/market-infrastructure`. A published report is listed from its registry immediately; its vault, v4 hook, liquidity, and CCIP sender need separate publisher wallet transactions before those functions are available. The frontend does not infer backend approval from research metadata. The research API and `/web/v1` currently return empty report lists. Browser CORS was absent for the research API, so Next.js proxies it through `/api/research`.

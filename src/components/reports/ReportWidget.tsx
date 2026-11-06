@@ -320,13 +320,12 @@ function EvidenceMath({
       <section className="border-line mt-6 rounded-xl border p-4" aria-label="Pool figures">
         <h4 className="font-semibold">What the pool snapshot shows</h4>
         <p className="text-muted mt-1 text-sm">
-          Provider snapshot fetched {stamp('pools')}; this is historical, not a current executable
-          quote.
+          Historical provider data; this is not a current executable quote.
         </p>
         <ul className="mt-3 list-disc space-y-1 pl-5 text-sm">
           {numeric(math.liquidity?.value) && (
             <li>
-              Reported pool reserve value:{' '}
+              Reported pool liquidity value:{' '}
               <strong>
                 {usd(
                   typeof math.displayLiquidity === 'number'
@@ -334,12 +333,20 @@ function EvidenceMath({
                     : math.liquidity.value,
                 )}
               </strong>
+              . {math.liquidity.method || 'Method not supplied.'} Sources fetched:{' '}
+              {math.liquidity.evidence_ids.map((id) => `${id}: ${stamp(id)}`).join(' · ') ||
+                'unknown'}
               .
+              <CitationLinks ids={math.liquidity.evidence_ids} onSelect={onSelect} />
             </li>
           )}
           {numeric(math.volume?.value) && (
             <li>
-              Reported 24-hour pool volume: <strong>{usd(math.volume.value)}</strong>.
+              Reported 24-hour pool volume: <strong>{usd(math.volume.value)}</strong>.{' '}
+              {math.volume.method || 'Method not supplied.'} Sources fetched:{' '}
+              {math.volume.evidence_ids.map((id) => `${id}: ${stamp(id)}`).join(' · ') || 'unknown'}
+              .
+              <CitationLinks ids={math.volume.evidence_ids} onSelect={onSelect} />
             </li>
           )}
         </ul>
@@ -347,10 +354,6 @@ function EvidenceMath({
           These figures cannot calculate the price impact of a trade. That requires current
           reserves, the intended trade size, fees and route; other pools may differ.
         </p>
-        <CitationLinks
-          ids={['pools'].filter((id) => report.evidence.some((source) => source.id === id))}
-          onSelect={onSelect}
-        />
       </section>
     );
   }
@@ -412,9 +415,9 @@ function EvidenceMath({
           </p>
         )}
         <p className="text-muted mt-2 text-sm">
-          A VaR value requires a defined horizon, adequate validated return history and an actual
-          model run. These counts alone do not establish a sufficient sample, and the available
-          evidence does not support a numerical risk estimate.
+          This legacy VAE-based VaR requires a defined horizon, adequate validated return history
+          and an actual model run. These counts alone do not establish a sufficient sample, and the
+          available evidence does not support a numerical risk estimate.
         </p>
         <CitationLinks ids={math.closes?.evidence_ids ?? []} onSelect={onSelect} />
       </section>
@@ -425,7 +428,7 @@ function EvidenceMath({
     math.first &&
     math.last &&
     math.endpointChange !== null &&
-    math.closes?.unit === 'USD'
+    ['USD', 'USD per token'].includes(math.closes?.unit ?? '')
   ) {
     return (
       <section

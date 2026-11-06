@@ -43,7 +43,7 @@ export function parseAgentActivity(value: unknown): AgentActivityStatus {
 }
 
 export async function fetchAgentActivity(base: string): Promise<AgentActivityStatus> {
-  if (reportApiBase(base) !== base) throw new Error('Invalid API origin');
+  if (base !== '/api/research' && reportApiBase(base) !== base) throw new Error('Invalid API origin');
   const response = await fetch(`${base}/status`, {
     cache: 'no-store',
     signal: AbortSignal.timeout(5000),

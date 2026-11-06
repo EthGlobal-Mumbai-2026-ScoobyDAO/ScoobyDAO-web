@@ -166,6 +166,7 @@ export function Reports({
               </div>
             </dl>
             <div className="mt-5 flex flex-wrap gap-4 text-sm">
+              <Link href={`/markets/publish?research=${encodeURIComponent(report.id)}`} className="text-beam-ink underline">Publish onchain</Link>
               {html ? <Download item={html} name="report.html" /> : <span>HTML unavailable</span>}
               {markdown ? (
                 <Download item={markdown} name="report.md" />

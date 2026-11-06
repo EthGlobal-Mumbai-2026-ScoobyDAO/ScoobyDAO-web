@@ -1,0 +1,11 @@
+{
+  "chainId": 11155111,
+  "seriesFactory": "0xc5895A4C15E1e9e3e7fdAa56e8cDC60c8465C61a",
+  "poolCatalog": "0xf1e4F220F7b537e9270D52eb32db6105271F11B9",
+  "hookSaltFinder": "0x8Ae0e98B661f89A06BCE49C4155E3b272D63d7bf",
+  "hookFactory": "0xe6932060c8ace4adc7556d6f9d61e3fd800c354f",
+  "poolManager": "0xE03A1074c86CFeDd5C142C4F04F1a1536e203543",
+  "usd": "0x3d1f1bffb82a244bf58ff42a3202e7d25aeb2525",
+  "swapRouter": "0x2B272b404e82f16ad7AcAdC8fD2c12329876CEC1",
+  "arbSenderFactory": "0x116d26F06bC7455C63A45D832586ea8F9Ac29B41"
+}

@@ -1,6 +1,5 @@
 'use client';
 
-import { AdminGate } from '@/components/admin/AdminGate';
 import { ReviewQueue } from '@/components/admin/ReviewQueue';
 
 export function ReviewDesk() {
@@ -9,11 +8,12 @@ export function ReviewDesk() {
       <header className="mb-8">
         <h1 className="font-display text-4xl sm:text-5xl">Review desk</h1>
         <p className="text-muted mt-2 max-w-2xl">
-          Read reports before they are public and approve, reject or request a revision. Only
-          approved versions appear in the public report library.
+          Reports waiting for review. Press Read and confirm with World ID to open one; each
+          confirmation opens only that report. Only approved versions appear in the public report
+          library.
         </p>
       </header>
-      <AdminGate>{() => <ReviewQueue />}</AdminGate>
+      <ReviewQueue />
     </main>
   );
 }

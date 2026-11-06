@@ -226,6 +226,13 @@ function PublicationRail({ publication: p, report }: { publication: Publication;
   );
 }
 
+/** Review desk page for a web report id (`<report_id>@<version>`). */
+function reviewDeskHref(webId: string) {
+  const at = webId.lastIndexOf('@');
+  if (at < 1) return '/admin';
+  return `/admin/reviews/${encodeURIComponent(webId.slice(0, at))}/${encodeURIComponent(webId.slice(at + 1))}`;
+}
+
 function ApprovalRail({ report }: { report: ReportWithRaw }) {
   const router = useRouter();
   const request = useMutation({
@@ -264,10 +271,10 @@ function ApprovalRail({ report }: { report: ReportWithRaw }) {
       )}
       {request.isError &&
         (request.error instanceof ApiError && (request.error.status === 401 || request.error.status === 403) ? (
-          <Banner tone="warning" title="Sign in at the review desk first">
-            Publication sign-off is bound to a signed-in reviewer.{' '}
-            <Link href="/admin" className="underline underline-offset-4">
-              Sign in with World ID
+          <Banner tone="warning" title="Open this report at the review desk first">
+            Publication sign-off is bound to the reviewer who opened this report.{' '}
+            <Link href={reviewDeskHref(report.id)} className="underline underline-offset-4">
+              Read it with World ID
             </Link>
             , then come back and request approval again.
           </Banner>

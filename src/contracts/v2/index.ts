@@ -1,5 +1,6 @@
 import { getAddress, type Address, type Hex } from 'viem';
 import bundle from './addresses.json';
+import flexibleBundle from '../accelerated/addresses.json';
 
 // The V2 handoff bundle (../v2, copied by `npm run sync:v2`) is the only source for V2 addresses,
 // selectors, the pool key and report #1. Addresses are keyed by (chainId, contract name), never by
@@ -13,8 +14,9 @@ export const SEPOLIA_ID = 11155111 as const;
 export const ARB_SEPOLIA_ID = 421614 as const;
 export type V2ChainId = typeof SEPOLIA_ID | typeof ARB_SEPOLIA_ID;
 
-const S = bundle.ethereumSepolia.contracts;
-const A = bundle.arbitrumSepolia.contracts;
+export function makeV2Bundle(raw: typeof bundle) {
+const S = raw.ethereumSepolia.contracts;
+const A = raw.arbitrumSepolia.contracts;
 
 const sepolia = {
   DemoUSD: getAddress(S.DemoUSD),
@@ -40,24 +42,21 @@ const arbitrumSepolia = {
   CCIPRouter: getAddress(A.CCIPRouter),
 } as const;
 
-export type SepoliaContract = keyof typeof sepolia;
-export type ArbitrumContract = keyof typeof arbitrumSepolia;
+const key = raw.ethereumSepolia.ytPoolKey;
+const r = raw.ethereumSepolia.report;
+const t = raw.ethereumSepolia.reportTimes;
 
-const key = bundle.ethereumSepolia.ytPoolKey;
-const r = bundle.ethereumSepolia.report;
-const t = bundle.ethereumSepolia.reportTimes;
-
-export const v2 = {
-  version: bundle.version,
+return {
+  version: raw.version,
   chainIds: { sepolia: SEPOLIA_ID, arbitrumSepolia: ARB_SEPOLIA_ID },
   sepolia,
   arbitrumSepolia,
   /** CCIP chain selectors exceed Number.MAX_SAFE_INTEGER, so they are bigints. */
   selectors: {
-    sepolia: BigInt(bundle.ethereumSepolia.chainSelector),
-    arbitrumSepolia: BigInt(bundle.arbitrumSepolia.chainSelector),
+    sepolia: BigInt(raw.ethereumSepolia.chainSelector),
+    arbitrumSepolia: BigInt(raw.arbitrumSepolia.chainSelector),
     /** What the Arbitrum sender was configured to send to. */
-    senderDestination: BigInt(bundle.arbitrumSepolia.destinationSelector),
+    senderDestination: BigInt(raw.arbitrumSepolia.destinationSelector),
   },
   /** The single YT/dUSD v4 pool: hook-owned inventory, fee 0, tick spacing 1. */
   poolKey: {
@@ -67,9 +66,9 @@ export const v2 = {
     tickSpacing: key.tickSpacing,
     hooks: getAddress(key.hooks),
   },
-  poolKeyHash: bundle.ethereumSepolia.poolKeyHash as Hex,
+  poolKeyHash: raw.ethereumSepolia.poolKeyHash as Hex,
   /** The report the deployed vault serves (vault.reportId()). */
-  reportId: BigInt(bundle.ethereumSepolia.reportId),
+  reportId: BigInt(raw.ethereumSepolia.reportId),
   /**
    * Snapshot of report #1 at deployment. The UI derives every time and role from chain reads;
    * this snapshot is for tests and for recognising the demo hashes (not linked to any backend report).
@@ -89,15 +88,22 @@ export const v2 = {
   },
   /** A delivered CCIP message (first destination attempt failed on low gas, then a manual retry). */
   exampleCCIP: {
-    messageId: bundle.exampleCCIP.messageId as Hex,
-    sourceTx: bundle.exampleCCIP.sourceTx as Hex,
-    destinationTx: bundle.exampleCCIP.destinationTx as Hex,
+    messageId: raw.exampleCCIP.messageId as Hex,
+    sourceTx: raw.exampleCCIP.sourceTx as Hex,
+    destinationTx: raw.exampleCCIP.destinationTx as Hex,
   },
 } as const;
+}
+
+export const v2 = makeV2Bundle(bundle);
+export const v2Flexible = makeV2Bundle(flexibleBundle);
+export type V2Bundle = ReturnType<typeof makeV2Bundle>;
+export type SepoliaContract = keyof typeof v2.sepolia;
+export type ArbitrumContract = keyof typeof v2.arbitrumSepolia;
 
 const BY_CHAIN: Record<V2ChainId, Readonly<Record<string, Address>>> = {
-  [SEPOLIA_ID]: sepolia,
-  [ARB_SEPOLIA_ID]: arbitrumSepolia,
+  [SEPOLIA_ID]: v2.sepolia,
+  [ARB_SEPOLIA_ID]: v2.arbitrumSepolia,
 };
 
 /** Address of `name` on `chainId`, or undefined when the bundle has no such pair. */
@@ -108,7 +114,7 @@ export function addressOf(chainId: number, name: string): Address | undefined {
 /** Every (chainId, name, address) in the bundle, for the deployment check. */
 export function allContracts(): { chainId: V2ChainId; name: string; address: Address }[] {
   return [
-    ...Object.entries(sepolia).map(([name, address]) => ({ chainId: SEPOLIA_ID, name, address })),
-    ...Object.entries(arbitrumSepolia).map(([name, address]) => ({ chainId: ARB_SEPOLIA_ID, name, address })),
+    ...Object.entries(v2.sepolia).map(([name, address]) => ({ chainId: SEPOLIA_ID, name, address })),
+    ...Object.entries(v2.arbitrumSepolia).map(([name, address]) => ({ chainId: ARB_SEPOLIA_ID, name, address })),
   ];
 }
