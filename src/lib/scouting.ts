@@ -1,5 +1,11 @@
 export type ScoutLane =
-  'human_review_required' | 'research_running' | 'auto_qualified' | 'monitoring' | 'unavailable';
+  | 'human_review_required'
+  | 'research_running'
+  | 'research_partial'
+  | 'research_complete'
+  | 'auto_qualified'
+  | 'monitoring'
+  | 'unavailable';
 export type EvidenceReason = {
   group_id: string;
   name?: string;
@@ -50,13 +56,14 @@ export type ScoutingCase = {
     status: string;
     report_id: string | null;
     report_version: string | null;
-    budget: { max_source_requests: number; max_model_calls: number };
+    budget: { max_source_requests: number; max_model_calls: number } | null;
+    authorization?: 'policy_qualified_local' | 'world_id_human' | 'unverified_legacy';
     pillars: { pillar: string; status: string; detail: string }[];
     reason: string | null;
   } | null;
 };
 export type ScoutingSnapshot = {
-  schema_version: 'scouting-case-list/1';
+  schema_version: 'scouting-case-list/1' | 'scouting-case-list/2';
   generated_at: string;
   stale_after_seconds: number;
   truncated: boolean;
@@ -100,7 +107,7 @@ export function scoutingApiOrigin(raw: string | undefined): string | null {
 export function parseScoutingSnapshot(data: unknown): ScoutingSnapshot {
   if (
     !record(data) ||
-    data.schema_version !== 'scouting-case-list/1' ||
+    !['scouting-case-list/1', 'scouting-case-list/2'].includes(data.schema_version as string) ||
     !timestamp(data.generated_at) ||
     !Number.isSafeInteger(data.stale_after_seconds) ||
     (data.stale_after_seconds as number) < 0 ||
@@ -149,6 +156,8 @@ export function parseScoutingSnapshot(data: unknown): ScoutingSnapshot {
       ![
         'human_review_required',
         'research_running',
+        'research_partial',
+        'research_complete',
         'auto_qualified',
         'monitoring',
         'unavailable',
@@ -168,6 +177,16 @@ export function parseScoutingSnapshot(data: unknown): ScoutingSnapshot {
       !Array.isArray(item.reasons)
     )
       throw new Error('Invalid scouting state');
+    if (
+      data.schema_version === 'scouting-case-list/2' &&
+      (item.routing_rationale === undefined ||
+        item.scouting_clues === undefined ||
+        item.evidence_freshness === undefined ||
+        item.reasons.some(
+          (r: unknown) => !record(r) || r.name === undefined || r.measurements === undefined,
+        ))
+    )
+      throw new Error('Missing v2 scouting context');
     if (
       (item.routing_rationale !== undefined && !text(item.routing_rationale)) ||
       (item.evidence_freshness !== undefined &&
@@ -229,9 +248,15 @@ export function parseScoutingSnapshot(data: unknown): ScoutingSnapshot {
         !maybeText(item.research.run_id) ||
         !maybeText(item.research.report_id) ||
         !maybeText(item.research.report_version) ||
-        !record(item.research.budget) ||
-        item.research.budget.max_source_requests !== 0 ||
-        item.research.budget.max_model_calls !== 0 ||
+        !(item.research.budget === null
+          ? item.research.authorization === 'unverified_legacy'
+          : record(item.research.budget) &&
+            item.research.budget.max_source_requests === 0 &&
+            item.research.budget.max_model_calls === 0) ||
+        (data.schema_version === 'scouting-case-list/2' &&
+          !['policy_qualified_local', 'world_id_human', 'unverified_legacy'].includes(
+            item.research.authorization as string,
+          )) ||
         !Array.isArray(item.research.pillars) ||
         item.research.pillars.some(
           (pillar) =>

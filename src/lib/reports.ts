@@ -26,6 +26,7 @@ type Metadata = {
   report_version: string;
   candidate_id: string;
   report_sha256: string;
+  provenance?: string;
   identity: { symbol: string };
   observation_times: string[];
   selection: { kind: string; reason?: string; admission_qualified: boolean | null };
@@ -178,9 +179,10 @@ export function backendReportAdapter(base: string): ReportAdapter {
           candidateId: detail.candidate_id,
           digest: detail.report_sha256,
           context:
-            detail.selection.kind === 'diagnostic_exception' &&
-            detail.selection.reason?.includes('reference report integration') &&
-            detail.selection.admission_qualified === false
+            detail.provenance === 'source_curated_reference' ||
+            (detail.selection.kind === 'diagnostic_exception' &&
+              detail.selection.reason?.includes('reference report integration') &&
+              detail.selection.admission_qualified === false)
               ? 'Labeled reference · integration only · not gate-qualified'
               : 'Research draft · qualification unverified',
           observed: detail.observation_times.length

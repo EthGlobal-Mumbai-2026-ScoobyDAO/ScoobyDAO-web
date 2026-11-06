@@ -1,6 +1,8 @@
 'use client';
-import { useState, useSyncExternalStore } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useCallback, useState, useSyncExternalStore } from 'react';
+import Link from 'next/link';
+import { CaseWorldAction, RetryInvestigation } from './CaseWorldAction';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
 import { Identicon } from '@/components/Identicon';
 import { chainName } from '@/lib/explorer';
@@ -50,7 +52,10 @@ export function ScoutingBoard() {
     (c) =>
       filter === 'all' ||
       (filter === 'attention' && c.lane === 'human_review_required') ||
-      (filter === 'research' && (c.lane === 'research_running' || c.lane === 'auto_qualified')) ||
+      (filter === 'research' &&
+        ['research_running', 'research_partial', 'research_complete', 'auto_qualified'].includes(
+          c.lane,
+        )) ||
       (filter === 'monitored' && (c.lane === 'monitoring' || c.lane === 'unavailable')),
   );
   return (
@@ -173,6 +178,7 @@ export function ScoutingBoard() {
             subtitle="Ranked by the backend's investigation priority."
             items={filtered}
             now={now}
+            actionable={result.schema_version === 'scouting-case-list/2'}
           />
         </>
       )}
@@ -209,11 +215,13 @@ function Lane({
   subtitle,
   items,
   now,
+  actionable,
 }: {
   title: string;
   subtitle: string;
   items: ScoutingCase[];
   now: number;
+  actionable: boolean;
 }) {
   if (!items.length) return null;
   return (
@@ -224,7 +232,7 @@ function Lane({
         <ul className="grid gap-x-6 gap-y-9 sm:grid-cols-2 lg:grid-cols-3">
           {items.map((item) => (
             <li key={item.candidate_id}>
-              <CandidateCard candidate={item} now={now} />
+              <CandidateCard candidate={item} now={now} actionable={actionable} />
             </li>
           ))}
         </ul>
@@ -241,11 +249,25 @@ const REASON_LABELS = {
 const LANE_LABELS = {
   human_review_required: 'Human review required',
   research_running: 'Research running',
+  research_partial: 'Research partial',
+  research_complete: 'Research complete',
   auto_qualified: 'Automatically qualified',
   monitoring: 'Monitored',
   unavailable: 'Workflow unavailable',
 } as const;
-function CandidateCard({ candidate: c, now }: { candidate: ScoutingCase; now: number }) {
+function CandidateCard({
+  candidate: c,
+  now,
+  actionable,
+}: {
+  candidate: ScoutingCase;
+  now: number;
+  actionable: boolean;
+}) {
+  const queryClient = useQueryClient();
+  const onChanged = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ['scouting-cases', scoutingOrigin] });
+  }, [queryClient]);
   const showServerStatus = c.status_label.toLowerCase() !== c.lane.replaceAll('_', ' ');
   const laneLabel =
     c.lane === 'research_running' && c.research?.status === 'queued'
@@ -338,21 +360,40 @@ function CandidateCard({ candidate: c, now }: { candidate: ScoutingCase; now: nu
           </p>
         )}
       </div>
-      {c.human_action_required && (
-        <div className="border-line mt-4 border-t pt-3">
-          <button
-            type="button"
-            disabled
-            className="border-line rounded-lg border px-3 py-2 text-sm opacity-60"
-          >
-            Go for investigation
-          </button>
-          <p className="text-muted mt-2 text-xs">
-            The authenticated verifier is not connected.{' '}
-            {c.continuation.reason ?? 'Continuation is unavailable.'}
-          </p>
-        </div>
+      {!actionable && c.human_action_required && (
+        <p className="text-muted mt-3 text-xs">
+          Investigation confirmation requires a version 2 service.
+        </p>
       )}
+      {actionable &&
+        (c.human_action_required ||
+          (c.lane === 'monitoring' && c.continuation.availability === 'available')) &&
+        scoutingOrigin && (
+          <CaseWorldAction candidate={c} origin={scoutingOrigin} onChanged={onChanged} now={now} />
+        )}
+      {actionable &&
+        scoutingOrigin &&
+        c.research &&
+        ['blocked', 'failed'].includes(c.research.status) &&
+        ['world_id_human', 'policy_qualified_local'].includes(c.research.authorization || '') && (
+          <RetryInvestigation
+            candidate={c}
+            origin={scoutingOrigin}
+            onChanged={onChanged}
+            now={now}
+          />
+        )}
+      {actionable &&
+        c.research?.report_id &&
+        c.research.report_version &&
+        ['world_id_human', 'policy_qualified_local'].includes(c.research.authorization || '') && (
+          <Link
+            className="text-beam-ink mt-3 inline-block text-sm font-semibold underline"
+            href={`/reports/${encodeURIComponent(`${c.research.report_id}~${c.research.report_version}`)}`}
+          >
+            Open investigation report →
+          </Link>
+        )}
       <details className="border-line mt-4 border-t pt-3">
         <summary className="text-beam-ink cursor-pointer text-sm font-semibold">
           Evidence and uncertainty

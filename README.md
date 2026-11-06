@@ -2,7 +2,7 @@
 
 ## ACTIVE STATE — scouting cases
 
-`/cases` separates backend-prioritized scouting candidates from existing case files and demo markets. The scouting adapter matches the backend local prototype and defaults to unavailable unless its service is configured; it does not substitute fixtures. Human continuation remains disabled pending an authenticated backend verifier. See [scouting handoff](HANDOFF-SCOUTING.md). Native `/reports` is unchanged.
+`/cases` shows a backend-prioritized scouting queue alongside separately labeled existing case files and demo markets. With a configured v2 service, eligible cases can start a case-bound World ID confirmation and link to backend-generated reports; actual verification and investigation are backend-owned. The local verifier is not yet configured, and end-to-end report generation remains to be proven. Scouting is unavailable without a configured service and never substitutes fixtures. See [scouting handoff](HANDOFF-SCOUTING.md).
 
 Frontend for **Unmasked** (ETHGlobal Mumbai 2026). AI agents and an original detective-hound mascot, Sniff, research suspicious tokens and write a five-pillar report (unknowns and counterevidence included). An enrolled human approves the exact report with World Agent Pass, the backend publishes it to `ReportRegistry`, and anyone stakes **dUSD** on **Yes** or **No**, directly on Ethereum Sepolia or from Arbitrum Sepolia over Chainlink CCIP. Stakes lock, earn simulated yield whose **yield token (YT)** trades on a Uniswap v4 hook market, and after maturity a proposed result can be challenged before anyone finalizes it.
 

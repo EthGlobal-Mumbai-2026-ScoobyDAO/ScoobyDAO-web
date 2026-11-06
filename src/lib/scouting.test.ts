@@ -134,6 +134,37 @@ describe('scouting adapter', () => {
       ),
     ).toThrow('Invalid scouting context');
   });
+  it('accepts complete v2 research states and requires v2 explanation fields', () => {
+    const a = makeCase('1', 1);
+    a.lane = 'research_partial';
+    a.human_action_required = false;
+    a.scouting_clues = [];
+    a.routing_rationale = 'Research partially complete.';
+    a.evidence_freshness = 'unknown';
+    a.reasons[0].name = 'Test';
+    a.reasons[0].measurements = [];
+    a.research = {
+      run_id: 'run1',
+      status: 'partial',
+      report_id: 'report',
+      report_version: 'v1',
+      budget: { max_source_requests: 0, max_model_calls: 0 },
+      authorization: 'world_id_human',
+      pillars: [],
+      reason: null,
+    };
+    const v2 = { ...snapshot([a]), schema_version: 'scouting-case-list/2' };
+    expect(parseScoutingSnapshot(v2).cases[0].research?.report_id).toBe('report');
+    expect(() =>
+      parseScoutingSnapshot({ ...v2, cases: [{ ...a, scouting_clues: undefined }] }),
+    ).toThrow('Missing v2');
+    expect(() =>
+      parseScoutingSnapshot({
+        ...v2,
+        cases: [{ ...a, research: { ...a.research, budget: null } }],
+      }),
+    ).toThrow('research');
+  });
   it('uses backend priority with deterministic ties, without mutating the response', () => {
     const input = [makeCase('2', 1), makeCase('1', 1), makeCase('3', 0)];
     expect(sortScoutingCases(input).map((x) => x.identity.symbol)).toEqual([
