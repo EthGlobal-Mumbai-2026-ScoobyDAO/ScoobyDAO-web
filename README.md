@@ -2,6 +2,8 @@
 
 **Live V2 app:** [scoobydao-web.vercel.app](https://scoobydao-web.vercel.app) · [Vercel project](https://vercel.com/dwaipayan25s-projects/scoobydao-web)
 
+Pushes to `main` deploy to Vercel production; pull requests receive preview deployments and GitHub commit status checks.
+
 Frontend for **Unmasked** (ETHGlobal Mumbai 2026). AI agents and an original detective-hound mascot, Sniff, research suspicious tokens and write a five-pillar report. A reviewed report is published to a `ReportRegistry`, and anyone stakes **dUSD** on **Yes** or **No**, directly on Ethereum Sepolia or from Arbitrum Sepolia over Chainlink CCIP. Each stake records a non-transferable Yes/No position and mints the same amount of a transferable **yield token (YT)**, which trades on a Uniswap v4 hook market until maturity. After maturity a proposed result can be challenged before anyone finalizes it.
 
 The live default is the deployed **RiskFi V2** demo (report #1 on Ethereum Sepolia, CCIP sender on Arbitrum Sepolia), driven only by the contracts handoff bundle in `../v2`. `/reports` is a separate read-only research library, empty unless `NEXT_PUBLIC_REPORT_API_URL` points at a trusted research API (see [LIVE-STATE.md](LIVE-STATE.md) and [HANDOFF-REPORTS.md](HANDOFF-REPORTS.md)).
