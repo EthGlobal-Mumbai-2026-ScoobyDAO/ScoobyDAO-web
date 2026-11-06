@@ -71,7 +71,8 @@ export function ScoutingBoard() {
           role="status"
           className="border-mask text-mask-ink mb-6 rounded-xl border p-3 text-sm font-semibold"
         >
-          Synthetic acceptance environment: World ID and case admission are simulated.
+          Synthetic acceptance environment: World ID, case admission and model responses are
+          simulated.
         </p>
       )}
       <p className="border-line text-muted mb-6 rounded-xl border p-3 text-xs" role="note">

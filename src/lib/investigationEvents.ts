@@ -142,6 +142,7 @@ export function eventDescription(event: InvestigationEvent): string {
     const reasons: Record<string, string> = {
       context_or_evidence_invalid: 'Evidence or context invalid',
       missing_openai_key: 'Model credentials unavailable',
+      model_budget_zero: 'Model calls are disabled for this run',
       provider_or_validation_failure: 'Model request or validation failed',
       client_retries_not_disabled: 'Model client retry policy is not configured safely',
       refused: 'Model refused the request',
