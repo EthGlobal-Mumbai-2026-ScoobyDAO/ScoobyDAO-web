@@ -11,6 +11,8 @@ import { useCase } from '@/components/case/useCase';
 import { DemoWalletBar } from '@/components/DemoWalletBar';
 import { FrozenBanner } from '@/components/FrozenBanner';
 import { MaskOffIcon } from '@/components/icons';
+import { MaskPop } from '@/components/MaskPop';
+import { SniffPose } from '@/components/SniffPose';
 import { useActiveAccount } from '@/lib/account';
 import { ApiError } from '@/lib/api';
 import { useStakeChain, type StakeChainState } from '@/lib/chain';
@@ -90,15 +92,30 @@ function StatusBanner({ claim, frozenBlock }: { claim: ClaimView; frozenBlock?: 
       return <FrozenBanner block={frozenBlock} what="staking and trading" />;
     case 'ResolvedPass':
       return (
-        <Banner tone="warning" size="xl" icon={MaskOffIcon} title="Unmasked: the claim held">
-          <p>The trap sprang during the case window. For shares win; redeem below.</p>
-        </Banner>
+        <div className="relative">
+          <Banner tone="warning" size="xl" icon={MaskOffIcon} title="Unmasked: the claim held">
+            <p className="sm:pr-40">
+              The trap sprang during the case window. For shares win; redeem below.
+            </p>
+          </Banner>
+          <MaskPop
+            claimId={claim.claimId}
+            className="pointer-events-none absolute top-1/2 right-4 hidden h-36 w-36 -translate-y-1/2 sm:block"
+          />
+        </div>
       );
     case 'ResolvedFail':
       return (
-        <Banner tone="info" size="xl" icon={CircleCheck} title="Cleared: the claim didn't hold">
-          <p>The window ended without a trigger. Against shares win; redeem below.</p>
-        </Banner>
+        <div className="relative">
+          <Banner tone="info" size="xl" icon={CircleCheck} title="Cleared: the claim didn't hold">
+            <p className="sm:pr-36">
+              The window ended without a trigger. Against shares win; redeem below.
+            </p>
+          </Banner>
+          <div className="pointer-events-none absolute top-1/2 right-6 hidden -translate-y-1/2 sm:block">
+            <SniffPose pose="shrug" size={104} decorative />
+          </div>
+        </div>
       );
     case 'Refunded':
       return (

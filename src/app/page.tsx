@@ -1,6 +1,6 @@
 import { Footer } from '@/components/Footer';
 import { Hero } from '@/components/landing/Hero';
-import { HeroParallaxFallback } from '@/components/landing/HeroParallaxFallback';
+import { HeroSceneGate } from '@/components/landing/HeroSceneGate';
 import { HowItWorks } from '@/components/landing/HowItWorks';
 import { StatsStrip } from '@/components/landing/StatsStrip';
 import { TrustSection } from '@/components/landing/TrustSection';
@@ -8,7 +8,7 @@ import { TrustSection } from '@/components/landing/TrustSection';
 export default function Home() {
   return (
     <>
-      <Hero scene={<HeroParallaxFallback />} />
+      <Hero scene={<HeroSceneGate />} />
       <StatsStrip />
       <HowItWorks />
       <TrustSection />

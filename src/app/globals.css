@@ -364,3 +364,32 @@ body::before {
     transparent 100%
   );
 }
+
+/* In 3D mode the spotlight is the flashlight; keep the CSS-masked clues but drop the CSS darkness. */
+.hero[data-scene='3d'] .hero-dark,
+.hero[data-scene='3d'] .hero-beam {
+  display: none;
+}
+@keyframes fadein {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes maskpop {
+  0% {
+    transform: translateY(60%) scale(0.3) rotate(0deg);
+    opacity: 0;
+  }
+  45% {
+    transform: translateY(0) scale(1.05) rotate(-8deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-12%) scale(1) rotate(-14deg);
+    opacity: 1;
+  }
+}
