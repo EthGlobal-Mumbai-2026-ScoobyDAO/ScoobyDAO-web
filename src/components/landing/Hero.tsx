@@ -7,8 +7,8 @@ import { useEffect, useRef, type ReactNode } from 'react';
 // Positions keep clear of the left-aligned headline and of Sniff; only the first shows on small screens.
 const CLUES: { text: string; x: string; y: string; mobile?: boolean }[] = [
   { text: 'sell() → revert', x: '64%', y: '15%', mobile: true },
-  { text: 'owner: setTrap(true)', x: '87%', y: '50%' },
-  { text: 'funded 0.8 ETH, 40 min before deploy', x: '86%', y: '72%' },
+  { text: 'owner: setTrap(true)', x: '89%', y: '46%' },
+  { text: 'funded 0.8 ETH, 40 min before deploy', x: '61%', y: '79%' },
   { text: 'sell tax: 99%', x: '90%', y: '30%' },
 ];
 

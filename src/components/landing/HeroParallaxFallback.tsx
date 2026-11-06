@@ -95,7 +95,7 @@ export function HeroParallaxFallback({ sniff }: { sniff?: React.ReactNode }) {
       {/* Sniff (2D figure, or 3D once loaded) */}
       {sniff && (
         <div
-          className="absolute bottom-[13%] left-[60%] hidden aspect-[3/4] w-[clamp(150px,15vw,250px)] sm:block lg:left-[63%]"
+          className="absolute bottom-[13%] left-[66%] hidden aspect-[3/4] w-[clamp(150px,15vw,250px)] sm:block lg:left-[72%]"
           style={layer(26)}
         >
           <div className="absolute inset-x-[8%] bottom-[-3%] h-[10%] rounded-[50%] bg-black/55 blur-md" />
