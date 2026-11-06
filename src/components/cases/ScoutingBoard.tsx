@@ -176,16 +176,6 @@ export function ScoutingBoard() {
           />
         </>
       )}
-      <section
-        aria-label="Historical reference examples"
-        className="border-line bg-surface mt-10 rounded-xl border p-5"
-      >
-        <h2 className="text-xl font-semibold">Historical reference examples</h2>
-        <p className="text-muted mt-2 text-sm">
-          The separately maintained historical catalog is not connected yet. It is distinct from
-          fresh scouting alerts.
-        </p>
-      </section>
       <details
         className="border-line bg-surface mt-10 rounded-xl border"
         onToggle={(e) => setLegacyOpen(e.currentTarget.open)}
@@ -265,13 +255,11 @@ function CandidateCard({ candidate: c, now }: { candidate: ScoutingCase; now: nu
   const missing = c.reasons.filter(
     (reason) => reason.verification_status === 'unknown' || reason.verification_status === 'held',
   );
-  const specificGaps = missing
-    .filter((reason) => reason.description !== 'No validated metric-specific verifier is enabled.')
-    .slice(0, 2);
   const clues = [...(c.scouting_clues ?? [])].sort(
     (a, b) => Number(b.kind === 'provider_claim') - Number(a.kind === 'provider_claim'),
   );
   const nextReason = c.routing_rationale || 'Routing rationale not supplied in this snapshot.';
+  const shortReason = nextReason.match(/^.*?[.!?](?:\s|$)/)?.[0]?.trim() || nextReason;
   return (
     <article className="paper-plain relative flex h-full min-w-0 flex-col p-4 pt-7 [overflow-wrap:anywhere]">
       <span
@@ -300,20 +288,23 @@ function CandidateCard({ candidate: c, now }: { candidate: ScoutingCase; now: nu
       <div className="border-line mt-4 border-t pt-3">
         <h4 className="text-muted text-xs font-semibold uppercase">Why scouted</h4>
         {clues.length ? (
-          clues.map((clue, i) => (
-            <div key={i} className="mt-2 text-sm">
-              <p className="text-xs font-semibold">
-                {clue.verification === 'unverified_provider_claim'
-                  ? 'Unverified provider claim'
-                  : 'Unverified provider lead'}
-              </p>
-              <p>{clue.description}</p>
-              <p className="text-muted mt-1 text-xs">
-                Source: {clue.evidence_id ?? 'unavailable'} · Observed:{' '}
-                {formatTime(clue.observed_at)} · Fetched: {formatTime(clue.fetched_at)}
-              </p>
-            </div>
-          ))
+          <ul className="mt-2 space-y-2">
+            {clues.slice(0, 3).map((clue, i) => (
+              <li key={i} className="text-sm">
+                <span className="text-xs font-semibold">
+                  {clue.verification === 'unverified_provider_claim'
+                    ? 'Unverified provider claim'
+                    : 'Unverified provider lead'}{' '}
+                  ·{' '}
+                </span>
+                {clue.description}
+                <span className="text-muted block text-xs">
+                  Observed: {clue.observed_at ? formatTime(clue.observed_at) : 'time unknown'} ·
+                  fetched {sourceAge(clue.fetched_at, now)}
+                </span>
+              </li>
+            ))}
+          </ul>
         ) : (
           <p className="mt-1 text-sm">Original scouting trigger not supplied in this snapshot.</p>
         )}
@@ -321,37 +312,24 @@ function CandidateCard({ candidate: c, now }: { candidate: ScoutingCase; now: nu
       <div className="border-line mt-3 border-t pt-3">
         <h4 className="text-muted text-xs font-semibold uppercase">What the checks found</h4>
         <p className="mt-1 text-sm">
-          {c.verified_triggered_count} backend-reported fresh verified concern{' '}
-          {c.verified_triggered_count === 1 ? 'group' : 'groups'}.{' '}
-          {c.verified_triggered_count === 0 && 'None verified does not mean no concerns.'}
-        </p>
-        {triggered.map((reason, i) => (
-          <p key={`${reason.group_id}-${i}`} className="mt-1 text-sm">
-            <strong>{reason.group_id} · triggered:</strong> {reason.description}
-            {reason.evidence_ids.length > 0 && (
-              <span className="text-muted"> · Sources: {reason.evidence_ids.join(', ')}</span>
-            )}
-          </p>
-        ))}
-        {c.evidence_freshness && (
-          <p className="text-muted mt-1 text-xs">
-            Backend-reported evidence freshness: {c.evidence_freshness}
-          </p>
-        )}
-        {specificGaps.map((reason, i) => (
-          <p key={`${reason.group_id}-${i}`} className="text-muted mt-1 text-xs">
-            {reason.group_id} · {REASON_LABELS[reason.verification_status]}: {reason.description}
-          </p>
-        ))}
-        <p className="text-muted mt-2 text-xs">
+          {c.verified_triggered_count} fresh verified concern{' '}
+          {c.verified_triggered_count === 1 ? 'group' : 'groups'} ·{' '}
           {missing.filter((r) => r.verification_status === 'unknown').length} unknown ·{' '}
           {missing.filter((r) => r.verification_status === 'held').length} held
         </p>
+        {triggered.map((reason, i) => (
+          <p key={`${reason.group_id}-${i}`} className="mt-1 text-sm">
+            <strong>{reason.name || reason.group_id}:</strong> {reason.description}
+          </p>
+        ))}
+        {c.evidence_freshness && (
+          <p className="text-muted mt-1 text-xs">Evidence freshness: {c.evidence_freshness}</p>
+        )}
       </div>
       <div className="border-line mt-3 border-t pt-3">
         <h4 className="text-muted text-xs font-semibold uppercase">Next step / why waiting</h4>
         <p className="mt-1 text-sm">
-          {laneLabel}. {nextReason}
+          {laneLabel}. {shortReason}
         </p>
         {c.research && (
           <p className="text-muted mt-1 text-xs">
@@ -360,25 +338,50 @@ function CandidateCard({ candidate: c, now }: { candidate: ScoutingCase; now: nu
           </p>
         )}
       </div>
-      <dl className="text-muted mt-4 space-y-1 text-xs">
-        <div>
-          <dt className="inline font-semibold">Observed: </dt>
-          <dd className="inline">
-            {formatTime(c.observed_at)} · {sourceAge(c.observed_at, now)}
-          </dd>
+      {c.human_action_required && (
+        <div className="border-line mt-4 border-t pt-3">
+          <button
+            type="button"
+            disabled
+            className="border-line rounded-lg border px-3 py-2 text-sm opacity-60"
+          >
+            Go for investigation
+          </button>
+          <p className="text-muted mt-2 text-xs">
+            The authenticated verifier is not connected.{' '}
+            {c.continuation.reason ?? 'Continuation is unavailable.'}
+          </p>
         </div>
-        <div>
-          <dt className="inline font-semibold">Fetched: </dt>
-          <dd className="inline">
-            {formatTime(c.fetched_at)} · {sourceAge(c.fetched_at, now)}
-          </dd>
-        </div>
-      </dl>
+      )}
       <details className="border-line mt-4 border-t pt-3">
         <summary className="text-beam-ink cursor-pointer text-sm font-semibold">
           Evidence and uncertainty
         </summary>
         <p className="text-muted mt-2 text-xs">{c.summary}</p>
+        <p className="mt-2 text-sm">
+          <strong>Routing rationale:</strong> {nextReason}
+        </p>
+        {clues.map((clue, i) => (
+          <p key={i} className="text-muted mt-2 text-xs">
+            {clue.description} · Source: {clue.evidence_id ?? 'unavailable'} · Observed:{' '}
+            {formatTime(clue.observed_at)} · Fetched: {formatTime(clue.fetched_at)}
+          </p>
+        ))}
+        <dl className="text-muted mt-4 space-y-1 text-xs">
+          <div>
+            <dt className="inline font-semibold">Observed: </dt>
+            <dd className="inline">
+              {formatTime(c.observed_at)} · {sourceAge(c.observed_at, now)}
+            </dd>
+          </div>
+          <div>
+            <dt className="inline font-semibold">Fetched: </dt>
+            <dd className="inline">
+              {formatTime(c.fetched_at)} · {sourceAge(c.fetched_at, now)}
+            </dd>
+          </div>
+        </dl>
+
         <ReasonList reasons={c.reasons} now={now} />
         {c.uncertainties.length > 0 && (
           <ul className="text-muted mt-3 list-disc space-y-1 pl-5 text-xs">
@@ -397,21 +400,6 @@ function CandidateCard({ candidate: c, now }: { candidate: ScoutingCase; now: nu
           </ul>
         ) : null}
       </details>
-      {c.human_action_required && (
-        <div className="border-line mt-4 border-t pt-3">
-          <button
-            type="button"
-            disabled
-            className="border-line rounded-lg border px-3 py-2 text-sm opacity-60"
-          >
-            Go for investigation
-          </button>
-          <p className="text-muted mt-2 text-xs">
-            The authenticated verifier is not connected.{' '}
-            {c.continuation.reason ?? 'Continuation is unavailable.'}
-          </p>
-        </div>
-      )}
     </article>
   );
 }
