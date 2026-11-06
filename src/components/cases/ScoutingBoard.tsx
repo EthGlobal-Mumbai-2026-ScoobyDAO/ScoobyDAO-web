@@ -2,6 +2,7 @@
 import { useCallback, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { CaseWorldAction, RetryInvestigation } from './CaseWorldAction';
+import { InvestigationProgress } from './InvestigationProgress';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
 import { Identicon } from '@/components/Identicon';
@@ -73,6 +74,10 @@ export function ScoutingBoard() {
           Synthetic acceptance environment: World ID and case admission are simulated.
         </p>
       )}
+      <p className="border-line text-muted mb-6 rounded-xl border p-3 text-xs" role="note">
+        Local admin prototype: admin sessions and private draft access controls are not yet
+        connected.
+      </p>
       <header>
         <p className="text-beam-ink text-sm font-semibold">SCOUTING</p>
         <h1 className="font-display mt-2 text-4xl sm:text-5xl">Case board</h1>
@@ -373,6 +378,12 @@ function CandidateCard({
           </p>
         )}
       </div>
+      {actionable &&
+        scoutingOrigin &&
+        c.research &&
+        ['world_id_human', 'policy_qualified_local'].includes(c.research.authorization || '') && (
+          <InvestigationProgress research={c.research} origin={scoutingOrigin} />
+        )}
       {!actionable && c.human_action_required && (
         <p className="text-muted mt-3 text-xs">
           Investigation confirmation requires a version 2 service.
@@ -444,15 +455,6 @@ function CandidateCard({
             ))}
           </ul>
         )}
-        {c.research?.pillars.length ? (
-          <ul className="text-muted mt-3 space-y-1 text-xs">
-            {c.research.pillars.map((p) => (
-              <li key={p.pillar}>
-                {p.pillar}: {p.status} · {p.detail}
-              </li>
-            ))}
-          </ul>
-        ) : null}
       </details>
     </article>
   );
