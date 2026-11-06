@@ -4,6 +4,15 @@
 
 Running log for `scoobydao-web`. Precedence when docs disagree: INTERFACES.md (data shapes) > CLAUDE.md (rules, scope) > THEME.md (look, copy, page features). Where "V2 live integration" and "Revamp" disagree, the V2 section is current.
 
+## Review desk (Nov 2026)
+
+- `/admin` and `/admin/reviews/[id]/[version]` consume the backend review desk (`/web/v1/admin`, contract `schemas/runtime/admin-checkpoints-v1.schema.json` in ScoobyDAO-backend). Client: `src/lib/adminApi.ts`; session token in `sessionStorage` only (`src/lib/adminToken.ts`), sent as `Authorization: Bearer`.
+- Sign-in is a World device login; the backend decides who may review. With backend `SCOOBY_OPEN_REVIEW=true` any World ID that passes login validation (Orb by default) gets `report_review` and `publication`; otherwise only enrolled reviewers. The UI never decides access or approval.
+- Every approve / reject / revise is a separate World App confirmation by the same World ID that signed in; the backend binds it to the review target digest the reviewer saw (`expected_target_digest`).
+- Full report files need the bearer header, so they are fetched and shown from a blob URL in a sandboxed iframe (`sandbox="allow-scripts"`, opaque origin).
+- Publication sign-off (`POST /reports/:id/approve`, `GET /approvals/:id`) now requires a review desk session with the `publication` scope (backend change). `api.ts` sends the session header; the case file and `/approve/[id]` point a signed-out user to `/admin`.
+- Deployment: backend `SCOOBY_WEB_ORIGIN` must equal this site's exact origin (CORS for `Authorization`), and `SCOOBY_REPORT_RELEASE=approved` limits the public report library to approved versions.
+
 ## V2 live integration (Nov 2026)
 
 V2 (Ethereum Sepolia + Arbitrum Sepolia) is the live default, driven only by the contracts handoff bundle `../v2` (`riskfi-v2-demo-1`). Plan: [`docs/v2-integration-plan.md`](docs/v2-integration-plan.md). Nothing was committed. All 13 bundle ABIs matched `abi-manifest.json` (SHA-256 and entry count) when copied; `src/contracts/v2/bundle.test.ts` keeps checking.

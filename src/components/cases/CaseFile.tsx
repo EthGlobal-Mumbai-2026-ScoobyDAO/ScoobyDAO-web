@@ -262,11 +262,20 @@ function ApprovalRail({ report }: { report: ReportWithRaw }) {
           <ScanEye size={18} aria-hidden /> {request.isPending ? 'Requesting…' : 'Request human approval'}
         </button>
       )}
-      {request.isError && (
-        <Banner tone="danger" title="The approval request didn't start">
-          {request.error.message}
-        </Banner>
-      )}
+      {request.isError &&
+        (request.error instanceof ApiError && (request.error.status === 401 || request.error.status === 403) ? (
+          <Banner tone="warning" title="Sign in at the review desk first">
+            Publication sign-off is bound to a signed-in reviewer.{' '}
+            <Link href="/admin" className="underline underline-offset-4">
+              Sign in with World ID
+            </Link>
+            , then come back and request approval again.
+          </Banner>
+        ) : (
+          <Banner tone="danger" title="The approval request didn't start">
+            {request.error.message}
+          </Banner>
+        ))}
     </div>
   );
 }
