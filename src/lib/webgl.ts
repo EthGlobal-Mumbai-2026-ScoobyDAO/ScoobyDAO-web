@@ -4,6 +4,9 @@ export function canUse3D(): { ok: boolean; reason?: string } {
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches)
     return { ok: false, reason: 'reduced-motion' };
   if ((navigator.hardwareConcurrency ?? 8) < 4) return { ok: false, reason: 'low-power' };
+  // The flashlight follows a pointer; on touch-only devices 3D adds weight and nothing else.
+  if (!window.matchMedia('(pointer: fine)').matches)
+    return { ok: false, reason: 'no-fine-pointer' };
   try {
     const c = document.createElement('canvas');
     const gl = c.getContext('webgl2') ?? c.getContext('webgl');

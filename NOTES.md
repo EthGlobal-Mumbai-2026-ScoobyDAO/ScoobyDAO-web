@@ -83,3 +83,22 @@ Gaps / assumptions (contracts repo please confirm):
 - **No mascot model yet.** `public/models/manifest.json` (`"sniff": false`) tells the gate whether `/models/sniff.glb` exists, which avoids a 404 probe. Until then a stylised low-poly placeholder hound renders. With a model it plays the `idle` clip via `useGLTF` + `useAnimations`.
 - `MaskPop` on Resolved Pass: 3D coin mask + confetti (renders ~2s then `frameloop="never"`), CSS pop fallback, static mask with reduced motion; plays once per case per session. Cleared shows a 2D Sniff shrug.
 - No canvas is ever mounted on `/approve` (verified).
+
+## Phase 8: polish and checks
+
+- Global `not-found` ("This case went cold."), `error` and `loading` states; empty states use Sniff poses (asleep / confused / sad).
+- axe-core (WCAG 2 A/AA + best practice) on every page and key state, dark + light: **0 violations** after fixing heading order on `/cases`, h1 on 404s, and the light-theme Frozen chip contrast (`--mask-ink` → `#9c2d0f`).
+- Keyboard: every focusable on the stake page shows a visible focus ring.
+- **Lighthouse on `/`** (prod build, fixtures): mobile perf 98 (TBT 150 ms, LCP 0.9 s), desktop 100; a11y 100 desktop; best-practices 96 only because of WalletConnect 403/400 with the dummy project id. First run was 67 on mobile because three.js loaded during the audit; 3D now loads only after a pointer move over the hero on fine-pointer devices.
+
+## THEME.md §9 pre-demo checklist
+
+| Item | Status |
+|---|---|
+| No studio character, name or catchphrase anywhere (assets, copy, metadata, favicon) | **Partial.** Copy, art, metadata and favicon are original (Unmasked / Sniff). But the footer lists the repo names `ScoobyDAO-web/-backend/-contracts`, which are user-visible and derived from a studio character's name; internal ids (`scoobydao:` storage keys, package name) aren't visible. Decide whether to rename the public repos or drop names from the footer (`src/lib/site.ts`). |
+| Generated assets' licences allow public use; credits in README | Pass for what exists: no generated assets yet, all art is original code-drawn placeholders; fonts/icons credited. Re-check when `sniff.glb` / parallax art land. |
+| 3D fallback tested with WebGL disabled and with reduced motion on | Pass (Playwright: WebGL `getContext` stubbed → 2D layers, no canvas; reduced motion → no canvas, fixed beam). |
+| `/approve` loads instantly, readable from the back of the room | Pass: no 3D/canvas (verified 0 canvases), 5xl–6xl code, 2xl claim text, hash in 4-char groups. |
+| Every tx shows pending → confirmed → explorer link | Pass for live txs (toast links to Sepolia Etherscan); in fixture mode the hash is shown without a link since it isn't real. Failed txs show the decoded revert. |
+| Frozen state visible on stake and market pages | Pass (banner with block number on both; market inputs disabled + forced-swap revert). |
+| Lighthouse performance ≥ 80 on landing; .glb < 3 MB | Pass: 98 mobile / 100 desktop; no .glb shipped yet (manifest gate ready). |

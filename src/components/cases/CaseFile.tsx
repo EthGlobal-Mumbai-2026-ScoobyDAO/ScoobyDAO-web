@@ -45,6 +45,7 @@ export function CaseFile({ id }: { id: string }) {
       <main className="mx-auto max-w-5xl px-4 py-10">
         {nf ? (
           <EmptyState
+            as="h1"
             pose="confused"
             title="This case went cold."
             action={

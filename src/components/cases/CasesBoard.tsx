@@ -146,7 +146,10 @@ export function CasesBoard() {
         </div>
       </div>
 
-      <section aria-label="Cases" className="cork mt-8 rounded-2xl p-5 sm:p-8">
+      <section aria-labelledby="cases-h" className="cork mt-8 rounded-2xl p-5 sm:p-8">
+        <h2 id="cases-h" className="sr-only">
+          Cases ({shown.length})
+        </h2>
         {reports.isLoading ? (
           <div
             className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3"

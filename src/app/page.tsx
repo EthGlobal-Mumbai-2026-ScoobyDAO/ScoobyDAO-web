@@ -8,10 +8,12 @@ import { TrustSection } from '@/components/landing/TrustSection';
 export default function Home() {
   return (
     <>
-      <Hero scene={<HeroSceneGate />} />
-      <StatsStrip />
-      <HowItWorks />
-      <TrustSection />
+      <main>
+        <Hero scene={<HeroSceneGate />} />
+        <StatsStrip />
+        <HowItWorks />
+        <TrustSection />
+      </main>
       <Footer />
     </>
   );
