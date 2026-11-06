@@ -6,7 +6,8 @@ import { EmptyState } from '@/components/EmptyState';
 import { STATUS_META } from '@/components/StatusChip';
 import { chainName } from '@/lib/explorer';
 import { CASE_STATUSES, type CaseStatus } from '@/lib/status';
-import { useChainTime } from '@/protocol/hooks';
+import { useChainTime, useProtocol } from '@/protocol/hooks';
+import { useFixturesMode } from '@/lib/queries';
 import { CaseCard } from './CaseCard';
 import { useCaseRows } from './useCaseRows';
 
@@ -18,6 +19,8 @@ const STATUS_FILTERS: { key: 'all' | CaseStatus; label: string }[] = [
 export function CasesBoard() {
   const { reports, rows } = useCaseRows();
   const now = useChainTime();
+  const fixtureApi = useFixturesMode();
+  const { fixtureMode } = useProtocol();
 
   const [status, setStatus] = useState<'all' | CaseStatus>('all');
   const [chain, setChain] = useState<'all' | number>('all');
@@ -37,13 +40,13 @@ export function CasesBoard() {
   );
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
+    <section aria-label="Existing case files" className="px-5 pt-4 pb-8">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="font-display text-4xl sm:text-5xl">Case board</h1>
+          <h2 className="text-2xl font-semibold">Existing case files</h2>
           <p className="text-muted mt-2 max-w-xl">
-            Every report Sniff has filed. A case only opens onchain after an enrolled human approves the
-            exact report and claim.
+            Every report Sniff has filed. A case only opens onchain after an enrolled human approves
+            the exact report and claim.
           </p>
         </div>
       </header>
@@ -150,12 +153,17 @@ export function CasesBoard() {
           <ul className="grid gap-x-6 gap-y-9 sm:grid-cols-2 lg:grid-cols-3">
             {shown.map((row) => (
               <li key={row.key}>
-                <CaseCard row={row} now={now} />
+                <CaseCard
+                  row={row}
+                  now={now}
+                  reportFixture={fixtureApi.data === true}
+                  marketFixture={fixtureMode}
+                />
               </li>
             ))}
           </ul>
         )}
       </section>
-    </main>
+    </section>
   );
 }

@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
-import { CasesBoard } from '@/components/cases/CasesBoard';
+import { ScoutingBoard } from '@/components/cases/ScoutingBoard';
 
 export const metadata: Metadata = { title: 'Case board' };
 
 export default function Page() {
-  return <CasesBoard />;
+  return <ScoutingBoard />;
 }

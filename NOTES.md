@@ -4,6 +4,9 @@
 
 Running log for `scoobydao-web`. Precedence when docs disagree: INTERFACES.md (data shapes) > CLAUDE.md (rules, scope) > THEME.md (look, copy, page features).
 
+## Scouting case board (Nov 2026)
+
+The scouting read model and authenticated continuation endpoint are proposed, not agreed or available at this checkpoint. `/cases` deliberately shows no fabricated live candidates when the service is unset. Existing fixture/demo case files are separated from fresh alerts. Backend fixture approvals now require explicit `NEXT_PUBLIC_USE_FIXTURES=true`; API health errors never enable them. The protocol may still use its separately labeled fixture chain when addresses are missing. Backend owns priority and qualification; human selection is not report approval. See HANDOFF-SCOUTING.md for the seam and caveats.
 ## Revamp (Nov 2026)
 
 Rebuilt against `../SmartContracts` (V1 deployed, V2 local) and `../ScoobyDAO-backend` (`/web/v1`). Where `FRONTEND_REVAMP.md` and the revamp prompt differ, the prompt won. Nothing was committed.

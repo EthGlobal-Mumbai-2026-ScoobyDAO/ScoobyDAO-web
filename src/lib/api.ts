@@ -23,31 +23,9 @@ export class ApiError extends Error {
 
 // ---------------------------------------------------------------- mode switch
 
-let modePromise: Promise<boolean> | null = null;
-const MODE_KEY = 'unmasked:api-mode';
-
-/** True when NEXT_PUBLIC_USE_FIXTURES=true or /health is unreachable (cached 60 s per tab). */
+/** Simulated backend approvals require explicit demo/test opt-in. */
 export function usingFixtures(): Promise<boolean> {
-  if (env.forceFixtures) return Promise.resolve(true);
-  if (typeof window === 'undefined') return Promise.resolve(false);
-  try {
-    const c = JSON.parse(window.sessionStorage.getItem(MODE_KEY) ?? 'null') as { f: boolean; at: number } | null;
-    if (c && Date.now() - c.at < 60_000) return Promise.resolve(c.f);
-  } catch {
-    /* storage unavailable */
-  }
-  modePromise ??= fetch(`${env.apiUrl}/health`, { signal: AbortSignal.timeout(2500), cache: 'no-store' })
-    .then(async (r) => !(r.ok && (await r.json())?.ok === true))
-    .catch(() => true)
-    .then((f) => {
-      try {
-        window.sessionStorage.setItem(MODE_KEY, JSON.stringify({ f, at: Date.now() }));
-      } catch {
-        /* ignore */
-      }
-      return f;
-    });
-  return modePromise;
+  return Promise.resolve(env.forceFixtures);
 }
 
 async function http(path: string, init?: RequestInit): Promise<Response> {

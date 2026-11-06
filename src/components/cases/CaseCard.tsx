@@ -17,10 +17,21 @@ function tilt(id: string) {
   return ((Math.abs(h) % 7) - 3) * 0.45;
 }
 
-export function CaseCard({ row, now }: { row: CaseRow; now?: number }) {
+export function CaseCard({
+  row,
+  now,
+  reportFixture,
+  marketFixture,
+}: {
+  row: CaseRow;
+  now?: number;
+  reportFixture?: boolean;
+  marketFixture?: boolean;
+}) {
   const { report, market: m, onchainId, status } = row;
   const href = report ? `/cases/${encodeURIComponent(report.id)}` : `/case/${onchainId}/stake`;
-  const symbol = report?.claimManifest.symbol ?? (onchainId !== undefined ? `Case #${onchainId}` : 'Unknown');
+  const symbol =
+    report?.claimManifest.symbol ?? (onchainId !== undefined ? `Case #${onchainId}` : 'Unknown');
   const token = report?.claimManifest.token;
   const next = m ? nextDeadline(m) : undefined;
   const label = report?.claimManifest.claimText.split('. ')[0];
@@ -33,6 +44,12 @@ export function CaseCard({ row, now }: { row: CaseRow; now?: number }) {
         aria-hidden
         className="bg-mask absolute -top-2 left-1/2 h-4 w-4 -translate-x-1/2 rounded-full shadow-[inset_-2px_-2px_0_rgb(0_0_0/0.25),0_2px_3px_rgb(0_0_0/0.4)]"
       />
+      {(reportFixture || marketFixture) && (
+        <p className="text-muted mb-3 text-xs font-semibold">
+          {reportFixture ? 'Historical report example · simulated case' : 'Simulated market data'} ·
+          Not a fresh scouting alert
+        </p>
+      )}
       <div className="flex items-start gap-3">
         <Identicon address={token && token.startsWith('0x') ? token : row.key} size={52} />
         <div className="min-w-0">
@@ -54,7 +71,8 @@ export function CaseCard({ row, now }: { row: CaseRow; now?: number }) {
 
       {label && (
         <p className="mt-3 text-sm">
-          <span className="text-muted">Assessment:</span> {label === 'not stated' ? 'no label' : label}
+          <span className="text-muted">Assessment:</span>{' '}
+          {label === 'not stated' ? 'no label' : label}
         </p>
       )}
 
@@ -73,7 +91,8 @@ export function CaseCard({ row, now }: { row: CaseRow; now?: number }) {
               </span>
               {next && (
                 <span>
-                  {next.label}: <Countdown to={next.at} now={now} className="text-text" endedLabel="now" />
+                  {next.label}:{' '}
+                  <Countdown to={next.at} now={now} className="text-text" endedLabel="now" />
                 </span>
               )}
             </p>
@@ -81,7 +100,10 @@ export function CaseCard({ row, now }: { row: CaseRow; now?: number }) {
         ) : onchainId !== undefined ? (
           <p className="text-muted text-xs">Reading the market…</p>
         ) : (
-          <p className="text-muted text-xs">{report?.report?.evidence?.length ?? report?.claimManifest.evidence?.length ?? 0} evidence records</p>
+          <p className="text-muted text-xs">
+            {report?.report?.evidence?.length ?? report?.claimManifest.evidence?.length ?? 0}{' '}
+            evidence records
+          </p>
         )}
       </div>
     </article>
