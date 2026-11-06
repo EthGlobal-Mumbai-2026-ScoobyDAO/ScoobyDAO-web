@@ -31,6 +31,14 @@ export function Reports({
   const pdf = report?.pdf ?? null;
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
+      {process.env.NEXT_PUBLIC_SYNTHETIC_JOURNEY === 'true' && (
+        <p
+          role="status"
+          className="border-mask text-mask-ink mb-6 rounded-xl border p-3 text-sm font-semibold"
+        >
+          Synthetic acceptance environment: World ID and case admission are simulated.
+        </p>
+      )}
       <p className="text-beam-ink text-sm font-semibold">RESEARCH LIBRARY</p>
       <h1 className="font-display mt-2 text-4xl sm:text-5xl">{id ? 'Report' : 'Reports'}</h1>
       <p className="text-muted mt-3 max-w-3xl">

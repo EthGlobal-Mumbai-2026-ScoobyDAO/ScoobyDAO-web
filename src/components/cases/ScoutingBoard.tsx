@@ -36,7 +36,12 @@ export function ScoutingBoard() {
     queryFn: () => adapter!.list(),
     enabled: !!adapter,
     retry: false,
-    refetchInterval: 60_000,
+    refetchInterval: (query) =>
+      query.state.data?.cases.some(
+        (item) => item.research && ['queued', 'running'].includes(item.research.status),
+      )
+        ? 3_000
+        : 60_000,
   });
   const result = query.data;
   const all = result?.cases ?? [];
@@ -60,6 +65,14 @@ export function ScoutingBoard() {
   );
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
+      {process.env.NEXT_PUBLIC_SYNTHETIC_JOURNEY === 'true' && (
+        <p
+          role="status"
+          className="border-mask text-mask-ink mb-6 rounded-xl border p-3 text-sm font-semibold"
+        >
+          Synthetic acceptance environment: World ID and case admission are simulated.
+        </p>
+      )}
       <header>
         <p className="text-beam-ink text-sm font-semibold">SCOUTING</p>
         <h1 className="font-display mt-2 text-4xl sm:text-5xl">Case board</h1>
