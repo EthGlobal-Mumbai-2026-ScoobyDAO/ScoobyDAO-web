@@ -15,9 +15,13 @@ beforeEach(() => {
 const states = (m: MarketView, t: number) => timelineSteps(m, t).map((s) => `${s.label}:${s.state}`);
 
 describe('result page per phase (fixture scenarios)', () => {
-  it('open', async () => {
+  it('open: staking is current and later steps show their dates or rules', async () => {
     const m = await fixture.getMarket(1n);
-    expect(states(m, now)).toEqual(['Locked:current', 'Matured:todo', 'Proposed:todo', 'Challenge window:todo', 'Final:todo']);
+    expect(states(m, now)).toEqual(['Open to staking:current', 'Locked:todo', 'Matured:todo', 'Proposed:todo', 'Challenge window:todo', 'Final:todo']);
+    const steps = timelineSteps(m, now);
+    expect(steps[2].at).toBe(m.maturity);
+    expect(steps[3].note).toMatch(/from maturity/);
+    expect(steps.at(-1)!.note).toMatch(/Void if nothing is final by the result deadline/);
     expect(canFinalize(m, now)).toBe(false);
   });
   it('locked', async () => {
@@ -39,13 +43,16 @@ describe('result page per phase (fixture scenarios)', () => {
     expect(canFinalize(m, end)).toBe(true);
     expect(states(m, end)).toContain('Challenge window:done');
   });
-  it('final Yes', async () => {
+  it('final Yes, then the 90-day claims window', async () => {
     const m = await fixture.getMarket(4n);
-    expect(states(m, now).at(-1)).toBe('Final: Yes:done');
+    expect(states(m, now).slice(-2)).toEqual(['Final: Yes:done', 'Claims close:current']);
+    const closes = m.decision!.finalizedAt! + 90 * 86_400;
+    expect(states(m, closes).at(-1)).toBe('Claims close:current');
+    expect(states(m, closes + 1).at(-1)).toBe('Claims expired:done');
   });
   it('Void flow: final step is Void and redeem refunds without fee', async () => {
     const m = await fixture.getMarket(5n);
-    expect(states(m, now).at(-1)).toBe('Void:done');
+    expect(states(m, now)).toContain('Void:done');
     fixture.account = (await import('@/protocol/fixture')).FIXTURE_ACCOUNT;
     const pos = await fixture.getPosition(5n, fixture.account);
     expect(pos.redeemable).toBe(15_000_000n);

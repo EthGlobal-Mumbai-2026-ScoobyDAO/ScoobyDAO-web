@@ -2,7 +2,73 @@
 
 > Everything below "Revamp (Nov 2026)" predates the revamp and describes the retired RiskFi spec (sealed stakes, For/Against shares, FreezeHook). It is kept as history only.
 
-Running log for `scoobydao-web`. Precedence when docs disagree: INTERFACES.md (data shapes) > CLAUDE.md (rules, scope) > THEME.md (look, copy, page features).
+Running log for `scoobydao-web`. Precedence when docs disagree: INTERFACES.md (data shapes) > CLAUDE.md (rules, scope) > THEME.md (look, copy, page features). Where "V2 live integration" and "Revamp" disagree, the V2 section is current.
+
+## V2 live integration (Nov 2026)
+
+V2 (Ethereum Sepolia + Arbitrum Sepolia) is the live default, driven only by the contracts handoff bundle `../v2` (`riskfi-v2-demo-1`). Plan: [`docs/v2-integration-plan.md`](docs/v2-integration-plan.md). Nothing was committed. All 13 bundle ABIs matched `abi-manifest.json` (SHA-256 and entry count) when copied; `src/contracts/v2/bundle.test.ts` keeps checking.
+
+### Contracts, modes and the deployment check
+
+1. **Module.** `src/contracts/v2/` holds the bundle copies plus a generated `abis.ts` (`as const`) and a typed `index.ts` keyed by **(chainId, name)**: `0xfb2c…88e5` is both the V1 `ReportRegistry` (Sepolia) and the V2 `CCIPStakeSenderV2` (Arbitrum Sepolia). `npm run sync:v2` (`scripts/sync-v2.sh` → `scripts/gen-v2-abis.mjs`) copies from `${CONTRACTS_V2_HANDOFF:-../v2}` (then `../SmartContracts/handoff/v2`) only after every hash and entry count matches; a tampered bundle is refused and the working copy is left alone.
+2. **V1 kept, not selected.** `src/contracts/addresses.ts` lost its V2 keys and the `YieldSwapRouterV2 → YieldSwapRouter` fallback. The stale solc-js V2 ABIs were removed from `generated.ts` (the remaining 16 V1 ABIs are byte-identical) and from `scripts/gen-abis.mjs`. Two shared helpers changed for V1 too: `CCIP_GAS_LIMIT` is now 1,500,000 (`v1.ts` calls `basicExtraArgsV3()`), and the REP badge identifiers were renamed (item 30). No V1 logic changed.
+3. **Mode switch.** The chain protocol comes only from `NEXT_PUBLIC_CHAIN_MODE` (`live` | `fixture`, default `live`) and `NEXT_PUBLIC_PROTOCOL` (`v2` | `v1`, default `v2`). The browser `/health` auto-fallback is gone: it used to flip both the backend and the chain to fixtures whenever `/health` failed. The fixture backend is opt-in (`NEXT_PUBLIC_USE_FIXTURES=true`); a failing backend now shows "Research API unavailable" on backend pages only. With a fixture backend on a live chain, backend onchain ids are not linked (they name fixture-chain reports).
+4. `/web/v1/health` does return `{ ok: true }` (`publication/web_adapter.py`); the integration plan's `{status:'ok'}` is the backend's root `/health`. Neither is used to choose a mode now.
+5. **Deployment check** (`src/protocol/deployment.ts`): code at all 18 bundle addresses on their chains; the 24 wiring reads the brief lists plus `hook.yt/usdc/manager`, `YieldSwapRouter.manager`, `stakeAndSell.usdc/ytIsCurrency0`, `receiver.sourceSelector/usdc`, `sender.sourceUSD`; and bundle consistency (pool key hashes to `poolKeyHash`, sorted, fee 0/tick 1; sender destination selector = Sepolia selector). 45 checks; **45/45 green against the live chains on 6 Nov 2026** (read-only run, item 38). One multicall per chain, once per browser session (a passing report is cached in `sessionStorage` per bundle version). Until it passes, V2 writes are refused by the plan runner and buttons are disabled; a mismatch shows the red "Deployment mismatch" banner listing each failed check.
+6. The fixture chain still models the V1 lifecycle (late CCIP → Held; no REP receipts, LP writes or operator actions). V2-only panels are hidden in fixture mode.
+
+### Writes
+
+7. Every write: simulate with the account → `estimateContractGas` + 20% (`withGasMargin`, no fixed override; no `gas:` literal remains in `src`) → send → receipt must be `status === 'success'`, else replay at the receipt block for the reason. The receipt is read on the **step's** chain (it used to be the wallet's current chain).
+8. All custom errors from the V1 and V2 ABIs (`TokenCallFailed()`, `InvalidRouter(address)`, `InvalidRecipient(address)`, `MaxSupplyExceeded(uint256)`, …) are added to each call's ABI for simulation and replay, so errors bubbling out of nested calls decode. Revert strings map to plain reasons with the code kept, e.g. "Not enough YT in the pool for this buy; try a smaller amount (YT_RESERVE)" (`src/lib/errors.ts`).
+9. **Requote before sending.** `TxStep.prepare` re-reads the quote / CCIP fee / nonce right before the wallet prompt. Swaps and stake-and-sell keep the minimum the user accepted and stop without sending if the fresh quote is below it; their deadline becomes latest block + 10 minutes at that moment. LP adds re-check the exact ratio against fresh reserves.
+10. **Approvals** approve exactly the amount by default; `maxUint256` only with the "Unlimited approval" toggle (`src/protocol/approvals.ts`; `v2.ts` contains no `maxUint256`, `500_000` or `fixture`).
+11. A deployment-check failure or RPC error blocks writes; the user can re-run the check from the banner.
+
+### Reads and RPC limits
+
+12. Measured 6 Nov: viem's default Sepolia RPC (thirdweb) caps `eth_getLogs` at **1,000 blocks**; publicnode prunes logs older than ~5–20k blocks; `sepolia.drpc.org` refuses free-plan calls. All log reads are ≤ 1,000-block chunks inside bounded windows (recent trades: last 5,000 blocks; CCIP outcome fallback: ≤ 8 chunks from the estimated send block). The tracker prefers the CCIP API's destination tx and contract views over log scans. Dedicated read-only RPC URLs are recommended (README).
+13. `getMarket(id)` for a registry id the vault doesn't serve returns `series: false` (no totals, pool or YT); `getPosition` returns zero positions for it. An id never published is an error.
+14. Before finalization `principalAvailable` is 0 onchain, so previews use **projected principal** = min(dUSD held by the vault − REP supply, totalYes + totalNo), exactly what `_finalize` will store; after it, `principalAvailable`.
+15. Payout previews and claims use `estimatePaid` = the existing contract-matching `payoutFor` (fee ⌊L/5⌋ of the losing pool) scaled by principal/total with Solidity flooring, labelled "Estimate — final amount comes from the claim receipt".
+16. The LP claimable figure adds the hook's own YT yield not yet checkpointed (what `claimLPYield`'s `_checkpointGlobal` would pull) to `unclaimedLPYield + shares × Δindex`; still labelled "estimate until checkpoint". Direct YT yield uses `unclaimedUSDC + balance × (globalIndex − paidIndex) / 1e18`.
+
+### CCIP
+
+17. `CCIP_GAS_LIMIT = 1_500_000`; `extraArgs` is the packed V3 encoding, byte-identical to the bundle snippet (`0xa69dd4aa0016e3600000000000000000000000`, test), used for both `quoteFee` and `stakeRemote`. The CCIP API confirms the example's original send used `gasLimit 500000`, the failure the bundle describes.
+18. **Intent** in tuple order: `(2, reportId, yes, sourceAccount = connected wallet, recipient = editable Sepolia wallet (default the same), nonce, deadline, minAmount = amount)`. Deadline = `lockTime − 1`, the last second a credit can count (the contracts' `SendV2CCIP.s.sol` used now + 1 day; either way a later arrival becomes REP). One random 128-bit nonce per attempt, the same nonce and deadline for the quote and the send; `prepare` re-checks `usedNonce` and replaces a used nonce (then requotes). A new nonce is drawn after each successful send.
+19. Remote sends close at min(`sender.reportCutoff`, registry `crossChainCutoff`) (equal for report #1). The page gates on Sepolia block time; `prepare` re-checks against Arbitrum Sepolia block time. Value sent = fee + 10% (the sender refunds the excess); `prepare` checks the ETH balance first.
+20. **Tracker** (`/tx/ccip/[messageId]`): the CCIP API `GET {NEXT_PUBLIC_CCIP_API}/v2/messages/{id}` (CORS checked 6 Nov: it echoes the caller's origin, so browsers can call it; if it's blocked, the page says so and relies on the explorer link and chain state), the source receipt (`Sent` decoded), `receiver.delivered/recoverable/recoverySourceAccount/recoveryOperator`, and the outcome event from the API's destination receipt or a bounded log scan. States: sent, in transit, failed ("Delivery failed — an operator can manually retry it in the CCIP explorer."), delivered (not a vote by itself), credited, deferred as REP, held, recovered. **"Voted" appears only after Credited plus a fresh `positionOf(recipient, yes)` and YT balance.** Recovered is inferred when `recoverable` returns to 0 after a hold (no log scan). Polls every 15 s while not final, including failed.
+21. Sent stakes are remembered in `localStorage` (`unmasked:ccip`, try/catch) as `{messageId, sourceTx, reportId, side, amount, recipient, sourceAccount, savedAt}`; chain state stays the source of truth. After a send the app opens the tracker.
+
+### Hashes and backend links
+
+22. **Claim hash algorithm.** Backend `bd6f82a` made `keccak256` the default. The web computes both; it uses the DTO's `claimHashAlg` when present, else tries keccak256 then SHA-256 and says which matched (case file, approve page). Cross-language vector computed with the backend's own `claim_hash()` (offline, its venv): `src/test/recorded/claim-hash-vector.json`. `reportSha256` stays SHA-256 of the raw bytes.
+23. **Publication ≠ market.** A backend report links onchain only when its DTO has `onchainReportId` and a publish tx (`publishTxHash`, or today's `txHash`) and `ReportRegistry.getReport(id).claimHash` equals the recomputed claim hash. Then "Published onchain as report #N", plus the live market when N = `vault.reportId()`, else "no market deployed for this report yet". In every other case no onchain link (the rail says why).
+24. The backend publisher now targets the V2 registry `0x805d…7ebd`, but **publishing does not create a vault, YT, hook/LP share, stake-and-sell router or CCIP sender/receiver**. A new report needs a per-report deployment (integration plan, "Demo timing"); until then it shows "Published onchain — no market deployed for this report yet", and stakes are refused (`assertSeries`).
+25. The approve page keeps its states. In live V2 its "Published onchain" button opens the case file (which verifies) instead of `/case/<onchainReportId>`.
+26. **Report #1** carries demo `reportHash`/`claimHash`: everywhere it is "Demo report #1 (onchain) — not linked to a backend research report", never mapped to a backend report and never described as approved through World ID. In live V2, `/case/<n>/*` redirects to `/onchain/<n>/*`.
+
+### UI decisions
+
+27. Routes: `/onchain/[reportId]` (dashboard) with `/stake`, `/market`, `/result`; `/operator` (only with `NEXT_PUBLIC_OPERATOR_VIEW=true`, `noindex`; the flag is build-time, so the route builds as a 404 when off); "Live market" in the nav (V2).
+28. `NetworkBadge` now also takes `chainId` to tag the chain each card's data came from.
+29. The hook's own `feePips = 3000` (0.30%) is a contract parameter read from chain, not a v4 pool fee tier; the pool key stays fee 0 / tick spacing 1 from the bundle. No Universal Router, Permit2, V4Quoter or two-pool code was left to delete.
+30. **REP naming (§3.8).** The V1 World ID badge is now "Reputation badge (World ID) — V1 only" and hidden in V2: `repBadge` → `reputationBadge`, `claimRep` → `claimReputationBadge`, `RepCard` → `ReputationBadgeCard`, `NEXT_PUBLIC_REP_ENABLED` → `NEXT_PUBLIC_REPUTATION_BADGE_ENABLED` (old name still read), and our never-implemented proposed route `/rep/authorize` → `/reputation-badge/authorize`. V2 REP is `PositionView.repReceipt`.
+31. **Thin YT inventory.** The hook holds ~110 YT at ~0.009 dUSD/YT, so `quoteBuy(1 dUSD)` reverts `YT_RESERVE` today (0.9 dUSD → 99.4 YT). The judge step "buy YT with 1 dUSD" works only after more YT enters the pool (the stake-and-sell step adds ~3 YT, just enough). The market shows the inventory, an approximate maximum and the friendly error.
+32. Recent trades are a small table (the chart was optional). The landing stat reads "YT traded (recent blocks)" in V2 because history is bounded.
+33. "Get demo dUSD" has no mint button; "Add dUSD" switches the wallet to each chain before `wallet_watchAsset`, which adds tokens on the current network only.
+34. The operator view offers only propose, adjudicate, inject simulated yield ("Simulated yield — demo only") and claimFee (paid to the treasury), each enabled by the role read from chain and the contract's time gate. No `simulateLoss`, `sweepDust` or admin setup.
+35. Countdowns use the latest block time interpolated locally, as before; nothing enables a button on the local clock.
+
+### Verification and open items
+
+36. Green: `npm run typecheck`, `lint`, `test` (403 tests: manifest hashes, ABI coverage, deployment check pass/mismatch, gates at every boundary, plans, CCIP encoding/nonce/Sent/tracker with the recorded example, market/LP math, payout scaling, live-mode selection), `build`.
+37. Tests use a mocked viem transport (`src/test/mockRpc.ts`, real ABI encoding, Multicall3 `aggregate3`) and recorded data (`src/test/recorded/`: the example's CCIP API response and raw receipts, the live wiring reads, the claim-hash vector). No test touches the network or sends a transaction.
+38. Live, read-only, from Node (not in the repo): the real adapter against both chains on 6 Nov with viem's default RPCs: deployment check 45/45; report #1 open, demo hashes recognised, 100/15 dUSD; quotes (0.5 dUSD → 55.37 YT; 3 YT → 0.026886 dUSD); CCIP fee for 2 dUSD ≈ 0.000674 ETH; the example tracked to Credited with the refreshed position (15 dUSD No, 5.000232 YT); recent trades via 1,000-block chunks; a stake plan built (never sent).
+39. **Not verified here:** browser rendering and any wallet transaction (no browser or wallet in this run; the Playwright MCP server failed to connect). The judge demo needs a pass in a real browser with a funded non-deployer wallet.
+40. **Requests — contracts team:** (a) an operator-run dUSD faucet or a minter-role faucet contract (`NEXT_PUBLIC_FAUCET_URL`); (b) a per-report deployment (vault, YT, hook + LP share, stake-and-sell router, CCIP receiver + sender) and a refreshed bundle for any new publication; (c) more YT liquidity before the judge demo (≥ ~250 YT), or demo buys of ≤ 0.9 dUSD; (d) optionally list the role holders (deployer) in `addresses.json`. The CCIP API's CORS works today; no request.
+41. **Requests — backend team:** (a) send `claimHashAlg` on report and approval DTOs; (b) send `onchainReportId` with `publishTxHash` on report DTOs (today `txHash` + `claimId`/`onchainReportId` once confirmed, which the web accepts); (c) the Revamp-section requests (item 19 etc.) still stand.
 
 ## Scouting case board (Nov 2026)
 
@@ -183,6 +249,8 @@ Gaps / assumptions (contracts repo please confirm):
 | Lighthouse performance ≥ 80 on landing; .glb < 3 MB | Pass: 98 mobile / 100 desktop; no .glb shipped yet (manifest gate ready). |
 
 ## Fixes after review (2026-11-06)
+
+- **Deployed backend connection.** `https://scoobydao-backend.onrender.com/web/v1` answers `/health` and `/reports`, but sends no browser CORS header and returns 405 to preflight. The browser now calls the same-origin `/api/backend` path, which Next.js rewrites to the configured upstream. At integration time `/reports` returned `[]`; no live approval could be exercised. The supplied `auth.world.org/authorize?transaction_id=...` URL is one World authorization request, not the backend API base or an `/approvals/{id}` ID (the latter returned 404). The approval UI continues to use the per-request verification URL returned by the backend.
 
 - **Hero background no longer swaps out.** 3D used to replace the whole 2D scene (new moon/mansion, CSS flashlight hidden) and Sniff popped in on top. Now the 2D night scene, parallax and CSS flashlight are always the background; Sniff has one slot in the yard: a 2D figure from first paint, and on capable desktops a *transparent* R3F canvas rendering only Sniff in the same box, crossfading in. He sits under the darkness layer, so the flashlight reveals him.
 - **"How it works" repeat clicks.** Next only scrolls on a hash *change*, so clicks after the first did nothing. `SectionLink` scrolls every time on `/` (instant under reduced motion), updates the hash and focuses the section; from other pages it navigates to `/#how-it-works`.

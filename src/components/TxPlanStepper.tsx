@@ -47,6 +47,7 @@ export function usePlan() {
 const ICON = {
   idle: Circle,
   switching: Repeat,
+  preparing: Loader2,
   wallet: Wallet,
   pending: Loader2,
   done: CheckCircle2,
@@ -55,6 +56,7 @@ const ICON = {
 const COPY: Record<StepProgress['status'], string> = {
   idle: 'Waiting',
   switching: 'Switch network in your wallet',
+  preparing: 'Re-reading the latest quote',
   wallet: 'Confirm in your wallet',
   pending: 'Pending onchain',
   done: 'Confirmed',
@@ -78,7 +80,7 @@ export function TxPlanStepper({ steps, buildError }: { steps: StepProgress[]; bu
             <Icon
               size={18}
               aria-hidden
-              className={`mt-0.5 shrink-0 ${s.status === 'pending' ? 'text-beam-ink animate-spin motion-reduce:animate-none' : s.status === 'done' ? 'text-clue-ink' : s.status === 'failed' ? 'text-mask-ink' : 'text-muted'}`}
+              className={`mt-0.5 shrink-0 ${s.status === 'pending' || s.status === 'preparing' ? 'text-beam-ink animate-spin motion-reduce:animate-none' : s.status === 'done' ? 'text-clue-ink' : s.status === 'failed' ? 'text-mask-ink' : 'text-muted'}`}
             />
             <div className="min-w-0">
               <p>

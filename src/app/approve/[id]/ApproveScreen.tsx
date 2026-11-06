@@ -12,9 +12,10 @@ import { DemoIdentityLabel } from '@/components/HonestyLabels';
 import { ClaimCard } from '@/components/report/ClaimCard';
 import { ApiError, type ReportWithRaw } from '@/lib/api';
 import { chainName } from '@/lib/explorer';
-import { claimHashOf, sameHash } from '@/lib/hash';
+import { env } from '@/lib/env';
+import { matchClaimHash, sameHash, type ClaimHashMatch } from '@/lib/hash';
 import { useApproval, useFixturesMode, useReport } from '@/lib/queries';
-import type { Approval, Hex } from '@/lib/types';
+import type { Approval } from '@/lib/types';
 
 // Projector screen for the World Agent Pass sign-off. Display only: every state shown
 // here comes from GET /approvals/:id (polled every 2s); the UI never decides approval.
@@ -148,13 +149,15 @@ function ApprovalChip({ status }: { status: Approval['status'] }) {
 }
 
 function ClaimToCheck({ approval, report }: { approval: Approval; report?: ReportWithRaw }) {
-  const [recomputed, setRecomputed] = useState<Hex | null>(null);
+  // The backend's declared algorithm, else keccak256 (its default) then SHA-256.
+  const [recomputed, setRecomputed] = useState<ClaimHashMatch | null>(null);
   useEffect(() => {
-    if (report) void claimHashOf(report.claimManifest).then(setRecomputed).catch(() => setRecomputed(null));
-  }, [report]);
-  const hashOk = report
-    ? sameHash(approval.claimHash, report.claimHash) && (!recomputed || sameHash(recomputed, report.claimHash))
-    : undefined;
+    if (report)
+      void matchClaimHash(report.claimManifest, report.claimHash, report.claimHashAlg ?? approval.claimHashAlg)
+        .then(setRecomputed)
+        .catch(() => setRecomputed(null));
+  }, [report, approval.claimHashAlg]);
+  const hashOk = report ? sameHash(approval.claimHash, report.claimHash) && (!recomputed || recomputed.match) : undefined;
   const reportSha = approval.reportSha256 ?? report?.reportSha256;
 
   return (
@@ -197,7 +200,7 @@ function ClaimToCheck({ approval, report }: { approval: Approval; report?: Repor
           {hashOk !== undefined && (
             <dd className={`mt-2 inline-flex items-center gap-2 text-base ${hashOk ? 'text-clue-ink' : 'text-mask-ink'}`}>
               {hashOk ? <CheckCircle2 size={18} aria-hidden /> : <XCircle size={18} aria-hidden />}
-              {hashOk ? 'Matches the case file (recomputed in this browser)' : "Doesn't match the case file. Don't approve."}
+              {hashOk ? `Matches the case file (recomputed in this browser${recomputed ? `, ${recomputed.alg}` : ''})` : "Doesn't match the case file. Don't approve."}
             </dd>
           )}
         </div>
@@ -287,7 +290,7 @@ export function Result({ approval, simulated }: { approval: Approval; simulated?
           <p>The reviewer approved this exact claim. The backend is publishing it onchain.</p>
           {approval.publishTxHash && (
             <p className="mt-3 text-base">
-              Publish tx: <TxLink value={approval.publishTxHash} simulated={simulated} />
+              Publish tx: <TxLink value={approval.publishTxHash} chainId={11155111} simulated={simulated} />
             </p>
           )}
           <p className="text-muted mt-3 text-base">This page keeps checking every 2 seconds.</p>
@@ -298,10 +301,19 @@ export function Result({ approval, simulated }: { approval: Approval; simulated?
         <Banner tone="success" size="xl" title="Published onchain">
           {approval.publishTxHash && (
             <p className="text-base">
-              Publish tx: <TxLink value={approval.publishTxHash} simulated={simulated} />
+              Publish tx: <TxLink value={approval.publishTxHash} chainId={11155111} simulated={simulated} />
             </p>
           )}
-          {approval.onchainReportId ? (
+          {approval.onchainReportId && env.protocol === 'v2' && env.chainMode === 'live' ? (
+            // V2: the case file links onchain only after the registry's claim hash matches, and a new
+            // publication has no market until a per-report vault is deployed.
+            <Link
+              href={`/cases/${encodeURIComponent(approval.reportId)}`}
+              className="bg-beam text-on-beam mt-5 inline-flex items-center gap-2 rounded-xl px-6 py-3 text-lg font-semibold hover:brightness-105"
+            >
+              Open the case file to verify report #{approval.onchainReportId}
+            </Link>
+          ) : approval.onchainReportId ? (
             <Link
               href={`/case/${approval.onchainReportId}`}
               className="bg-beam text-on-beam mt-5 inline-flex items-center gap-2 rounded-xl px-6 py-3 text-lg font-semibold hover:brightness-105"

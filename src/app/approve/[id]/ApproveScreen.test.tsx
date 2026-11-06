@@ -24,11 +24,12 @@ describe('approve screen states', () => {
     expect(h).toContain('<svg'); // QR
   });
   it('approved → "Approved — publishing…"', () => expect(html({ status: 'approved' })).toContain('Approved — publishing…'));
-  it('spent → "Published onchain" with tx link and /case/[id] link', () => {
+  it('spent → "Published onchain" with tx link; in live V2 the button opens the case file, which verifies the onchain record', () => {
     const h = html({ status: 'spent', publishTxHash: `0x${'bb'.repeat(32)}`, onchainReportId: '6' });
     expect(h).toContain('Published onchain');
     expect(h).toContain('https://sepolia.etherscan.io/tx/0x' + 'bb'.repeat(32));
-    expect(h).toContain('href="/case/6"');
+    expect(h).toContain('href="/cases/shib%40v1"');
+    expect(h).not.toContain('href="/case/6"');
   });
   it('denied → red banner, no case opened', () => {
     const h = html({ status: 'denied' });

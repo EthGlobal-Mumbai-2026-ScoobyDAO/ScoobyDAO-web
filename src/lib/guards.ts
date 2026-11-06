@@ -1,3 +1,4 @@
+import type { ClaimHashAlg } from './hash';
 import type { Approval, ApprovalStatus, ClaimManifest, Hex, ReportStatus, WebReport } from './types';
 
 // Hand-written shape guards for GET /web/v1 responses. They whitelist known fields and fail
@@ -40,8 +41,11 @@ function assertKeys(o: Record<string, unknown>, allowed: readonly string[], what
 
 const APPROVAL_KEYS = [
   'id', 'reportId', 'status', 'userCode', 'verificationUri', 'verificationUriComplete', 'expiresAt',
-  'reportSha256', 'claimHash', 'manifestHash', 'publishTxHash', 'onchainReportId', 'demoIdentity', 'detail',
+  'reportSha256', 'claimHash', 'claimHashAlg', 'manifestHash', 'publishTxHash', 'onchainReportId', 'demoIdentity', 'detail',
 ] as const;
+
+/** 'keccak256' | 'sha256' from the backend, or undefined (anything else is ignored, not trusted). */
+const hashAlg = (v: unknown): ClaimHashAlg | undefined => (v === 'keccak256' || v === 'sha256' ? v : undefined);
 const APPROVAL_STATUS: ApprovalStatus[] = ['pending', 'approved', 'denied', 'expired', 'rejected_not_reviewer', 'spent', 'error'];
 
 export function parseApproval(v: unknown): Approval {
@@ -67,6 +71,7 @@ export function parseApproval(v: unknown): Approval {
     expiresAt: num(v, 'expiresAt'),
     reportSha256: str(v, 'reportSha256', false),
     claimHash,
+    claimHashAlg: hashAlg(v.claimHashAlg),
     publishTxHash: (tx as Hex | undefined) ?? undefined,
     onchainReportId: v.onchainReportId == null ? undefined : String(v.onchainReportId),
     demoIdentity: v.demoIdentity === true ? true : undefined,
@@ -75,8 +80,8 @@ export function parseApproval(v: unknown): Approval {
 }
 
 const REPORT_KEYS = [
-  'id', 'reportId', 'version', 'status', 'report', 'claimManifest', 'reportSha256', 'claimHash', 'targetDigest',
-  'approvalId', 'onchainReportId', 'txHash', 'createdAt', 'publicationState', 'revoked',
+  'id', 'reportId', 'version', 'status', 'report', 'claimManifest', 'reportSha256', 'claimHash', 'claimHashAlg', 'targetDigest',
+  'approvalId', 'onchainReportId', 'txHash', 'publishTxHash', 'createdAt', 'publicationState', 'revoked',
   // Older /web/v1 names, still emitted by publication/web_adapter.py:
   'manifest', 'manifestHash', 'token', 'chainId', 'claimId',
 ] as const;
@@ -114,10 +119,11 @@ export function parseReport(v: unknown): WebReport {
     claimManifest,
     reportSha256: str(v, 'reportSha256')!.replace(/^0x/, ''),
     claimHash,
+    claimHashAlg: hashAlg(v.claimHashAlg),
     targetDigest: str(v, 'targetDigest', false),
     approvalId: str(v, 'approvalId', false),
     onchainReportId: onchain == null ? undefined : String(onchain),
-    txHash: isHex(v.txHash) ? v.txHash : undefined,
+    txHash: isHex(v.publishTxHash) ? v.publishTxHash : isHex(v.txHash) ? v.txHash : undefined,
     createdAt: num(v, 'createdAt'),
     publicationState: str(v, 'publicationState', false),
     revoked: v.revoked === true,

@@ -1,8 +1,9 @@
 import { BUILT_WITH, REPOS } from '@/lib/site';
-import { deployed, deployedArb } from '@/protocol';
+import { env } from '@/lib/env';
+import { deployed, deployedArb, V2_INFO } from '@/protocol';
 import { TxLink } from './TxLink';
 
-const SHOWN = [
+const V1_SHOWN = [
   ['ReportRegistry', deployed.ReportRegistry, 11155111],
   ['VoteMarket', deployed.VoteMarket, 11155111],
   ['Settlement', deployed.Settlement, 11155111],
@@ -11,7 +12,17 @@ const SHOWN = [
   ['CCIPStakeSender (Arbitrum Sepolia)', deployedArb.CCIPStakeSender, 421614],
 ] as const;
 
+const V2_SHOWN = [
+  ['ReportRegistry', V2_INFO.sepolia.ReportRegistry, 11155111],
+  ['RiskFiStakeVaultV2', V2_INFO.sepolia.RiskFiStakeVaultV2, 11155111],
+  ['YieldCurveHookV2', V2_INFO.sepolia.YieldCurveHookV2, 11155111],
+  ['CCIPStakeReceiverV2', V2_INFO.sepolia.CCIPStakeReceiverV2, 11155111],
+  ['CCIPStakeSenderV2 (Arbitrum Sepolia)', V2_INFO.arbitrumSepolia.CCIPStakeSenderV2, 421614],
+] as const;
+
 export function Footer() {
+  const isV2 = env.chainMode === 'live' && env.protocol === 'v2';
+  const SHOWN: readonly (readonly [string, `0x${string}` | undefined, number])[] = isV2 ? V2_SHOWN : V1_SHOWN;
   const any = SHOWN.some(([, a]) => !!a);
   return (
     <footer className="border-line border-t">
@@ -51,7 +62,7 @@ export function Footer() {
           </ul>
         </div>
         <div>
-          <h2 className="font-semibold">Contracts (V1, testnets)</h2>
+          <h2 className="font-semibold">Contracts ({isV2 ? 'V2' : 'V1'}, testnets)</h2>
           {any ? (
             <dl className="mt-3 space-y-1.5">
               {SHOWN.map(([k, a, chainId]) => (

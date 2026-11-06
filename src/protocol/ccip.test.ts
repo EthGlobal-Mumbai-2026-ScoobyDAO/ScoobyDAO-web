@@ -1,12 +1,16 @@
-import { decodeAbiParameters, getAddress } from 'viem';
+import { concatHex, decodeAbiParameters, getAddress, toHex } from 'viem';
 import { describe, expect, it } from 'vitest';
-import { basicExtraArgsV3, buildIntentV1, buildIntentV2, ccipStatus, encodeIntentV1, isSlow, CCIP_SLOW_MINUTES } from './ccip';
+import { basicExtraArgsV3, buildIntentV1, buildIntentV2, ccipStatus, encodeIntentV1, isSlow, CCIP_GAS_LIMIT, CCIP_SLOW_MINUTES } from './ccip';
 
 const A = getAddress('0x00000000000000000000000000000000000000a1');
 
-describe('extraArgs (ExtraArgsCodec._getBasicEncodedExtraArgsV3(500_000, bytes4(0)))', () => {
-  it('is tag ‖ uint32 gasLimit ‖ bytes4 finality ‖ bytes7(0), 19 bytes', () => {
-    expect(basicExtraArgsV3()).toBe('0xa69dd4aa0007a120' + '00000000' + '00000000000000');
+describe('extraArgs (ExtraArgsCodec._getBasicEncodedExtraArgsV3(1_500_000, bytes4(0)))', () => {
+  it('uses the 1,500,000 callback gas limit (500,000 failed the live delivery)', () => expect(CCIP_GAS_LIMIT).toBe(1_500_000));
+  it('matches the bundle snippet byte for byte: tag ‖ uint32 gas ‖ bytes4 finality ‖ bytes7(0)', () => {
+    // FRONTEND_INTEGRATION_PLAN.md: concatHex(['0xa69dd4aa', toHex(1_500_000, { size: 4 }), '0x00000000', '0x00000000000000'])
+    const bundle = concatHex(['0xa69dd4aa', toHex(1_500_000, { size: 4 }), '0x00000000', '0x00000000000000']);
+    expect(basicExtraArgsV3()).toBe(bundle);
+    expect(basicExtraArgsV3()).toBe('0xa69dd4aa0016e3600000000000000000000000');
     expect((basicExtraArgsV3().length - 2) / 2).toBe(19);
   });
 });
@@ -23,7 +27,7 @@ describe('stake intents', () => {
     expect(decoded).toEqual([1n, 7n, true, A, 9n, 1_999n, 5_000_000n]);
   });
   it('V2 has exactly the StakeIntentV2.sol fields, with sourceAccount = sender', () => {
-    const i = buildIntentV2({ reportId: 1n, yes: false, account: A, amount: 1n, lockTime: 100 });
+    const i = buildIntentV2({ reportId: 1n, yes: false, sourceAccount: A, recipient: A, nonce: 3n, deadline: 99n, amount: 1n });
     expect(Object.keys(i)).toEqual(['protocolVersion', 'reportId', 'yes', 'sourceAccount', 'recipient', 'nonce', 'deadline', 'minAmount']);
     expect(i.protocolVersion).toBe(2);
     expect(i.sourceAccount).toBe(A);

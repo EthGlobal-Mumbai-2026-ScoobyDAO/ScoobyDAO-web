@@ -12,8 +12,8 @@ export const qk = {
 };
 
 export const useFixturesMode = () => useQuery({ queryKey: qk.mode, queryFn: usingFixtures, staleTime: Infinity });
-export const useReports = (opts: { pollMs?: number } = {}) =>
-  useQuery({ queryKey: qk.reports, queryFn: () => api.getReports(), refetchInterval: opts.pollMs ?? false });
+export const useReports = (opts: { pollMs?: number; enabled?: boolean } = {}) =>
+  useQuery({ queryKey: qk.reports, queryFn: () => api.getReports(), refetchInterval: opts.pollMs ?? false, enabled: opts.enabled ?? true });
 export const useReport = (id: string | undefined, opts: { pollMs?: number | false } = {}) =>
   useQuery({
     queryKey: qk.report(id ?? ''),

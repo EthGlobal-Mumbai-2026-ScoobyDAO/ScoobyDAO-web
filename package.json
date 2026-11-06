@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "format": "prettier --write .",
-    "sync:contracts": "bash scripts/sync-contracts.sh"
+    "sync:contracts": "bash scripts/sync-contracts.sh",
+    "sync:v2": "bash scripts/sync-v2.sh"
   },
   "dependencies": {
     "@rainbow-me/rainbowkit": "^2.2.11",

@@ -4,19 +4,19 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useSyncExternalStore } from 'react';
 import type { Address, Hex } from 'viem';
 import { useAccount } from 'wagmi';
-import { useFixturesMode } from '@/lib/queries';
 import { fixture, FIXTURE_ACCOUNT, subscribeFixture } from './fixture';
-import { ccipPending } from './ccip';
+import { ccipPending, subscribeTracked, trackedSnapshot, type TrackedCcip } from './ccip';
+import { deploymentQuery, writeBlockReason } from './deployment';
 import { selectProtocol } from './index';
 import type { Protocol } from './types';
 
 // React bindings. All protocol queries share the ['protocol', kind, …] prefix so a finished
 // TxPlan can invalidate them in one call; market/position keys include the block number.
 
+/** The chain protocol, from env only (NEXT_PUBLIC_CHAIN_MODE + NEXT_PUBLIC_PROTOCOL). */
 export function useProtocol(): { protocol: Protocol; fixtureMode: boolean; ready: boolean } {
-  const mode = useFixturesMode();
-  const protocol = selectProtocol(mode.data ?? false);
-  return { protocol, fixtureMode: protocol.kind === 'fixture', ready: !mode.isLoading };
+  const protocol = selectProtocol();
+  return { protocol, fixtureMode: protocol.kind === 'fixture', ready: true };
 }
 
 /** Mounted once (Providers): fixture-chain writes refresh every protocol query. */
@@ -30,6 +30,21 @@ export function useFixtureSync() {
       unsubscribe();
     };
   }, [protocol.kind, qc]);
+}
+
+/** V2 only: the once-per-session check that the chain matches the handoff bundle. */
+export function useDeploymentCheck() {
+  const { protocol } = useProtocol();
+  return useQuery({ ...deploymentQuery, enabled: protocol.kind === 'v2' });
+}
+
+/** Whether wallet writes may run. V2 writes wait for a passing deployment check. */
+export function useWritesAllowed(): { allowed: boolean; reason?: string } {
+  const { protocol } = useProtocol();
+  const check = useDeploymentCheck();
+  if (protocol.kind !== 'v2') return { allowed: true };
+  const reason = writeBlockReason(check.data, check.error);
+  return { allowed: !reason, reason };
 }
 
 export function useYtVolume() {
@@ -106,7 +121,20 @@ function subscribeSecond(cb: () => void) {
   return () => clearInterval(t);
 }
 
-/** Polls a CCIP message: every 15 s live while pending (2 s in fixture mode). */
+/** CCIP messages this browser sent (localStorage), optionally for one report. Chain state stays the source of truth. */
+export function useTrackedCcip(reportId?: bigint): TrackedCcip[] {
+  const raw = useSyncExternalStore(subscribeTracked, trackedSnapshot, () => '[]');
+  let list: TrackedCcip[] = [];
+  try {
+    const v = JSON.parse(raw) as unknown;
+    list = Array.isArray(v) ? (v as TrackedCcip[]) : [];
+  } catch {
+    list = [];
+  }
+  return reportId === undefined ? list : list.filter((t) => t.reportId === reportId.toString());
+}
+
+/** Polls a CCIP message: every 15 s while it can still change (2 s in fixture mode). */
 export function useCcip(messageId: Hex | undefined) {
   const { protocol, ready } = useProtocol();
   return useQuery({

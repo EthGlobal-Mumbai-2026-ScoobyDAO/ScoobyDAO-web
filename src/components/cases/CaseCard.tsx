@@ -63,7 +63,7 @@ export function CaseCard({
             {token?.startsWith('0x') && <span className="num"> · {shortHex(token, 6, 4)}</span>}
           </p>
           <p className="text-muted text-xs">
-            {onchainId !== undefined ? `Case #${onchainId}` : 'Not yet a case'}
+            {onchainId !== undefined ? `Case #${onchainId}` : report?.status === 'published' ? 'Publication reported; verify in the case file' : 'Not yet a case'}
             {report && <> · filed {formatDate(report.createdAt)}</>}
           </p>
         </div>

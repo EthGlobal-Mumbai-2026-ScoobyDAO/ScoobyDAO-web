@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { buildClaimManifest, historicalReport, RAW_REPORT } from '@/fixtures';
 import { HISTORICAL_DIGEST_SHA256 } from '@/fixtures/historicalReport';
-import { canonicalJson, CanonicalError, claimHashOf, evidenceHash, sameHash, sha256Hex } from './hash';
+import vector from '@/test/recorded/claim-hash-vector.json';
+import { canonicalBytes, canonicalJson, CanonicalError, claimHashOf, evidenceHash, matchClaimHash, sameHash, sha256Hex } from './hash';
 
 describe('sha256Hex (Web Crypto)', () => {
   it('known vector: "abc"', async () => {
@@ -47,5 +48,30 @@ describe('helpers', () => {
   it('sameHash ignores 0x and case', () => {
     expect(sameHash('0xABcd', 'abcd')).toBe(true);
     expect(sameHash(undefined, 'abcd')).toBe(false);
+  });
+});
+
+describe('claim hash algorithms (§3.9): the backend default is keccak256 since bd6f82a', () => {
+  // Vector from the backend's own claim_hash(): web and backend must agree byte for byte.
+  it('keccak256 and SHA-256 of the canonical manifest equal the backend values', async () => {
+    expect(canonicalBytes(vector.manifest)).toHaveLength(vector.canonicalLength);
+    expect(await claimHashOf(vector.manifest, 'keccak256')).toBe(vector.keccak256);
+    expect(await claimHashOf(vector.manifest, 'sha256')).toBe(vector.sha256);
+    expect(await claimHashOf(vector.manifest)).toBe(vector.sha256); // default kept for existing callers
+  });
+
+  it('without claimHashAlg: keccak256 is tried first, then SHA-256, and the result says which matched', async () => {
+    expect(await matchClaimHash(vector.manifest, vector.keccak256)).toEqual({ alg: 'keccak256', hash: vector.keccak256, match: true, declared: false });
+    expect(await matchClaimHash(vector.manifest, vector.sha256)).toEqual({ alg: 'sha256', hash: vector.sha256, match: true, declared: false });
+    expect(await matchClaimHash(vector.manifest, `0x${'00'.repeat(32)}`)).toMatchObject({ alg: 'keccak256', match: false, declared: false });
+  });
+
+  it('a declared algorithm is the only one used', async () => {
+    expect(await matchClaimHash(vector.manifest, vector.sha256, 'sha256')).toMatchObject({ match: true, declared: true });
+    expect(await matchClaimHash(vector.manifest, vector.sha256, 'keccak256')).toMatchObject({ alg: 'keccak256', match: false, declared: true });
+  });
+
+  it('report #1’s demo claimHash matches no manifest here (it isn’t linked to a backend report)', async () => {
+    expect((await matchClaimHash(vector.manifest, '0x9d6133237e7553b91eb075f559c645abd7ab3eb1592e377496c1fa8dc2f8a112')).match).toBe(false);
   });
 });

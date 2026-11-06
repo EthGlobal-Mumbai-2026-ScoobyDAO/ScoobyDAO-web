@@ -1,121 +1,229 @@
 'use client';
 
-import { CheckCircle2, Circle, ExternalLink, Loader2, PauseCircle, Undo2 } from 'lucide-react';
+import { CheckCircle2, Circle, ExternalLink, Loader2, PauseCircle, Undo2, XCircle } from 'lucide-react';
 import Link from 'next/link';
 import type { Hex } from 'viem';
 import { zeroAddress } from 'viem';
 import { Banner } from '@/components/Banner';
 import { CcipNotVoteLabel } from '@/components/HonestyLabels';
+import { NetworkBadge } from '@/components/NetworkBadge';
 import { TxPlanStepper, usePlan } from '@/components/TxPlanStepper';
 import { explorer } from '@/lib/explorer';
 import { formatDate, formatUsdc, shortHex } from '@/lib/format';
-import { CCIP_SLOW_MINUTES, isSlow, type CcipStake } from '@/protocol';
-import { useActiveAccount, useCcip, useChainTime, useProtocol } from '@/protocol/hooks';
+import { CCIP_SLOW_MINUTES, isSameAddress, isSlowStake, isV2Example, V2_INFO, type CcipStake, type CcipStatus, type TrackedCcip } from '@/protocol';
+import { useActiveAccount, useCcip, useChainTime, useProtocol, useTrackedCcip, useWritesAllowed } from '@/protocol/hooks';
 
 const ARB = 421614;
 const SEPOLIA = 11155111;
 
-type StepState = 'done' | 'current' | 'todo' | 'held';
+export const CCIP_STATUS_LABEL: Record<CcipStatus, string> = {
+  sent: 'Sent',
+  in_transit: 'In transit',
+  failed: 'Delivery failed',
+  delivered: 'Delivered, not yet confirmed as a vote',
+  credited: 'Credited as a vote',
+  deferred_as_rep: 'Arrived late: became REP receipts',
+  held: 'Held — not counted',
+  recovered: 'Recovered',
+};
 
-/** Sent → In transit → Credited, or → Held → Recovered. Event logs and receiver state decide. */
+type StepState = 'done' | 'current' | 'todo' | 'stopped';
+
+/**
+ * V2 counts a vote only after Credited plus a fresh position/YT read (`refreshed`). V1 and the fixture
+ * chain have no receiver `delivered` flag; their Credited state is the vote itself.
+ */
+export const isVoted = (s: CcipStake) => s.status === 'credited' && (s.refreshed !== undefined || s.delivered === undefined);
+
+/** Sent → in transit (CCIP) → outcome on Ethereum Sepolia. Chain state and the CCIP API decide. */
 export function ccipSteps(s: CcipStake) {
   const st = s.status;
-  const sent: StepState = 'done';
-  const transit: StepState = st === 'sent' || st === 'in_transit' ? 'current' : 'done';
-  const landed: StepState = st === 'credited' ? 'done' : st === 'held' || st === 'recovered' ? 'held' : 'todo';
+  const landed = st === 'credited' || st === 'deferred_as_rep' || st === 'held' || st === 'recovered' || st === 'delivered';
+  const transit: StepState = landed ? 'done' : st === 'failed' ? 'stopped' : 'current';
+  const outcome: StepState = st === 'credited' ? (isVoted(s) ? 'done' : 'current') : st === 'delivered' ? 'current' : landed ? 'stopped' : 'todo';
+  const outcomeLabel =
+    st === 'credited'
+      ? isVoted(s)
+        ? 'Voted: credited on Ethereum Sepolia'
+        : 'Credited on Ethereum Sepolia (refreshing the position)'
+      : st === 'deferred_as_rep'
+        ? 'Not a vote: converted to REP receipts'
+        : st === 'held' || st === 'recovered'
+          ? 'Not a vote: held on Ethereum Sepolia'
+          : st === 'delivered'
+            ? 'Delivered: checking whether it was credited'
+            : st === 'failed'
+              ? 'Not executed on Ethereum Sepolia'
+              : 'Outcome on Ethereum Sepolia';
   return [
-    { key: 'sent', label: 'Sent on Arbitrum Sepolia', state: sent },
-    { key: 'transit', label: 'In transit (Chainlink CCIP)', state: transit },
-    { key: 'credited', label: st === 'held' || st === 'recovered' ? 'Held on Ethereum Sepolia' : 'Credited as a vote', state: landed },
-  ] as const;
+    { key: 'sent', label: 'Sent on Arbitrum Sepolia', state: 'done' as StepState },
+    { key: 'transit', label: st === 'failed' ? 'CCIP execution failed' : `In transit (Chainlink CCIP)${s.ccipApiStatus ? ` · ${s.ccipApiStatus}` : ''}`, state: transit },
+    { key: 'outcome', label: outcomeLabel, state: outcome },
+  ];
 }
+
+function StepIcon({ state }: { state: StepState }) {
+  if (state === 'done') return <CheckCircle2 className="text-clue-ink mt-0.5 shrink-0" size={20} aria-hidden />;
+  if (state === 'current') return <Loader2 className="text-beam-ink mt-0.5 shrink-0 animate-spin motion-reduce:animate-none" size={20} aria-hidden />;
+  if (state === 'stopped') return <PauseCircle className="text-mask-ink mt-0.5 shrink-0" size={20} aria-hidden />;
+  return <Circle className="text-muted mt-0.5 shrink-0" size={20} aria-hidden />;
+}
+
+const ExtLink = ({ href, children }: { href: string; children: React.ReactNode }) => (
+  <a href={href} target="_blank" rel="noreferrer" className="num text-beam-ink inline-flex items-center gap-1 text-sm underline">
+    {children} <ExternalLink size={12} aria-hidden />
+  </a>
+);
 
 export function CcipTracker({ stake: s }: { stake: CcipStake }) {
   const now = useChainTime();
-  const slow = now !== undefined && isSlow({ sent: { tx: s.sourceTx ?? '0x', at: s.sentAt } }, now) && s.status === 'in_transit';
+  const slow = now !== undefined && isSlowStake(s, now);
   return (
     <div className="space-y-4">
       <ol className="space-y-3">
         {ccipSteps(s).map((step) => (
           <li key={step.key} className="flex items-start gap-3">
-            {step.state === 'done' ? (
-              <CheckCircle2 className="text-clue-ink mt-0.5 shrink-0" size={20} aria-hidden />
-            ) : step.state === 'current' ? (
-              <Loader2 className="text-beam-ink mt-0.5 shrink-0 animate-spin motion-reduce:animate-none" size={20} aria-hidden />
-            ) : step.state === 'held' ? (
-              <PauseCircle className="text-mask-ink mt-0.5 shrink-0" size={20} aria-hidden />
-            ) : (
-              <Circle className="text-muted mt-0.5 shrink-0" size={20} aria-hidden />
-            )}
+            <StepIcon state={step.state} />
             <div>
               <p className="font-semibold">
                 {step.label}
-                <span className="sr-only"> ({step.state === 'held' ? 'held' : step.state})</span>
+                <span className="sr-only"> ({step.state})</span>
               </p>
-              {step.key === 'sent' && s.sourceTx && s.sourceTx !== '0x' && (
-                <a href={explorer.tx(s.sourceTx, ARB)} target="_blank" rel="noreferrer" className="num text-beam-ink inline-flex items-center gap-1 text-sm underline">
-                  {shortHex(s.sourceTx, 10, 6)} <ExternalLink size={12} aria-hidden />
-                </a>
-              )}
-              {step.key === 'transit' && (
-                <a href={explorer.ccip(s.messageId)} target="_blank" rel="noreferrer" className="text-beam-ink inline-flex items-center gap-1 text-sm underline">
-                  View in CCIP Explorer <ExternalLink size={12} aria-hidden />
-                </a>
-              )}
-              {step.key === 'credited' && s.destTx && s.destTx !== '0x' && (
-                <a href={explorer.tx(s.destTx, SEPOLIA)} target="_blank" rel="noreferrer" className="num text-beam-ink inline-flex items-center gap-1 text-sm underline">
-                  {shortHex(s.destTx, 10, 6)} <ExternalLink size={12} aria-hidden />
-                </a>
-              )}
+              {step.key === 'sent' && s.sourceTx && s.sourceTx !== '0x' && <ExtLink href={explorer.tx(s.sourceTx, ARB)}>{shortHex(s.sourceTx, 10, 6)}</ExtLink>}
+              {step.key === 'transit' && <ExtLink href={explorer.ccip(s.messageId)}>View in the CCIP Explorer</ExtLink>}
+              {step.key === 'outcome' && s.destTx && <ExtLink href={explorer.tx(s.destTx, SEPOLIA)}>{shortHex(s.destTx, 10, 6)}</ExtLink>}
             </div>
           </li>
         ))}
       </ol>
+      {s.ccipApiUnavailable && (s.status === 'sent' || s.status === 'in_transit') && (
+        <p className="text-muted text-sm">The CCIP status API couldn&apos;t be reached from this browser, so progress shows onchain state only. Use the CCIP Explorer link.</p>
+      )}
       {slow && (
         <p className="text-beam-ink text-sm" role="status">
-          Still in transit after {CCIP_SLOW_MINUTES} minutes. Testnet lanes can be slow; check the CCIP Explorer. If it arrives after lock it will be held, not
-          counted.
+          Still in transit after {CCIP_SLOW_MINUTES} minutes. Testnet lanes can be slow. A message that arrives after the stake window becomes REP receipts for
+          the sender, not a vote.
         </p>
       )}
-      {s.status === 'held' && <HeldPanel stake={s} />}
-      {s.status === 'recovered' && (
-        <Banner tone="info" title="Recovered" icon={Undo2}>
-          The held dUSD was returned. It never counted as a vote.
+      <Outcome stake={s} />
+      <CcipNotVoteLabel />
+    </div>
+  );
+}
+
+function Outcome({ stake: s }: { stake: CcipStake }) {
+  switch (s.status) {
+    case 'credited':
+      return s.refreshed ? (
+        <Banner tone="success" title="Voted">
+          The receiver credited <span className="num">{formatUsdc(s.amount)}</span> dUSD on {s.yes ? 'Yes' : 'No'} to <span className="num">{shortHex(s.recipient)}</span>. Their
+          {s.yes ? ' Yes' : ' No'} position is now <span className="num">{formatUsdc(s.refreshed.position)}</span> dUSD and they hold{' '}
+          <span className="num">{formatUsdc(s.refreshed.yt)}</span> YT (read at block {s.refreshed.blockNumber.toString()}).
         </Banner>
-      )}
-      {s.status === 'credited' && (
+      ) : isVoted(s) ? (
         <Banner tone="success" title="Credited">
           This stake now counts on Ethereum Sepolia.
         </Banner>
+      ) : (
+        <Banner tone="info" title="Credited — refreshing the recipient's position">
+          A Credited event was found. This page shows &ldquo;Voted&rdquo; once the position and YT balance have been re-read.
+        </Banner>
+      );
+    case 'deferred_as_rep':
+      return <DeferredPanel stake={s} />;
+    case 'held':
+      return <HeldPanel stake={s} />;
+    case 'recovered':
+      return (
+        <Banner tone="info" title="Recovered" icon={Undo2}>
+          The held dUSD was returned. It never counted as a vote.
+        </Banner>
+      );
+    case 'failed':
+      return (
+        <Banner tone="danger" title="Delivery failed — an operator can manually retry it in the CCIP explorer." icon={XCircle}>
+          Chainlink CCIP reports a failed execution on Ethereum Sepolia{s.readyForManualExecution ? ' and marks it ready for manual execution' : ''}. Nothing was credited.
+          This page keeps checking.
+        </Banner>
+      );
+    case 'delivered':
+      return (
+        <Banner tone="info" title="Delivered — delivery alone is not a vote">
+          {s.outcomeUnknown
+            ? 'The receiver marked this message delivered, but its Credited/DeferredAsREP/Held event wasn’t found in the recent log window. Check the destination transaction in the CCIP Explorer.'
+            : 'The receiver marked this message delivered. Checking whether it was credited as a vote.'}
+        </Banner>
+      );
+    default:
+      return null;
+  }
+}
+
+function DeferredPanel({ stake: s }: { stake: CcipStake }) {
+  const { protocol } = useProtocol();
+  const { address } = useActiveAccount();
+  const writes = useWritesAllowed();
+  const plan = usePlan();
+  const mine = isSameAddress(address, s.sourceAccount);
+  const rep = s.repBalance ?? 0n;
+  return (
+    <Banner tone="warning" title="Arrived after the stake window: converted to REP receipts for the source payer on Sepolia (withdrawable)">
+      <p>
+        Not a vote. <span className="num">{formatUsdc(s.amount)}</span> dUSD became REP for <span className="num">{shortHex(s.sourceAccount)}</span>, who holds{' '}
+        <span className="num">{formatUsdc(rep)}</span> REP now. REP withdraws 1:1 to dUSD at any time (vault.withdraw).
+      </p>
+      {mine && rep > 0n && protocol.withdrawRep ? (
+        <div className="mt-3 space-y-2">
+          <button
+            type="button"
+            disabled={plan.running || !writes.allowed}
+            onClick={() => void plan.start(() => protocol.withdrawRep!(rep, address!))}
+            className="bg-beam text-on-beam rounded-xl px-4 py-2 font-semibold hover:brightness-105 disabled:opacity-60"
+          >
+            Withdraw {formatUsdc(rep)} dUSD
+          </button>
+          <TxPlanStepper steps={plan.steps} buildError={plan.buildError} />
+        </div>
+      ) : (
+        !mine && <p className="mt-2">Connect the source payer&apos;s wallet to withdraw it, or stake the REP from the REP panel before the lock.</p>
       )}
-      <CcipNotVoteLabel />
-    </div>
+    </Banner>
   );
 }
 
 function HeldPanel({ stake: s }: { stake: CcipStake }) {
   const { protocol } = useProtocol();
   const { address } = useActiveAccount();
+  const writes = useWritesAllowed();
   const plan = usePlan();
   const operatorOnly = !s.recoveryRecipient || s.recoveryRecipient === zeroAddress;
-  const mine = !!address && !!s.recoveryRecipient && s.recoveryRecipient.toLowerCase() === address.toLowerCase();
+  const mine = !operatorOnly && isSameAddress(address, s.recoveryRecipient);
   const left = s.recoverable ?? 0n;
   return (
-    <Banner tone="warning" title="Arrived late or invalid — not counted as a vote. Your dUSD is recoverable.">
+    <Banner tone="warning" title="Held — not counted as a vote">
       <p>
-        Held: <span className="num">{formatUsdc(left)}</span> dUSD.
+        Recoverable: <span className="num">{formatUsdc(left)}</span> dUSD.
       </p>
       {operatorOnly ? (
-        <p className="mt-2">The message couldn&apos;t be decoded, so only the recovery operator can return these funds (CCIPStakeReceiver.recover).</p>
+        <p className="mt-2">
+          The message couldn&apos;t be decoded, so only the recovery operator
+          {s.recoveryOperator ? (
+            <>
+              {' '}
+              (<span className="num">{shortHex(s.recoveryOperator)}</span>)
+            </>
+          ) : null}{' '}
+          can return these funds.
+        </p>
       ) : !mine ? (
         <p className="mt-2">
-          Only the recipient <span className="num">{shortHex(s.recoveryRecipient)}</span> can recover, to their own address.
+          Only the source payer <span className="num">{shortHex(s.recoveryRecipient)}</span> can recover, to their own address.
         </p>
       ) : left > 0n && protocol.recoverCcip ? (
         <div className="mt-3 space-y-2">
           <button
             type="button"
-            disabled={plan.running}
+            disabled={plan.running || !writes.allowed}
             onClick={() => void plan.start(() => protocol.recoverCcip!(s.messageId, address!))}
             className="bg-beam text-on-beam rounded-xl px-4 py-2 font-semibold hover:brightness-105 disabled:opacity-60"
           >
@@ -128,18 +236,63 @@ function HeldPanel({ stake: s }: { stake: CcipStake }) {
   );
 }
 
+/** Compact rows for positions pages: one live status per message. */
 export function CcipStakeList({ stakes }: { stakes: CcipStake[] }) {
   return (
     <ul className="mt-2 space-y-1.5 text-sm">
       {stakes.map((s) => (
-        <li key={s.messageId} className="flex flex-wrap items-center gap-x-3">
-          <span className="num">{formatUsdc(s.amount)} dUSD</span>
-          <span>{s.yes ? 'Yes' : 'No'}</span>
-          <span className={s.status === 'held' ? 'text-mask-ink' : 'text-beam-ink'}>{s.status.replace('_', ' ')}</span>
-          <Link href={`/tx/ccip/${s.messageId}`} className="text-beam-ink underline">
-            Track
-          </Link>
-        </li>
+        <StakeRow key={s.messageId} s={s} />
+      ))}
+    </ul>
+  );
+}
+
+function StakeRow({ s }: { s: Pick<CcipStake, 'messageId' | 'amount' | 'yes' | 'status'> }) {
+  const bad = s.status === 'held' || s.status === 'failed' || s.status === 'deferred_as_rep';
+  return (
+    <li className="flex flex-wrap items-center gap-x-3">
+      <span className="num">{formatUsdc(s.amount)} dUSD</span>
+      <span>{s.yes ? 'Yes' : 'No'}</span>
+      <span className={bad ? 'text-mask-ink' : s.status === 'credited' ? 'text-clue-ink' : 'text-beam-ink'}>{CCIP_STATUS_LABEL[s.status]}</span>
+      <Link href={`/tx/ccip/${s.messageId}`} className="text-beam-ink underline">
+        Track
+      </Link>
+    </li>
+  );
+}
+
+function TrackedRow({ t }: { t: TrackedCcip }) {
+  const q = useCcip(t.messageId);
+  const s = q.data;
+  return (
+    <li className="flex flex-wrap items-center gap-x-3">
+      <span className="num">{formatUsdc(BigInt(t.amount))} dUSD</span>
+      <span>{t.side === 'yes' ? 'Yes' : 'No'}</span>
+      <span className={s && (s.status === 'held' || s.status === 'failed' || s.status === 'deferred_as_rep') ? 'text-mask-ink' : s?.status === 'credited' ? 'text-clue-ink' : 'text-beam-ink'}>
+        {q.isError ? 'status unavailable' : s ? CCIP_STATUS_LABEL[s.status] : 'checking…'}
+      </span>
+      <span className="text-muted">sent {formatDate(t.savedAt)}</span>
+      <Link href={`/tx/ccip/${t.messageId}`} className="text-beam-ink underline">
+        Track
+      </Link>
+    </li>
+  );
+}
+
+/** Cross-chain stakes this browser sent (and any the protocol reports), each with its live status. */
+export function TrackedCcipList({ reportId, extra = [], items }: { reportId?: bigint; extra?: CcipStake[]; items?: TrackedCcip[] }) {
+  const all = useTrackedCcip(reportId);
+  const tracked = items ?? all;
+  const ids = new Set(tracked.map((t) => t.messageId.toLowerCase()));
+  const others = extra.filter((s) => !ids.has(s.messageId.toLowerCase()));
+  if (tracked.length === 0 && others.length === 0) return null;
+  return (
+    <ul className="mt-2 space-y-1.5 text-sm">
+      {tracked.map((t) => (
+        <TrackedRow key={t.messageId} t={t} />
+      ))}
+      {others.map((s) => (
+        <StakeRow key={s.messageId} s={s} />
       ))}
     </ul>
   );
@@ -148,10 +301,22 @@ export function CcipStakeList({ stakes }: { stakes: CcipStake[] }) {
 export function CcipTrackerPage({ messageId }: { messageId: string }) {
   const valid = /^0x[0-9a-fA-F]{64}$/.test(messageId);
   const q = useCcip(valid ? (messageId as Hex) : undefined);
+  const { protocol } = useProtocol();
+  const example = valid && isV2Example(messageId);
+  const reportHref = (id: bigint) => (protocol.kind === 'v2' ? `/onchain/${id}` : `/case/${id}/stake`);
   return (
     <main className="mx-auto max-w-3xl px-4 py-10">
-      <h1 className="font-display text-4xl">Cross-chain stake</h1>
+      <div className="flex flex-wrap items-center gap-3">
+        <h1 className="font-display text-4xl">Cross-chain stake</h1>
+        <NetworkBadge chainId={ARB} label="Arbitrum Sepolia → Ethereum Sepolia" />
+      </div>
       <p className="num text-muted mt-2 break-all">{messageId}</p>
+      {example && (
+        <p className="text-muted mt-2 text-sm">
+          The handoff bundle&apos;s delivered example: its first destination attempt failed on low callback gas and was retried manually with 1,500,000 gas. New
+          sends use 1,500,000 from the start.
+        </p>
+      )}
       <div className="glass mt-6 p-6">
         {!valid ? (
           <Banner tone="danger" title="That isn't a CCIP message id">
@@ -165,21 +330,54 @@ export function CcipTrackerPage({ messageId }: { messageId: string }) {
           <div className="sweep h-40" aria-busy="true" aria-label="Loading message" />
         ) : !q.data ? (
           <Banner tone="info" title="No record of this message yet">
-            If you just sent it, the source event may not be indexed yet. This page checks again every 15 seconds.
+            Neither this browser, the CCIP API nor the receiver knows it yet. If you just sent it, this page checks again every 15 seconds.
           </Banner>
         ) : (
           <>
-            <p className="mb-4">
-              <span className="num font-semibold">{formatUsdc(q.data.amount)} dUSD</span> on {q.data.yes ? 'Yes' : 'No'} for{' '}
-              <Link href={`/case/${q.data.reportId}/stake`} className="text-beam-ink underline">
-                case #{q.data.reportId.toString()}
-              </Link>
-              {q.data.sentAt ? <span className="text-muted"> · sent {formatDate(q.data.sentAt)}</span> : null}
-            </p>
+            <dl className="mb-5 grid gap-3 text-sm sm:grid-cols-2">
+              <div>
+                <dt className="text-muted">Stake</dt>
+                <dd>
+                  <span className="num font-semibold">{formatUsdc(q.data.amount)} dUSD</span> on {q.data.yes ? 'Yes' : 'No'} for{' '}
+                  {q.data.reportId > 0n ? (
+                    <Link href={reportHref(q.data.reportId)} className="text-beam-ink underline">
+                      report #{q.data.reportId.toString()}
+                    </Link>
+                  ) : (
+                    'an unknown report'
+                  )}
+                </dd>
+              </div>
+              {q.data.sentAt ? (
+                <div>
+                  <dt className="text-muted">Sent</dt>
+                  <dd>{formatDate(q.data.sentAt)}</dd>
+                </div>
+              ) : null}
+              {q.data.sourceAccount && (
+                <div>
+                  <dt className="text-muted">Source payer (Arbitrum Sepolia)</dt>
+                  <dd className="num">{shortHex(q.data.sourceAccount)}</dd>
+                </div>
+              )}
+              {q.data.recipient !== zeroAddress && (
+                <div>
+                  <dt className="text-muted">Recipient (Ethereum Sepolia)</dt>
+                  <dd className="num">{shortHex(q.data.recipient)}</dd>
+                </div>
+              )}
+            </dl>
             <CcipTracker stake={q.data} />
           </>
         )}
       </div>
+      {!example && protocol.kind === 'v2' && (
+        <p className="mt-4 text-sm">
+          <Link href={`/tx/ccip/${V2_INFO.exampleCCIP.messageId}`} className="text-beam-ink underline">
+            See a delivered example
+          </Link>
+        </p>
+      )}
     </main>
   );
 }

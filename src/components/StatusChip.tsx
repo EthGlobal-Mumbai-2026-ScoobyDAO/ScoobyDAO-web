@@ -1,5 +1,6 @@
 import {
   Ban,
+  BookCheck,
   CircleCheck,
   FileText,
   Flashlight,
@@ -27,6 +28,7 @@ export const STATUS_META: Record<
   awaiting_approval: { label: 'Awaiting approval', tone: 'ghost', Icon: Search, hint: 'A reviewer is checking it in World App.' },
   denied: { label: 'Denied', tone: 'dim', Icon: Ban, hint: 'The reviewer declined. No case opened.' },
   expired: { label: 'Expired', tone: 'dim', Icon: Hourglass, hint: 'Nobody approved in time. No case opened.' },
+  published: { label: 'Published', tone: 'ghost', Icon: BookCheck, hint: 'The backend reports an onchain publication; the case file verifies it against the registry.' },
   open: { label: 'Open', tone: 'clue', Icon: Flashlight, hint: 'Stakes open on Ethereum Sepolia and via CCIP.' },
   open_local_only: { label: 'Cross-chain closed', tone: 'clue', Icon: Globe2, hint: 'Only direct stakes on Ethereum Sepolia until lock.' },
   locked: { label: 'Locked', tone: 'ghost', Icon: Lock, hint: 'Stakes are locked; YT accrues simulated yield.' },

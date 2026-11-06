@@ -34,7 +34,7 @@ import {
   type MarketView,
   type PositionView,
   type Protocol,
-  type RepAuthorization,
+  type ReputationBadgeAuthorization,
   type TxPlan,
 } from './types';
 
@@ -295,9 +295,9 @@ export const v1: Protocol = {
       }
     }
 
-    let repBadge = false;
+    let reputationBadge = false;
     if (eth.Reputation) {
-      repBadge = (await c.readContract({
+      reputationBadge = (await c.readContract({
         address: eth.Reputation,
         abi: reputationAbi,
         functionName: 'hasBadge',
@@ -342,7 +342,8 @@ export const v1: Protocol = {
       lpClaimable,
       pendingCcip,
       redeemable,
-      repBadge,
+      reputationBadge,
+      repReceipt: 0n,
       dusdBalance,
       allowance,
       remote,
@@ -473,10 +474,10 @@ export const v1: Protocol = {
     return [{ label: 'Claim LP yield', chainId: SEPOLIA_ID, request: call(hook, yieldMarketHookAbi as Abi, 'claimLPYield') }];
   },
 
-  async claimRep(a: RepAuthorization) {
+  async claimReputationBadge(a: ReputationBadgeAuthorization) {
     return [
       {
-        label: 'Claim REP badge',
+        label: 'Claim reputation badge (World ID, V1)',
         chainId: SEPOLIA_ID,
         request: call(req(eth.Reputation, 'Reputation'), reputationAbi as Abi, 'claimWinnerREP', [
           BigInt(a.reportId),

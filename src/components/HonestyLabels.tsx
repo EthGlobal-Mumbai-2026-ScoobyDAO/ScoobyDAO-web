@@ -1,4 +1,4 @@
-import { Clock, Eye, FlaskConical, Fingerprint, Globe2, Info, Sprout } from 'lucide-react';
+import { Clock, Eye, FileWarning, FlaskConical, Fingerprint, Globe2, Info, LineChart, Sprout } from 'lucide-react';
 import type { ComponentType, ReactNode } from 'react';
 
 // The honesty labels. Exact strings; reuse these components rather than retyping the copy.
@@ -10,7 +10,13 @@ export const LABELS = {
   ytNotPrediction: 'The YT price is not a prediction of the verdict',
   ccipNotVote: 'A CCIP transfer is not a vote until it is credited',
   demoIdentity: 'Demo identity: World Agent Pass',
+  curveNotOracle: 'Curve output — not a Yes/No probability or verdict oracle',
+  simulatedYieldDemo: 'Simulated yield — demo only',
+  estimate: 'Estimate — final amount comes from the claim receipt',
 } as const;
+
+/** V2 report #1 carries demo hashes: never present it as a backend research report. */
+export const demoReportLabel = (id: bigint | string) => `Demo report #${id} (onchain) — not linked to a backend research report`;
 
 function Tag({ icon: Icon, children, title }: { icon: ComponentType<{ size?: number; 'aria-hidden'?: boolean }>; children: ReactNode; title?: string }) {
   return (
@@ -43,3 +49,19 @@ export const DemoIdentityLabel = () => (
   </Tag>
 );
 export const YtNotPredictionLabel = () => <Tag icon={Info}>{LABELS.ytNotPrediction}</Tag>;
+export const DemoReportLabel = ({ id }: { id: bigint | string }) => (
+  <Tag icon={FileWarning} title="Report #1 was published with demo reportHash/claimHash values; no backend research report maps to it.">
+    {demoReportLabel(id)}
+  </Tag>
+);
+export const CurveNotOracleLabel = () => (
+  <Tag icon={LineChart} title="Price and implied APR come from the hook's rate curve and trades in YT. They say nothing about how the report resolves.">
+    {LABELS.curveNotOracle}
+  </Tag>
+);
+export const SimulatedYieldDemoLabel = () => (
+  <Tag icon={Sprout} title="injectYield moves dUSD from the caller into the YT yield index. It is not lending interest.">
+    {LABELS.simulatedYieldDemo}
+  </Tag>
+);
+export const EstimateLabel = () => <Tag icon={Info}>{LABELS.estimate}</Tag>;

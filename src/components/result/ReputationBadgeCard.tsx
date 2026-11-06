@@ -12,27 +12,29 @@ import { useActiveAccount, useProtocol } from '@/protocol/hooks';
 
 type State = 'idle' | 'verifying' | 'claiming' | 'success' | 'already' | 'cancelled' | 'ineligible';
 
+export const REPUTATION_BADGE_TITLE = 'Reputation badge (World ID) — V1 only';
+
 /**
- * One REP badge per verified human per report (Reputation.claimWinnerREP). Behind
- * NEXT_PUBLIC_REP_ENABLED. The backend endpoint that verifies the World IDKit proof and signs the
- * authorization (proposed POST /web/v1/rep/authorize) doesn't exist yet, and IDKit 4.x needs a
- * backend-signed rp_context, so the live path is not wired; fixtures simulate the proof (NOTES.md).
+ * V1 only: one World ID reputation badge per verified human per report (Reputation.claimWinnerREP),
+ * behind NEXT_PUBLIC_REPUTATION_BADGE_ENABLED. Not the V2 "REP" stake receipt, and never shown in
+ * V2 mode. The backend endpoint that verifies the IDKit proof and signs the authorization (proposed
+ * POST /web/v1/reputation-badge/authorize) doesn't exist, so the live path is not wired (NOTES.md).
  */
-export function RepCard({ market: m, pos }: { market: MarketView; pos: PositionView }) {
+export function ReputationBadgeCard({ market: m, pos }: { market: MarketView; pos: PositionView }) {
   const { protocol } = useProtocol();
   const apiFixtures = useFixturesMode().data ?? false;
   const { address } = useActiveAccount();
   const plan = usePlan();
-  const [state, setState] = useState<State>(pos.repBadge ? 'success' : 'idle');
+  const [state, setState] = useState<State>(pos.reputationBadge ? 'success' : 'idle');
   const winner = m.phase === 'final_yes' ? pos.yes > 0n : m.phase === 'final_no' ? pos.no > 0n : false;
 
   const claim = async (proof: unknown) => {
-    if (!address || !protocol.claimRep) return;
+    if (!address || !protocol.claimReputationBadge) return;
     setState('verifying');
     try {
-      const auth = await api.authorizeRep({ reportId: m.reportId.toString(), recipient: address, proof });
+      const auth = await api.authorizeReputationBadge({ reportId: m.reportId.toString(), recipient: address, proof });
       setState('claiming');
-      const r = await plan.start(() => protocol.claimRep!(auth));
+      const r = await plan.start(() => protocol.claimReputationBadge!(auth));
       setState(r.ok ? 'success' : r.reason?.includes('ALREADY_CLAIMED') ? 'already' : r.reason?.includes('INELIGIBLE') ? 'ineligible' : 'idle');
     } catch (e) {
       setState(e instanceof ApiError && e.status === 409 ? 'already' : e instanceof ApiError && e.status === 400 ? 'cancelled' : 'idle');
@@ -42,13 +44,13 @@ export function RepCard({ market: m, pos }: { market: MarketView; pos: PositionV
   return (
     <div className="glass space-y-3 p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="font-semibold">Claim REP badge</h3>
+        <h3 className="font-semibold">{REPUTATION_BADGE_TITLE}</h3>
         <DemoIdentityLabel />
       </div>
       <p className="text-muted text-sm">One reputation badge per verified human (World ID) for this report.</p>
       {state === 'success' ? (
         <p className="text-clue-ink flex items-center gap-2 font-semibold" role="status">
-          <BadgeCheck size={18} aria-hidden /> REP badge claimed.
+          <BadgeCheck size={18} aria-hidden /> Reputation badge claimed.
         </p>
       ) : state === 'already' ? (
         <Banner tone="warning" title="This human already claimed a badge for this report" />
