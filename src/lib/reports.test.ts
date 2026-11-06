@@ -2,13 +2,22 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { backendReportAdapter, reportApiBase, verifyAsset } from './reports';
 
 afterEach(() => vi.unstubAllGlobals());
-describe('local report API', () => {
-  it('accepts only explicit loopback HTTP origins', () => {
+describe('configured report API', () => {
+  it('accepts HTTPS origins and loopback HTTP only', () => {
     expect(reportApiBase('http://127.0.0.1:50653')).toBe('http://127.0.0.1:50653');
-    expect(reportApiBase('https://evil.test')).toBeNull();
+    expect(reportApiBase('https://research.example')).toBe('https://research.example');
+    expect(reportApiBase('http://research.example')).toBeNull();
+    expect(reportApiBase('https://user:pass@research.example')).toBeNull();
+    expect(reportApiBase('https://research.example/?x=1')).toBeNull();
     expect(reportApiBase('http://localhost.evil.test')).toBeNull();
     expect(reportApiBase('http://localhost:8000/path')).toBeNull();
     expect(reportApiBase(undefined)).toBeNull();
+  });
+  it('uses an explicitly configured HTTPS API origin', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('[]'));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(backendReportAdapter('https://research.example').list()).resolves.toEqual([]);
+    expect(fetchMock.mock.calls[0][0]).toBe('https://research.example/reports');
   });
   it('rejects a manifest from another report digest', async () => {
     const item = {
