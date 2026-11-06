@@ -85,6 +85,7 @@ function PoolStats({ market: m }: { market: MarketView }) {
   const p = m.market;
   const left = (p?.maturity || m.maturity) - now;
   const apr = p?.impliedRateWad ?? impliedAprFromPrice(p?.spotPriceWad, left);
+  const ytPerDusd = p?.spotPriceWad ? (WAD * WAD) / p.spotPriceWad : undefined;
   return (
     <section aria-labelledby="pool-h" className="glass space-y-4 p-5 sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -98,7 +99,8 @@ function PoolStats({ market: m }: { market: MarketView }) {
       ) : (
         <>
           <dl className="grid grid-cols-2 gap-4">
-            <Stat label="Price (dUSD per YT)" value={formatWad(p.spotPriceWad, 6)} />
+            <Stat label="1 YT costs" value={`${formatWad(p.spotPriceWad, 9)} dUSD`} />
+            <Stat label="1 dUSD buys (spot)" value={`${formatWad(ytPerDusd, 6)} YT`} />
             <Stat label={p.impliedRateWad !== undefined ? 'Implied APR' : 'Implied APR (from price)'} value={apr !== undefined ? formatRateWad(apr) : '—'} />
             <Stat label="Time to maturity" value={left > 0 ? formatDuration(left) : 'matured'} />
             <Stat label="Hook fee" value={p.feePips !== undefined ? `${(p.feePips / 10_000).toFixed(2)}%` : '—'} />
@@ -203,6 +205,57 @@ function SwapPanel({ market: m }: { market: MarketView }) {
   const reserves = m.market?.reserves;
   // About how much dUSD buys the pool's YT inventory at today's spot (the curve adds a little).
   const maxBuy = reserves && m.market?.spotPriceWad ? (reserves.yt * m.market.spotPriceWad) / WAD : undefined;
+  const rangeCap = (() => {
+    if (!bal || bal <= 0n) return undefined;
+    if (dir === 'sell') return bal;
+    const poolEstimate = maxBuy !== undefined ? maxBuy * 64n + 64n : 1_000_000n;
+    return bal < poolEstimate ? bal : poolEstimate;
+  })();
+  const executableRange = useQuery({
+    queryKey: ['protocol', protocol.kind, 'quoteYTRange', m.reportId.toString(), dir, rangeCap?.toString(), m.blockNumber.toString()],
+    queryFn: async () => {
+      const cap = rangeCap!;
+      const works = async (amount: bigint) => {
+        try {
+          return (await protocol.quoteYT(m.reportId, dir, amount)).out > 0n;
+        } catch {
+          return false;
+        }
+      };
+
+      let first: bigint | undefined;
+      const tinyLimit = cap < 64n ? cap : 64n;
+      for (let amount = 1n; amount <= tinyLimit; amount += 1n) {
+        if (await works(amount)) {
+          first = amount;
+          break;
+        }
+      }
+      if (first === undefined) {
+        for (let amount = 128n; amount <= cap; amount *= 2n) {
+          if (await works(amount)) {
+            first = amount;
+            break;
+          }
+        }
+      }
+      if (first === undefined && cap > tinyLimit && (await works(cap))) first = cap;
+      if (first === undefined) return null;
+      if (first === cap || (await works(cap))) return { min: first, max: cap };
+
+      let low = first;
+      let high = cap;
+      while (high - low > 1n) {
+        const mid = (low + high) / 2n;
+        if (await works(mid)) low = mid;
+        else high = mid;
+      }
+      return { min: first, max: low };
+    },
+    enabled: !block && rangeCap !== undefined,
+    staleTime: 30_000,
+    retry: false,
+  });
 
   if (block)
     return (
@@ -244,10 +297,17 @@ function SwapPanel({ market: m }: { market: MarketView }) {
       ) : (
         <>
           <AmountField label={`You pay (${dir === 'buy' ? 'dUSD' : 'YT'})`} unit={dir === 'buy' ? 'dUSD' : 'YT'} value={input} onChange={setInput} balance={bal} placeholder="0.50" />
+          <p className="text-muted text-xs" aria-live="polite">
+            {executableRange.isFetching
+              ? 'Checking the executable range for your balance and the current pool…'
+              : executableRange.data
+                ? `Enter ${formatUsdc(executableRange.data.min, { exact: true })} to ${formatUsdc(executableRange.data.max, { exact: true })} ${dir === 'buy' ? 'dUSD' : 'YT'} at the current pool state.`
+                : 'No executable amount is available for your balance at the current pool state.'}
+          </p>
           {reserves && (
             <p className="text-muted text-xs">
               {dir === 'buy'
-                ? `The pool holds ${formatUsdc(reserves.yt)} YT; a buy must leave some behind${maxBuy !== undefined ? ` (about ${formatUsdc(maxBuy)} dUSD buys all of it at today's price)` : ''}.`
+                ? `The pool holds ${formatUsdc(reserves.yt)} YT; a buy must leave some behind${maxBuy !== undefined ? ` (spot-value estimate: ${formatUsdc(maxBuy, { exact: true })} dUSD for that inventory)` : ''}.`
                 : `The pool holds ${formatUsdc(reserves.usdc)} dUSD; a sale must leave some behind.`}
             </p>
           )}
@@ -349,7 +409,9 @@ function RecentTrades() {
             {trades.data.slice(0, 8).map((t) => (
               <tr key={`${t.tx}-${t.amountIn}`} className="border-line border-t">
                 <td className="num py-1.5">
-                  {t.usdcIn ? `${formatUsdc(t.amountIn)} dUSD → ${formatUsdc(t.amountOut)} YT` : `${formatUsdc(t.amountIn)} YT → ${formatUsdc(t.amountOut, { exact: true })} dUSD`}
+                  {t.usdcIn
+                    ? `${formatUsdc(t.amountIn, { exact: true })} dUSD → ${formatUsdc(t.amountOut, { exact: true })} YT`
+                    : `${formatUsdc(t.amountIn, { exact: true })} YT → ${formatUsdc(t.amountOut, { exact: true })} dUSD`}
                 </td>
                 <td className="num py-1.5">{t.rateWad !== undefined ? formatRateWad(t.rateWad) : '—'}</td>
                 <td className="py-1.5">

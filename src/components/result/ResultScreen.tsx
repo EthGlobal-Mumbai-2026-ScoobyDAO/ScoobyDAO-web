@@ -19,6 +19,7 @@ import { estimatePaid } from '@/lib/payout';
 import {
   canChallenge,
   canFinalize,
+  canPropose,
   challengeEnds,
   claimPrincipalOpen,
   claimsCloseAt,
@@ -41,6 +42,7 @@ export function ResultScreen({ id, base = '/case' }: { id: string; base?: CaseBa
             <p className="glass p-6">Published onchain — no market deployed for this report yet, so there is nothing to settle or claim.</p>
           ) : (
             <>
+              <DemoVerdict market={market.data} />
               <Verdict market={market.data} />
               <div className="grid gap-6 lg:grid-cols-[1fr_1fr]">
                 <SettlementTimeline market={market.data} />
@@ -55,6 +57,58 @@ export function ResultScreen({ id, base = '/case' }: { id: string; base?: CaseBa
         </main>
       )}
     </CaseFrame>
+  );
+}
+
+const DEMO_VERDICT = 'Yes this token price went down by 80% and report already showed it suspicious, so yes it is a suspicious token';
+
+function DemoVerdict({ market: m }: { market: MarketView }) {
+  const { protocol } = useProtocol();
+  const { address } = useActiveAccount();
+  const writes = useWritesAllowed();
+  const plan = usePlan();
+  const now = useChainTime() ?? m.chainTime;
+  const [shown, setShown] = useState(false);
+  const [hash, setHash] = useState<`0x${string}` | null>(null);
+  if (isFinal(m.phase) || (m.decision?.proposedAt ?? 0) > 0) return null;
+
+  const resolver = address?.toLowerCase() === m.resolver.toLowerCase();
+  const proposalOpen = canPropose(m, now);
+  const accept = async () => {
+    const verdictHash = hash ?? (await evidenceHash(DEMO_VERDICT));
+    setHash(verdictHash);
+    await plan.start(() => protocol.propose!(m.reportId, 'yes', verdictHash));
+  };
+
+  return (
+    <section aria-labelledby="demo-verdict-h" className="glass space-y-3 p-5 sm:p-6">
+      <div>
+        <h2 id="demo-verdict-h" className="font-display text-2xl">Demo verdict</h2>
+        <p className="text-muted mt-1 text-xs">Temporary hardcoded demo text — this is not calculated by an oracle or price feed.</p>
+      </div>
+      {!shown ? (
+        <button type="button" onClick={() => setShown(true)} className="bg-beam text-on-beam rounded-xl px-4 py-2.5 font-semibold hover:brightness-105">
+          Get verdict
+        </button>
+      ) : (
+        <>
+          <p className="text-lg font-semibold">{DEMO_VERDICT}</p>
+          <p className="text-muted text-sm">Accepting proposes <strong>Yes</strong> onchain with the SHA-256 hash of this text. It still requires the challenge window and finalization.</p>
+          {!proposalOpen && <p className="text-muted text-sm">Onchain acceptance opens at maturity ({formatDate(m.maturity)}) and closes at the result deadline ({formatDate(m.resultDeadline)}).</p>}
+          {proposalOpen && !resolver && <p className="text-mask-ink text-sm">Connect the resolver wallet {m.resolver} to accept this verdict onchain.</p>}
+          <WritesBlockedNote />
+          <button
+            type="button"
+            disabled={!protocol.propose || !proposalOpen || !resolver || !writes.allowed || plan.running}
+            onClick={() => void accept()}
+            className="bg-beam text-on-beam rounded-xl px-4 py-2.5 font-semibold hover:brightness-105 disabled:opacity-50"
+          >
+            {plan.running ? 'Proposing Yes…' : 'Accept verdict and propose Yes onchain'}
+          </button>
+          <TxPlanStepper steps={plan.steps} buildError={plan.buildError} />
+        </>
+      )}
+    </section>
   );
 }
 

@@ -1,13 +1,12 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import type { ReportChoice } from '@/protocol/reportDiscovery';
 
 export function ReportDropdown({ choices, deployment, id }: { choices: ReportChoice[]; deployment: string; id: string }) {
   const router = useRouter();
   const value = `${deployment}:${id}`;
-  return <div className="mx-auto flex max-w-6xl flex-wrap items-end justify-between gap-4 px-4 pt-8">
+  return <div className="mx-auto flex max-w-6xl flex-wrap items-end gap-4 px-4 pt-8">
     <label className="block max-w-xl space-y-2 text-sm font-semibold" htmlFor="report-select">
       <span>Select report</span>
       <select id="report-select" value={value} onChange={event => {
@@ -19,6 +18,5 @@ export function ReportDropdown({ choices, deployment, id }: { choices: ReportCho
         </option>)}
       </select>
     </label>
-    <Link href="/markets/publish" className="text-beam-ink text-sm font-semibold underline">Publish report onchain</Link>
   </div>;
 }
