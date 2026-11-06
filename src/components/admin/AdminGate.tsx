@@ -7,44 +7,54 @@ import { useEffect, useSyncExternalStore, type ReactNode } from 'react';
 import { Banner } from '@/components/Banner';
 import { Countdown } from '@/components/Countdown';
 import { ApiError } from '@/lib/api';
-import { adminApi, adminToken, FINAL_SESSION, type AdminSession } from '@/lib/adminApi';
+import { adminApi, adminToken, FINAL_SESSION, reportKey, type AdminSession } from '@/lib/adminApi';
 
-export const adminSessionKey = ['admin-session'] as const;
+export const readSessionKey = (report: string) => ['admin-session', report] as const;
 
 const ENDED: Record<string, { title: string; body: string }> = {
   denied: {
-    title: 'Sign-in denied in World App',
-    body: 'Nothing was opened. Start again to sign in.',
+    title: 'Denied in World App',
+    body: 'The report was not opened. Press Read to try again.',
   },
-  expired: { title: 'The sign-in code expired', body: 'Start again for a new code.' },
-  cancelled: { title: 'Sign-in cancelled', body: 'Start again to sign in.' },
+  expired: { title: 'The code expired', body: 'Press Read for a new code.' },
+  cancelled: { title: 'Cancelled', body: 'Press Read to try again.' },
   not_permitted: {
-    title: "This World ID can't use the review desk",
-    body: 'The backend did not grant it a review permission. Check that the World ID is Orb-verified and linked to a World ID account.',
+    title: "This World ID can't review reports",
+    body: 'The confirmed World ID is not an enrolled reviewer. Ask an operator to add it to the reviewer list.',
   },
   failed: {
-    title: "World couldn't confirm the sign-in",
-    body: 'Nothing was opened. Start again to sign in.',
+    title: "World couldn't confirm",
+    body: 'The report was not opened. Press Read to try again.',
   },
-  revoked: { title: 'Signed out', body: 'Sign in again to continue.' },
+  revoked: { title: 'Closed', body: 'Press Read to open this report again.' },
 };
 
 /**
- * Review desk sign-in. Anyone may start a World login; the backend decides whether the confirmed World ID may
- * review (any validated World ID when SCOOBY_OPEN_REVIEW is on). Children render only for an active session.
+ * Read gate for one report version. Pressing Read starts a World login limited to this report; the backend decides
+ * whether the confirmed World ID may review it. Children render only for an active session for this report, and
+ * that session opens nothing else.
  */
-export function AdminGate({ children }: { children: (session: AdminSession) => ReactNode }) {
+export function ReadGate({
+  id,
+  version,
+  children,
+}: {
+  id: string;
+  version: string;
+  children: (session: AdminSession) => ReactNode;
+}) {
+  const report = reportKey(id, version);
   const qc = useQueryClient();
   // Server render and first paint have no token (sessionStorage is client-only).
   const hasToken = useSyncExternalStore(
     adminToken.subscribe,
-    () => !!adminToken.get(),
+    () => !!adminToken.get(report),
     () => false,
   );
 
   const session = useQuery({
-    queryKey: adminSessionKey,
-    queryFn: () => adminApi.getSession(),
+    queryKey: readSessionKey(report),
+    queryFn: () => adminApi.getSession(report),
     enabled: hasToken,
     retry: false,
     refetchInterval: (q) =>
@@ -52,19 +62,19 @@ export function AdminGate({ children }: { children: (session: AdminSession) => R
     refetchIntervalInBackground: true,
   });
   const start = useMutation({
-    mutationFn: () => adminApi.startSession(),
-    onSuccess: (s) => qc.setQueryData(adminSessionKey, s),
+    mutationFn: () => adminApi.startSession(id, version),
+    onSuccess: (s) => qc.setQueryData(readSessionKey(report), s),
   });
-  const signOut = useMutation({
-    mutationFn: () => adminApi.endSession(),
-    onSettled: () => qc.removeQueries({ queryKey: adminSessionKey }),
+  const close = useMutation({
+    mutationFn: () => adminApi.endSession(report),
+    onSettled: () => qc.removeQueries({ queryKey: readSessionKey(report) }),
   });
 
-  // An unknown or expired token: forget it and offer a fresh sign-in.
+  // An unknown or expired token: forget it and offer Read again.
   const unauthorized = session.error instanceof ApiError && session.error.status === 401;
   useEffect(() => {
-    if (unauthorized) adminToken.clear();
-  }, [unauthorized]);
+    if (unauthorized) adminToken.clear(report);
+  }, [unauthorized, report]);
 
   const s = hasToken ? session.data : undefined;
   if (s?.state === 'active')
@@ -72,44 +82,54 @@ export function AdminGate({ children }: { children: (session: AdminSession) => R
       <>
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3 text-sm">
           <p className="text-muted">
-            Signed in with World ID
+            Opened with World ID
             {s.label ? (
               <>
                 {' '}
                 as <span className="text-text font-semibold">{s.label}</span>
               </>
-            ) : null}
-            {s.scopes?.length ? <> · {s.scopes.join(', ')}</> : null}
+            ) : null}{' '}
+            · this report only
             {s.expires_at ? (
               <>
                 {' '}
-                · session ends in <Countdown to={s.expires_at} endedLabel="now" />
+                · closes in <Countdown to={s.expires_at} endedLabel="now" />
               </>
             ) : null}
           </p>
           <button
             type="button"
-            onClick={() => signOut.mutate()}
+            onClick={() => close.mutate()}
             className="border-line inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 font-semibold hover:border-[var(--fog-400)]"
           >
-            <LogOut size={16} aria-hidden /> Sign out
+            <LogOut size={16} aria-hidden /> Close report
           </button>
         </div>
         {children(s)}
       </>
     );
 
-  if (s?.state === 'pending') return <SignInCode session={s} onCancel={() => signOut.mutate()} />;
+  if (s?.state === 'pending')
+    return (
+      <WorldCodePanel
+        title="Read: confirm in World App"
+        userCode={s.user_code}
+        verificationUri={s.verification_uri}
+        expiresAt={s.expires_at}
+        note="Scan the QR code from inside World App (or open the link on the phone with World App) and check that it shows this code. This opens only this report."
+        onCancel={() => close.mutate()}
+      />
+    );
 
   const ended = s && FINAL_SESSION.includes(s.state) ? ENDED[s.state] : undefined;
   return (
-    <section aria-labelledby="signin-h" className="glass max-w-2xl space-y-5 p-6 sm:p-8">
-      <h2 id="signin-h" className="font-display text-3xl">
-        Sign in with World ID
+    <section aria-labelledby="read-h" className="glass max-w-2xl space-y-5 p-6 sm:p-8">
+      <h2 id="read-h" className="font-display text-3xl">
+        Read this report
       </h2>
       <p className="text-muted">
-        The review desk shows reports before they are public. Sign in with World App to read them;
-        each approval, rejection or revision is confirmed in World App again.
+        This report is not public yet. Confirm with World ID to open it; the confirmation opens only
+        this report. Each approval, rejection or revision is confirmed in World App again.
       </p>
       {ended && (
         <Banner tone={s?.state === 'revoked' ? 'info' : 'warning'} title={ended.title}>
@@ -117,7 +137,7 @@ export function AdminGate({ children }: { children: (session: AdminSession) => R
         </Banner>
       )}
       {start.isError && (
-        <Banner tone="danger" title="The sign-in didn't start">
+        <Banner tone="danger" title="Read didn't start">
           {start.error.message}
         </Banner>
       )}
@@ -127,7 +147,7 @@ export function AdminGate({ children }: { children: (session: AdminSession) => R
         disabled={start.isPending}
         className="bg-beam text-on-beam inline-flex items-center gap-2 rounded-xl px-5 py-3 font-semibold hover:brightness-105 disabled:opacity-60"
       >
-        <ScanEye size={18} aria-hidden /> {start.isPending ? 'Starting…' : 'Sign in with World App'}
+        <ScanEye size={18} aria-hidden /> {start.isPending ? 'Starting…' : 'Read with World ID'}
       </button>
     </section>
   );
@@ -202,18 +222,5 @@ export function WorldCodePanel({
         </button>
       )}
     </section>
-  );
-}
-
-function SignInCode({ session, onCancel }: { session: AdminSession; onCancel: () => void }) {
-  return (
-    <WorldCodePanel
-      title="Sign in: confirm in World App"
-      userCode={session.user_code}
-      verificationUri={session.verification_uri}
-      expiresAt={session.expires_at}
-      note="Scan the QR code from inside World App (or open the link on the phone with World App) and check that it shows this code."
-      onCancel={onCancel}
-    />
   );
 }

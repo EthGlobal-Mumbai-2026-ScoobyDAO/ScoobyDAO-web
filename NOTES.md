@@ -7,6 +7,8 @@ Running log for `scoobydao-web`. Precedence when docs disagree: INTERFACES.md (d
 ## Review desk (Nov 2026)
 
 - `/admin` and `/admin/reviews/[id]/[version]` consume the backend review desk (`/web/v1/admin`, contract `schemas/runtime/admin-checkpoints-v1.schema.json` in ScoobyDAO-backend). Client: `src/lib/adminApi.ts`; session token in `sessionStorage` only (`src/lib/adminToken.ts`), sent as `Authorization: Bearer`.
+- Per-report Read (backend PR #26): `/admin` lists `GET /web/v1/review-queue` anonymously (id, version, hash, state) with a Read button per report. Read starts a World login limited to that report version (`POST /admin/session` with `{report_id, version}`); its token is stored per report (`<report_id>@<version>` in `sessionStorage`) and opens nothing else. Backend `SCOOBY_REVIEW_PER_REPORT=true` makes this mandatory. Publication sign-off uses the session of the same report; `GET /approvals/:id` looks up which report an attempt belongs to.
+- Review file URLs (`/web/v1/admin/…`) are resolved through `NEXT_PUBLIC_API_URL`, so they work with the `/api/backend` proxy as well as an absolute base.
 - Sign-in is a World device login; the backend decides who may review. With backend `SCOOBY_OPEN_REVIEW=true` any World ID that passes login validation (Orb by default) gets `report_review` and `publication`; otherwise only enrolled reviewers. The UI never decides access or approval.
 - Every approve / reject / revise is a separate World App confirmation by the same World ID that signed in; the backend binds it to the review target digest the reviewer saw (`expected_target_digest`).
 - Full report files need the bearer header, so they are fetched and shown from a blob URL in a sandboxed iframe (`sandbox="allow-scripts"`, opaque origin).

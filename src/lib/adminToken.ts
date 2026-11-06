@@ -1,42 +1,64 @@
-// Admin review-desk session token (see adminApi.ts). Kept separate so api.ts can send it without importing adminApi.
-const TOKEN_KEY = 'unmasked.admin-session';
+// Review desk session tokens (see adminApi.ts). Kept separate so api.ts can send them without importing adminApi.
+// Each report version is read through its own World confirmation ("Read" button), so each has its own session token,
+// keyed by `<report_id>@<version>` (the same id the /web/v1 report adapter uses). Tokens live in sessionStorage only
+// (cleared with the tab), never in a cookie.
+const TOKENS_KEY = 'unmasked.review-sessions';
+const ATTEMPTS_KEY = 'unmasked.publication-attempts';
 const listeners = new Set<() => void>();
 const notify = () => listeners.forEach((l) => l());
 
-/** The session bearer token lives in sessionStorage only (cleared with the tab); never in a cookie. */
+export const reportKey = (reportId: string, version: string) => `${reportId}@${version}`;
+
+function readMap(key: string): Record<string, string> {
+  try {
+    if (typeof window === 'undefined') return {};
+    const v = JSON.parse(window.sessionStorage.getItem(key) ?? '{}');
+    return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, string>) : {};
+  } catch {
+    return {};
+  }
+}
+function writeMap(key: string, map: Record<string, string>) {
+  try {
+    window.sessionStorage.setItem(key, JSON.stringify(map));
+  } catch {
+    /* storage blocked: the session only lasts for this page */
+  }
+}
+
 export const adminToken = {
-  get(): string | null {
-    try {
-      return typeof window === 'undefined' ? null : window.sessionStorage.getItem(TOKEN_KEY);
-    } catch {
-      return null;
-    }
+  get(report: string): string | null {
+    return readMap(TOKENS_KEY)[report] ?? null;
   },
-  set(token: string) {
-    try {
-      window.sessionStorage.setItem(TOKEN_KEY, token);
-    } catch {
-      /* storage blocked: the session only lasts for this page */
-    }
+  set(report: string, token: string) {
+    writeMap(TOKENS_KEY, { ...readMap(TOKENS_KEY), [report]: token });
     notify();
   },
-  clear() {
-    try {
-      window.sessionStorage.removeItem(TOKEN_KEY);
-    } catch {
-      /* storage blocked */
-    }
+  clear(report: string) {
+    const map = readMap(TOKENS_KEY);
+    delete map[report];
+    writeMap(TOKENS_KEY, map);
     notify();
   },
-  /** For useSyncExternalStore: called whenever the token is set or cleared in this tab. */
+  /** For useSyncExternalStore: called whenever a token is set or cleared in this tab. */
   subscribe(listener: () => void) {
     listeners.add(listener);
     return () => void listeners.delete(listener);
   },
 };
 
-/** Authorization header for the current admin session, if any. */
-export function adminAuthHeader(): Record<string, string> {
-  const t = adminToken.get();
+/** Authorization header for the session of one report version, if this tab has one. */
+export function adminAuthHeader(report: string | null | undefined): Record<string, string> {
+  const t = report ? adminToken.get(report) : null;
   return t ? { Authorization: `Bearer ${t}` } : {};
 }
+
+/** Publication sign-off attempts (GET /approvals/:id) are read with the session of the report they belong to. */
+export const publicationAttempts = {
+  remember(attemptId: string, report: string) {
+    writeMap(ATTEMPTS_KEY, { ...readMap(ATTEMPTS_KEY), [attemptId]: report });
+  },
+  reportFor(attemptId: string): string | null {
+    return readMap(ATTEMPTS_KEY)[attemptId] ?? null;
+  },
+};

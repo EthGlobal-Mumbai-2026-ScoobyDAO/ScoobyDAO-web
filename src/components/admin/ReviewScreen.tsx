@@ -12,11 +12,12 @@ import {
   DECISION_LABEL,
   FINAL_ATTEMPT,
   REVIEW_STATE_LABEL,
+  reportKey,
   type Decision,
   type ReviewAttempt,
   type ReviewDetail,
 } from '@/lib/adminApi';
-import { AdminGate, WorldCodePanel } from './AdminGate';
+import { ReadGate, WorldCodePanel } from './AdminGate';
 import { reviewQueueKey } from './ReviewQueue';
 
 const reviewKey = (id: string, version: string) => ['admin-review', id, version] as const;
@@ -38,9 +39,13 @@ const ATTEMPT_RESULT: Record<
   superseded: { tone: 'warning', title: 'The report changed while waiting — no decision recorded' },
 };
 
-/** Review page body behind the World ID sign-in (client component, so the gate can take a render function). */
+/** Review page body behind this report's Read confirmation (client component, so the gate can take a render function). */
 export function GatedReviewScreen({ id, version }: { id: string; version: string }) {
-  return <AdminGate>{() => <ReviewScreen id={id} version={version} />}</AdminGate>;
+  return (
+    <ReadGate id={id} version={version}>
+      {() => <ReviewScreen id={id} version={version} />}
+    </ReadGate>
+  );
 }
 
 export function ReviewScreen({ id, version }: { id: string; version: string }) {
@@ -160,7 +165,7 @@ function ReportFiles({ id, version }: { id: string; version: string }) {
   async function open(url: string, kind: 'html' | 'download', name: string) {
     setError(null);
     try {
-      const blob = await adminApi.file(url);
+      const blob = await adminApi.file(reportKey(id, version), url);
       const href = URL.createObjectURL(blob);
       if (kind === 'html') setViewing(href);
       else {
@@ -273,7 +278,7 @@ function DecisionPanel({ d }: { d: ReviewDetail }) {
 
   const attempt = useQuery({
     queryKey: attemptKey(attemptId ?? ''),
-    queryFn: () => adminApi.attempt(attemptId!),
+    queryFn: () => adminApi.attempt(reportKey(d.report_id, d.report_version), attemptId!),
     enabled: !!attemptId,
     initialData: d.pending_attempt?.id === attemptId ? (d.pending_attempt ?? undefined) : undefined,
     refetchInterval: (q) =>
@@ -295,7 +300,8 @@ function DecisionPanel({ d }: { d: ReviewDetail }) {
     },
   });
   const cancel = useMutation({
-    mutationFn: (aid: string) => adminApi.cancelAttempt(aid),
+    mutationFn: (aid: string) =>
+      adminApi.cancelAttempt(reportKey(d.report_id, d.report_version), aid),
     onSuccess: (a) => qc.setQueryData(attemptKey(a.id), a),
   });
 

@@ -1,14 +1,14 @@
 // Typed client for the backend review desk, /web/v1/admin (ScoobyDAO-backend publication/admin_routes.py and the
 // SME file routes in app.py; contract: schemas/runtime/admin-checkpoints-v1.schema.json). Display only: the backend
 // decides who may sign in and whether a decision counts, and every decision needs its own World App confirmation.
-//   POST/GET/DELETE /admin/session · GET /admin/reviews · GET /admin/reviews/:id/:version
+//   GET /review-queue (anonymous) · POST/GET/DELETE /admin/session (per report) · GET /admin/reviews/:id/:version
 //   GET /admin/reviews/:id/:version/artifacts · GET …/files/:name · POST …/attempts · POST …/revoke
 //   GET /admin/review-attempts/:id · POST /admin/review-attempts/:id/cancel
 import { ApiError } from './api';
-import { adminAuthHeader, adminToken } from './adminToken';
+import { adminAuthHeader, adminToken, reportKey } from './adminToken';
 import { env } from './env';
 
-export { adminAuthHeader, adminToken };
+export { adminAuthHeader, adminToken, reportKey };
 
 // ---------------------------------------------------------------- shapes (snake_case, as the backend sends them)
 
@@ -145,18 +145,26 @@ export interface ReviewArtifacts {
 
 // ---------------------------------------------------------------- transport
 
-/** Backend paths such as /web/v1/admin/… resolve against the API origin. */
+/**
+ * Backend file paths (/web/v1/admin/…) resolved through the configured API base, so they work both with an absolute
+ * NEXT_PUBLIC_API_URL (…/web/v1) and with the same-origin proxy (/api/backend).
+ */
 export function backendUrl(path: string): string {
-  return new URL(path, new URL(env.apiUrl).origin).toString();
+  if (path.startsWith('/web/v1/')) return `${env.apiUrl}${path.slice('/web/v1'.length)}`;
+  return path;
 }
 
-async function call(path: string, init: RequestInit = {}): Promise<Response> {
+async function call(
+  path: string,
+  init: RequestInit = {},
+  report?: string | null,
+): Promise<Response> {
   const res = await fetch(`${env.apiUrl}${path}`, {
     ...init,
     headers: {
       Accept: 'application/json',
       ...(init.body ? { 'Content-Type': 'application/json' } : {}),
-      ...adminAuthHeader(),
+      ...adminAuthHeader(report),
       ...init.headers,
     },
     cache: 'no-store',
@@ -187,47 +195,75 @@ const idempotencyKey = () =>
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random()}`;
 
+export interface PublicQueueItem {
+  report_id: string;
+  report_version: string;
+  report_sha256: string;
+  created: number;
+  state: ReviewState;
+}
+
 export const adminApi = {
-  /** Starts a World login. The token is returned once; it is stored and stays inactive until World confirms. */
-  async startSession(): Promise<AdminSession> {
+  /** Anonymous list for the Read buttons: ids, versions, report hashes and review states only. */
+  async publicQueue(): Promise<{ items: PublicQueueItem[] }> {
+    const body = (await (await call('/review-queue')).json()) as {
+      schema?: string;
+      items?: PublicQueueItem[];
+    };
+    if (body?.schema !== 'scooby.review-queue-public/1' || !Array.isArray(body.items))
+      throw new ApiError(
+        502,
+        'Unexpected response from the review desk (expected scooby.review-queue-public/1)',
+      );
+    return { items: body.items };
+  },
+  /**
+   * Read button: starts a World login limited to one report version. The token is returned once; it is stored for
+   * that report and stays inactive until World confirms.
+   */
+  async startSession(id: string, version: string): Promise<AdminSession> {
     const s = expectSchema<AdminSession>(
-      await (await call('/admin/session', { method: 'POST' })).json(),
+      await (
+        await call('/admin/session', {
+          method: 'POST',
+          body: JSON.stringify({ report_id: id, version }),
+        })
+      ).json(),
       'scooby.admin-session/1',
     );
-    if (s.session_token) adminToken.set(s.session_token);
+    if (s.session_token) adminToken.set(reportKey(id, version), s.session_token);
     return s;
   },
-  async getSession(): Promise<AdminSession> {
+  async getSession(report: string): Promise<AdminSession> {
     return expectSchema<AdminSession>(
-      await (await call('/admin/session')).json(),
+      await (await call('/admin/session', {}, report)).json(),
       'scooby.admin-session/1',
     );
   },
-  async endSession(): Promise<void> {
+  async endSession(report: string): Promise<void> {
     try {
-      await call('/admin/session', { method: 'DELETE' });
+      await call('/admin/session', { method: 'DELETE' }, report);
     } finally {
-      adminToken.clear();
+      adminToken.clear(report);
     }
-  },
-  async queue(): Promise<ReviewQueue> {
-    return expectSchema<ReviewQueue>(
-      await (await call('/admin/reviews')).json(),
-      'scooby.admin-review-queue/1',
-    );
   },
   async review(id: string, version: string): Promise<ReviewDetail> {
     return expectSchema<ReviewDetail>(
-      await (await call(reviewPath(id, version))).json(),
+      await (await call(reviewPath(id, version), {}, reportKey(id, version))).json(),
       'scooby.admin-review/1',
     );
   },
   async artifacts(id: string, version: string): Promise<ReviewArtifacts> {
-    return (await (await call(`${reviewPath(id, version)}/artifacts`)).json()) as ReviewArtifacts;
+    return (await (
+      await call(`${reviewPath(id, version)}/artifacts`, {}, reportKey(id, version))
+    ).json()) as ReviewArtifacts;
   },
-  /** Fetches a rendered file with the session header (a plain link cannot send it) and returns its bytes. */
-  async file(url: string): Promise<Blob> {
-    const res = await fetch(backendUrl(url), { headers: adminAuthHeader(), cache: 'no-store' });
+  /** Fetches a rendered file with the report's session header (a plain link cannot send it) and returns its bytes. */
+  async file(report: string, url: string): Promise<Blob> {
+    const res = await fetch(backendUrl(url), {
+      headers: adminAuthHeader(report),
+      cache: 'no-store',
+    });
     if (!res.ok)
       throw new ApiError(res.status, `Couldn't load ${url.split('/').pop()} (${res.status})`);
     return res.blob();
@@ -237,29 +273,38 @@ export const adminApi = {
     version: string,
     body: { decision: Decision; reason: string; expected_target_digest: string },
   ): Promise<ReviewAttempt> {
-    const res = await call(`${reviewPath(id, version)}/attempts`, {
-      method: 'POST',
-      body: JSON.stringify(body),
-      headers: { 'Idempotency-Key': idempotencyKey() },
-    });
+    const res = await call(
+      `${reviewPath(id, version)}/attempts`,
+      {
+        method: 'POST',
+        body: JSON.stringify(body),
+        headers: { 'Idempotency-Key': idempotencyKey() },
+      },
+      reportKey(id, version),
+    );
     return expectSchema<ReviewAttempt>(await res.json(), 'scooby.admin-review-attempt/1');
   },
-  async attempt(attemptId: string): Promise<ReviewAttempt> {
+  async attempt(report: string, attemptId: string): Promise<ReviewAttempt> {
     return expectSchema<ReviewAttempt>(
-      await (await call(`/admin/review-attempts/${enc(attemptId)}`)).json(),
+      await (await call(`/admin/review-attempts/${enc(attemptId)}`, {}, report)).json(),
       'scooby.admin-review-attempt/1',
     );
   },
-  async cancelAttempt(attemptId: string): Promise<ReviewAttempt> {
-    const res = await call(`/admin/review-attempts/${enc(attemptId)}/cancel`, { method: 'POST' });
+  async cancelAttempt(report: string, attemptId: string): Promise<ReviewAttempt> {
+    const res = await call(
+      `/admin/review-attempts/${enc(attemptId)}/cancel`,
+      { method: 'POST' },
+      report,
+    );
     return expectSchema<ReviewAttempt>(await res.json(), 'scooby.admin-review-attempt/1');
   },
   async revoke(id: string, version: string, reason: string): Promise<unknown> {
     return (
-      await call(`${reviewPath(id, version)}/revoke`, {
-        method: 'POST',
-        body: JSON.stringify({ reason }),
-      })
+      await call(
+        `${reviewPath(id, version)}/revoke`,
+        { method: 'POST', body: JSON.stringify({ reason }) },
+        reportKey(id, version),
+      )
     ).json();
   },
 };
