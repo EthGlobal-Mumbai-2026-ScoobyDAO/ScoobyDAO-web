@@ -2,11 +2,13 @@
 
 import dynamic from 'next/dynamic';
 import { useEffect, useState } from 'react';
+import { migrateStorageKey } from '@/lib/storageKeys';
 import { canUse3D } from '@/lib/webgl';
 
 const MaskPop3DScene = dynamic(() => import('./MaskPop3DScene'), { ssr: false });
 
-const seenKey = (claimId: string) => `unmasked:maskpop:${claimId}`;
+const seenKey = (claimId: string) => `scoobydao:maskpop:${claimId}`;
+const oldSeenKey = (claimId: string) => `unmasked:maskpop:${claimId}`;
 
 /**
  * "Mask pops off" on Finalized(id, Yes) (THEME.md §3.1). Plays once per case per
@@ -18,6 +20,7 @@ export function MaskPop({ claimId, className = '' }: { claimId: string; classNam
   useEffect(() => {
     let seen = false;
     try {
+      migrateStorageKey('session', oldSeenKey(claimId), seenKey(claimId));
       seen = sessionStorage.getItem(seenKey(claimId)) === '1';
       sessionStorage.setItem(seenKey(claimId), '1');
     } catch {

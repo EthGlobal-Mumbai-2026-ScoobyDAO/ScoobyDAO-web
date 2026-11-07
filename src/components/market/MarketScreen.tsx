@@ -8,7 +8,8 @@ import { Banner } from '@/components/Banner';
 import { CaseFrame, CaseHeader, type CaseBase } from '@/components/case/CaseHeader';
 import { useCase } from '@/components/case/useCase';
 import { AmountField, ApprovalToggle, validAmount, WritesBlockedNote } from '@/components/forms';
-import { CurveNotOracleLabel, SimulatedYieldLabel, TestTokenLabel, YtNotPredictionLabel } from '@/components/HonestyLabels';
+import { SniffPose } from '@/components/SniffPose';
+import { Card, Disclosure, KeyValue, LoadState, Page, SegmentedControl, type HonestyFact } from '@/components/ui';
 import { NetworkBadge } from '@/components/NetworkBadge';
 import { TxLink } from '@/components/TxLink';
 import { TxPlanStepper, usePlan, WrongChainPrompt } from '@/components/TxPlanStepper';
@@ -38,7 +39,7 @@ export const BLOCK_COPY: Record<Exclude<MarketBlock, null>, string> = {
   not_deployed: 'Market not deployed yet.',
   no_router: 'Market not deployed yet (no swap router address).',
   not_configured: 'The pool exists but isn’t configured yet.',
-  matured: 'Matured: the hook accepts no swaps after maturity. Removing liquidity and claiming yield still work.',
+  matured: 'Trading stopped at maturity. You can still remove liquidity and claim yield.',
   no_series: 'Published onchain — no market deployed for this report yet.',
 };
 
@@ -46,25 +47,13 @@ export function MarketScreen({ id, base = '/case' }: { id: string; base?: CaseBa
   const { market, report } = useCase(id, base);
   const { protocol } = useProtocol();
   const v2 = protocol.kind === 'v2';
+  const facts: HonestyFact[] = ['testToken', 'simulatedYield', 'ytNotSignal', ...(v2 ? (['curveNotOracle'] as const) : [])];
   return (
     <CaseFrame state={market}>
       {market.data && (
-        <main className="mx-auto max-w-6xl space-y-8 px-4 py-8 sm:py-10">
-          <CaseHeader market={market.data} report={report} tab="market" base={base} />
-          <section className="space-y-2">
-            <h2 className="font-display text-3xl">Trade the yield token (YT)</h2>
-            <p className="max-w-3xl text-lg">
-              {v2
-                ? 'One YT/dUSD pool on a Uniswap v4 hook. YT earns the simulated yield on staked dUSD until maturity; it trades until maturity, including after stakes lock.'
-                : 'Trade the interest earned on locked stakes. The YT price is not a prediction of the verdict.'}
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {v2 ? <CurveNotOracleLabel /> : <YtNotPredictionLabel />}
-              <SimulatedYieldLabel />
-              <TestTokenLabel />
-            </div>
-          </section>
-          <div className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
+        <Page>
+          <CaseHeader market={market.data} report={report} tab="market" base={base} facts={facts} />
+          <div className="grid items-start gap-6 lg:grid-cols-[1.25fr_1fr]">
             <div className="space-y-6">
               <SwapPanel market={market.data} />
               {v2 && <RecentTrades />}
@@ -74,7 +63,7 @@ export function MarketScreen({ id, base = '/case' }: { id: string; base?: CaseBa
               <MarketWallet market={market.data} />
             </div>
           </div>
-        </main>
+        </Page>
       )}
     </CaseFrame>
   );
@@ -87,45 +76,46 @@ function PoolStats({ market: m }: { market: MarketView }) {
   const apr = p?.impliedRateWad ?? impliedAprFromPrice(p?.spotPriceWad, left);
   const ytPerDusd = p?.spotPriceWad ? (WAD * WAD) / p.spotPriceWad : undefined;
   return (
-    <section aria-labelledby="pool-h" className="glass space-y-4 p-5 sm:p-6">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 id="pool-h" className="font-semibold">
-          Pool
-        </h2>
-        <NetworkBadge chainId={11155111} />
-      </div>
+    <Card title="Yield market" actions={<NetworkBadge chainId={11155111} />}>
       {!p ? (
         <p className="text-muted">{BLOCK_COPY[marketBlock(m, now) ?? 'not_deployed']}</p>
       ) : (
-        <>
-          <dl className="grid grid-cols-2 gap-4">
-            <Stat label="1 YT costs" value={`${formatWad(p.spotPriceWad, 9)} dUSD`} />
-            <Stat label="1 dUSD buys (spot)" value={`${formatWad(ytPerDusd, 6)} YT`} />
+        <div className="space-y-4">
+          <dl className="grid grid-cols-3 gap-3">
+            <Stat label="1 YT costs" value={formatWad(p.spotPriceWad, 6)} unit="dUSD" />
             <Stat label={p.impliedRateWad !== undefined ? 'Implied APR' : 'Implied APR (from price)'} value={apr !== undefined ? formatRateWad(apr) : '—'} />
-            <Stat label="Time to maturity" value={left > 0 ? formatDuration(left) : 'matured'} />
-            <Stat label="Hook fee" value={p.feePips !== undefined ? `${(p.feePips / 10_000).toFixed(2)}%` : '—'} />
-            {p.reserves && (
-              <>
-                <Stat label="dUSD reserve" value={formatUsdc(p.reserves.usdc)} />
-                <Stat label="YT reserve" value={formatUsdc(p.reserves.yt)} />
-              </>
-            )}
+            <Stat label="Trading ends" value={left > 0 ? formatDuration(left) : 'ended'} />
           </dl>
-          <p className="text-muted text-xs">
-            Curve output — not a Yes/No probability or verdict oracle. The price is the implied rate times the years left to maturity, so it falls toward 0 as
-            maturity nears.
-          </p>
-        </>
+          <p className="text-muted text-[13px]">YT earns the simulated yield on staked dUSD until maturity, so its price falls toward 0 as maturity nears.</p>
+          <Disclosure summary="Pool details">
+            <KeyValue
+              items={[
+                { label: '1 dUSD buys (spot)', value: <span className="num">{formatWad(ytPerDusd, 6)} YT</span> },
+                ...(p.reserves
+                  ? [
+                      { label: 'Pool dUSD', value: <span className="num">{formatUsdc(p.reserves.usdc)}</span> },
+                      { label: 'Pool YT', value: <span className="num">{formatUsdc(p.reserves.yt)}</span> },
+                    ]
+                  : []),
+                { label: 'Pool fee', value: p.feePips !== undefined ? `${(p.feePips / 10_000).toFixed(2)}%` : '—' },
+                { label: 'Engine', value: 'Uniswap v4 yield market' },
+              ]}
+            />
+          </Disclosure>
+        </div>
       )}
-    </section>
+    </Card>
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, unit }: { label: string; value: string; unit?: string }) {
   return (
-    <div>
-      <dt className="text-muted text-xs">{label}</dt>
-      <dd className="num mt-1 text-xl font-semibold">{value}</dd>
+    <div className="min-w-0">
+      <dt className="text-muted text-[13px]">{label}</dt>
+      <dd className="num mt-1 text-xl font-semibold break-words">
+        {value}
+        {unit && <span className="text-muted ml-1 text-xs font-normal">{unit}</span>}
+      </dd>
     </div>
   );
 }
@@ -149,17 +139,21 @@ function YieldCard({ market: m, pos }: { market: MarketView; pos: PositionView }
   const writes = useWritesAllowed();
   const plan = usePlan();
   return (
-    <section aria-labelledby="yt-yield-h" className="glass space-y-3 p-5">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 id="yt-yield-h" className="font-semibold">
-          Your YT yield
-        </h2>
-        <SimulatedYieldLabel />
-      </div>
-      <p className="text-sm">
-        You hold <span className="num">{formatUsdc(pos.yt)}</span> YT · claimable <span className="num font-semibold">{formatUsdc(pos.ytClaimable, { exact: true })}</span> dUSD
-      </p>
-      <p className="text-muted text-xs">Claiming checkpoints your balance itself; no separate checkpoint transaction is needed. Works after maturity too.</p>
+    <section aria-labelledby="yt-yield-h" className="glass space-y-3 p-5 sm:p-6">
+      <h2 id="yt-yield-h" className="text-lg font-semibold">
+        Your YT yield
+      </h2>
+      <dl className="grid grid-cols-2 gap-3">
+        <div>
+          <dt className="text-muted text-[13px]">You hold</dt>
+          <dd className="num text-xl font-semibold">{formatUsdc(pos.yt)} <span className="text-muted text-xs font-normal">YT</span></dd>
+        </div>
+        <div>
+          <dt className="text-muted text-[13px]">Yield to claim</dt>
+          <dd className="num text-xl font-semibold">{formatUsdc(pos.ytClaimable, { exact: true })} <span className="text-muted text-xs font-normal">dUSD</span></dd>
+        </div>
+      </dl>
+      <p className="text-muted text-[13px]">One transaction, no checkpoint needed. Works after maturity too.</p>
       <button
         type="button"
         disabled={plan.running || !address || pos.ytClaimable === 0n || !writes.allowed}
@@ -259,41 +253,43 @@ function SwapPanel({ market: m }: { market: MarketView }) {
 
   if (block)
     return (
-      <section className="glass p-6" aria-labelledby="swap-h">
-        <h2 id="swap-h" className="font-display text-2xl">
-          Swap
-        </h2>
-        <p className="mt-3">{BLOCK_COPY[block]}</p>
+      <section className="glass flex flex-wrap items-center gap-5 p-5 sm:p-6" aria-labelledby="swap-h">
+        <SniffPose pose={block === 'matured' ? 'sad' : 'shrug'} size={88} />
+        <div className="min-w-0 flex-1">
+          <h2 id="swap-h" className="text-[1.375rem] font-semibold sm:text-2xl">
+            {block === 'matured' ? 'Trading has ended' : 'Trading isn’t available'}
+          </h2>
+          <p className="text-muted mt-1 text-[15px]">{BLOCK_COPY[block]}</p>
+        </div>
       </section>
     );
 
   return (
     <section aria-labelledby="swap-h" className="glass space-y-4 p-5 sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 id="swap-h" className="font-display text-2xl">
-          Swap
+        <h2 id="swap-h" className="text-[1.375rem] font-semibold sm:text-2xl">
+          Trade yield tokens
         </h2>
         <NetworkBadge chainId={11155111} />
       </div>
-      <div role="radiogroup" aria-label="Direction" className="flex gap-2">
-        {(['buy', 'sell'] as const).map((d) => (
-          <button
-            key={d}
-            type="button"
-            role="radio"
-            aria-checked={dir === d}
-            onClick={() => {
-              setDir(d);
-              setQuoted(undefined);
-            }}
-            className={`rounded-full border px-4 py-1.5 text-sm font-semibold ${dir === d ? 'border-beam bg-[color-mix(in_srgb,var(--beam-400)_14%,transparent)]' : 'border-line text-muted'}`}
-          >
-            {d === 'buy' ? 'Buy YT with dUSD' : 'Sell YT for dUSD'}
-          </button>
-        ))}
-      </div>
+      <SegmentedControl
+        label="Direction"
+        value={dir}
+        onChange={(d) => {
+          setDir(d);
+          setQuoted(undefined);
+        }}
+        items={[
+          { key: 'buy', label: 'Buy YT with dUSD' },
+          { key: 'sell', label: 'Sell YT for dUSD' },
+        ]}
+      />
       {!connected && !fixtureMode ? (
-        <ConnectButton />
+        <div className="flex flex-col items-center gap-3 py-6 text-center">
+          <SniffPose pose="alert" size={96} />
+          <p className="text-[15px]">Connect a wallet to trade.</p>
+          <ConnectButton />
+        </div>
       ) : (
         <>
           <AmountField label={`You pay (${dir === 'buy' ? 'dUSD' : 'YT'})`} unit={dir === 'buy' ? 'dUSD' : 'YT'} value={input} onChange={setInput} balance={bal} placeholder="0.50" />
@@ -332,7 +328,12 @@ function SwapPanel({ market: m }: { market: MarketView }) {
               </span>
             )}
           </fieldset>
-          {protocol.kind === 'v2' && <ApprovalToggle unlimited={unlimited} onChange={setUnlimited} />}
+          {protocol.kind === 'v2' && (
+            <Disclosure summary="Advanced: approval">
+              <ApprovalToggle unlimited={unlimited} onChange={setUnlimited} />
+            </Disclosure>
+          )}
+          {unlimited && <p className="text-beam-ink text-sm">Unlimited approval is on (Advanced).</p>}
           {connected && <WrongChainPrompt ensure={ensure} />}
           <WritesBlockedNote />
           <button
@@ -382,18 +383,12 @@ function RecentTrades() {
     retry: false,
   });
   return (
-    <section aria-labelledby="trades-h" className="glass space-y-3 p-5">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 id="trades-h" className="font-semibold">
-          Recent trades
-        </h2>
-        <NetworkBadge chainId={11155111} />
-      </div>
-      {trades.isError ? (
-        <p className="text-muted text-sm">Recent trades are unavailable from this RPC ({revertReason(trades.error).split('\n')[0]}).</p>
-      ) : !trades.data ? (
-        <div className="sweep h-16" aria-busy="true" aria-label="Loading trades" />
-      ) : trades.data.length === 0 ? (
+    <section aria-labelledby="trades-h" className="glass space-y-3 p-5 sm:p-6">
+      <h2 id="trades-h" className="text-lg font-semibold">
+        Recent trades
+      </h2>
+      <LoadState query={trades} source="Ethereum Sepolia RPC" compact skeleton={<div className="sweep h-16" aria-label="Loading trades" />}>
+      {(list) => list.length === 0 ? (
         <p className="text-muted text-sm">No trades in the last ~5,000 blocks (about 17 hours).</p>
       ) : (
         <table className="w-full text-sm">
@@ -406,7 +401,7 @@ function RecentTrades() {
             </tr>
           </thead>
           <tbody>
-            {trades.data.slice(0, 8).map((t) => (
+            {list.slice(0, 8).map((t) => (
               <tr key={`${t.tx}-${t.amountIn}`} className="border-line border-t">
                 <td className="num py-1.5">
                   {t.usdcIn
@@ -422,7 +417,8 @@ function RecentTrades() {
           </tbody>
         </table>
       )}
-      <p className="text-muted text-xs">The rate is the curve&apos;s implied APR after each trade. It reflects YT demand, not the report&apos;s outcome.</p>
+      </LoadState>
+      <p className="text-muted text-[13px]">Rate = implied APR after each trade. It reflects YT demand, not the verdict.</p>
     </section>
   );
 }

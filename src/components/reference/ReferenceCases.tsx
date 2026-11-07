@@ -1,22 +1,24 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { BookOpen, CircleCheck, TriangleAlert } from 'lucide-react';
+import { CircleCheck, ClipboardCheck, TriangleAlert } from 'lucide-react';
 import Link from 'next/link';
 import { Banner } from '@/components/Banner';
 import { tilt } from '@/components/cases/CaseCard';
 import { Identicon } from '@/components/Identicon';
 import { StatusChip } from '@/components/StatusChip';
 import { chainName } from '@/lib/explorer';
-import { formatDate, shortHex } from '@/lib/format';
+import { formatDate } from '@/lib/format';
+import { ReferenceChip } from './ReferenceChip';
 import {
   REFERENCE_PAIRS,
   allowedCaseActions,
   isReferenceItem,
   openQuestions,
-  referenceReaderHref,
   referenceStatus,
+  reviewWorkspaceHref,
   scoutFindings,
+  snapshotExpired,
   toReferenceCase,
   type PublicCaseItem,
   type ReferenceCase,
@@ -76,7 +78,7 @@ export function ReferenceCaseList({
   );
 }
 
-/** A scouted case pinned to the docket. Display only: its one action is "Read report". */
+/** A scouted case pinned to the docket. Display only: its one action is "Review report" in the review desk. */
 export function ReferenceCaseCard({ c }: { c: ReferenceCase; now?: number }) {
   const id = c.item.identity ?? {};
   // Scouted cases never offer agent, World-attempt, investigation, refresh or onchain actions.
@@ -86,7 +88,7 @@ export function ReferenceCaseCard({ c }: { c: ReferenceCase; now?: number }) {
   const scouted = c.fetchedAt ? Date.parse(c.fetchedAt) : NaN;
   return (
     <article
-      className="paper-plain group relative flex h-full flex-col p-4 pt-6 transition-transform duration-200 hover:rotate-0 motion-reduce:transition-none"
+      className="paper-plain group relative flex h-full flex-col p-5 pt-6 transition-transform duration-200 hover:rotate-0 motion-reduce:transition-none"
       style={{ transform: `rotate(${tilt(c.pair.case_id)}deg)` }}
       aria-labelledby={`ref-${c.pair.case_id}`}
       data-actions={actions.length}
@@ -96,69 +98,58 @@ export function ReferenceCaseCard({ c }: { c: ReferenceCase; now?: number }) {
         className="bg-mask absolute -top-2 left-1/2 h-4 w-4 -translate-x-1/2 rounded-full shadow-[inset_-2px_-2px_0_rgb(0_0_0/0.25),0_2px_3px_rgb(0_0_0/0.4)]"
       />
       <div className="flex items-start gap-3">
-        <Identicon address={id.address ?? c.pair.candidate_id} size={52} />
-        <div className="min-w-0">
-          <h3 id={`ref-${c.pair.case_id}`} className="font-semibold">
-            {id.symbol ?? c.pair.symbol}
-          </h3>
-          <p className="text-muted mt-0.5 text-xs">
+        <Identicon address={id.address ?? c.pair.candidate_id} size={44} />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+            <h3 id={`ref-${c.pair.case_id}`} className="text-lg leading-tight font-semibold">
+              {id.symbol ?? c.pair.symbol}
+            </h3>
+            <StatusChip status={referenceStatus(c)} />
+          </div>
+          <p className="text-muted mt-0.5 text-[13px]">
             {id.chain_id ? chainName(id.chain_id) : 'Chain unknown'}
-            {id.address ? <span className="num"> · {shortHex(id.address, 6, 4)}</span> : null}
+            {Number.isFinite(scouted) && <> · scouted {formatDate(Math.floor(scouted / 1000))}</>}
           </p>
-          {Number.isFinite(scouted) && (
-            <p className="text-muted text-xs">Scouted {formatDate(Math.floor(scouted / 1000))}</p>
-          )}
         </div>
       </div>
 
-      {flagged.length + clear.length > 0 ? (
-        <div className="mt-3 space-y-2 text-sm">
-          {flagged.length > 0 && (
-            <div>
-              <p className="text-muted text-xs">Sniff flagged</p>
-              <ul className="mt-1 flex flex-wrap gap-1.5">
-                {flagged.map((f) => (
-                  <li
-                    key={f}
-                    className="text-mask-ink inline-flex items-center gap-1 rounded-full border border-[color-mix(in_srgb,var(--mask-500)_55%,transparent)] bg-[color-mix(in_srgb,var(--mask-500)_12%,transparent)] px-2 py-0.5 text-xs font-medium"
-                  >
-                    <TriangleAlert size={12} aria-hidden /> {f}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {clear.length > 0 && (
-            <div>
-              <p className="text-muted text-xs">Checked clear</p>
-              <ul className="mt-1 flex flex-wrap gap-1.5">
-                {clear.map((f) => (
-                  <li
-                    key={f}
-                    className="border-line text-muted inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium"
-                  >
-                    <CircleCheck size={12} aria-hidden /> {f}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          <p className="text-muted text-xs">From token-security provider data.</p>
-        </div>
-      ) : (
-        <p className="mt-3 text-sm">
-          <span className="text-muted">Lead:</span> Picked for a five-pillar review; the scout raised
-          no contract flags.
-        </p>
-      )}
-
-      <div className="mt-3">
-        <StatusChip status={referenceStatus(c)} />
+      <div className="mt-4">
+        <p className="text-muted text-[13px] font-medium">Why Sniff flagged it</p>
+        {flagged.length + clear.length > 0 ? (
+          <ul
+            className="mt-1.5 flex max-h-[3.6rem] flex-wrap gap-1.5 overflow-hidden"
+            title={c.summary ?? undefined}
+            aria-label="Scout findings from token-security provider data"
+          >
+            {flagged.map((f) => (
+              <li
+                key={f}
+                className="text-mask-ink inline-flex items-center gap-1 rounded-full border border-[color-mix(in_srgb,var(--mask-500)_55%,transparent)] bg-[color-mix(in_srgb,var(--mask-500)_12%,transparent)] px-2 py-0.5 text-xs font-medium"
+              >
+                <TriangleAlert size={12} aria-hidden /> {f}
+              </li>
+            ))}
+            {clear.map((f) => (
+              <li
+                key={f}
+                className="border-line text-muted inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium"
+              >
+                <CircleCheck size={12} aria-hidden /> {f}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-1 line-clamp-2 text-[15px]" title={c.summary ?? undefined}>
+            No contract flags raised; picked for a five-pillar review.
+          </p>
+        )}
       </div>
 
       {questions.length > 0 && (
         <details className="mt-3 text-sm">
-          <summary className="text-muted cursor-pointer">Open questions ({questions.length})</summary>
+          <summary className="text-muted hover:text-text cursor-pointer">
+            Open questions ({questions.length})
+          </summary>
           <ul className="mt-1 list-disc space-y-0.5 pl-5">
             {questions.map((u, i) => (
               <li key={i}>{u}</li>
@@ -167,24 +158,38 @@ export function ReferenceCaseCard({ c }: { c: ReferenceCase; now?: number }) {
         </details>
       )}
 
-      <div className="mt-auto space-y-2 pt-4">
-        {c.reports.map((r) => (
-          <Link
-            key={`${r.report_id}@${r.report_version}`}
-            href={referenceReaderHref(r)}
-            className="bg-beam text-on-beam inline-flex items-center gap-2 rounded-xl px-4 py-2 font-semibold hover:brightness-105"
-            aria-label={`Read report ${r.report_id} ${r.report_version}`}
-          >
-            <BookOpen size={16} aria-hidden /> Read report
-          </Link>
-        ))}
-        {c.reports.length === 0 && (
-          <p className="text-mask-ink text-xs">
-            {c.mismatched.length
-              ? 'Report link withheld: the listed report does not match the pinned report table.'
-              : 'No report is linked to this case.'}
-          </p>
-        )}
+      <div className="border-line mt-auto border-t pt-4">
+        <div className="mt-0 flex flex-wrap items-center gap-2">
+          <ReferenceChip>
+            <strong className="block">Historical reference</strong>
+            <span className="text-muted mt-1 block">
+              {c.routing ?? 'A replay of captured evidence, kept for comparison.'}
+            </span>
+            {snapshotExpired(c.expiresAt) && (
+              <span className="text-muted mt-1 block">The captured snapshot has expired.</span>
+            )}
+            <span className="text-muted mt-1 block">Flags come from token-security provider data.</span>
+          </ReferenceChip>
+        </div>
+        <div className="mt-3">
+          {c.reports.map((r) => (
+            <Link
+              key={`${r.report_id}@${r.report_version}`}
+              href={reviewWorkspaceHref(r)}
+              className="bg-beam text-on-beam inline-flex items-center gap-2 rounded-xl px-4 py-2 font-semibold hover:brightness-105"
+              aria-label={`Review report ${r.report_id} ${r.report_version} in the review desk`}
+            >
+              <ClipboardCheck size={16} aria-hidden /> Review report
+            </Link>
+          ))}
+          {c.reports.length === 0 && (
+            <p className="text-mask-ink text-xs">
+              {c.mismatched.length
+                ? 'Report link withheld: the listed report does not match the pinned report table.'
+                : 'No report is linked to this case.'}
+            </p>
+          )}
+        </div>
       </div>
     </article>
   );

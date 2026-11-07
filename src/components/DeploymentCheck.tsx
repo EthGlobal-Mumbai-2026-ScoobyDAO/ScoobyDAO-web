@@ -66,7 +66,27 @@ function RecheckButton() {
   );
 }
 
-/** Dashboard card: the check's status and every individual check. */
+/** Small header chip: "Contracts verified ✓", "Contracts mismatch" or "Checking contracts…". Details live in TechnicalDetails. */
+export function DeploymentStatusChip() {
+  const { protocol } = useProtocol();
+  const check = useDeploymentCheck();
+  if (protocol.kind !== 'v2') return null;
+  const r = check.data;
+  const [Icon, label, cls] = r
+    ? r.ok
+      ? [CircleCheck, 'Contracts verified', 'text-clue-ink']
+      : [CircleX, 'Contracts mismatch', 'text-mask-ink']
+    : check.isError
+      ? [CircleX, 'Contracts not verified', 'text-mask-ink']
+      : [RefreshCw, 'Checking contracts…', 'text-muted'];
+  return (
+    <span className={`inline-flex items-center gap-1 text-[13px] font-medium ${cls}`} role="status">
+      <Icon size={14} aria-hidden /> {label}
+    </span>
+  );
+}
+
+/** Compact status line plus every individual check, collapsed. Writes stay disabled until it passes. */
 export function DeploymentCheckCard() {
   const { protocol } = useProtocol();
   const check = useDeploymentCheck();
@@ -74,34 +94,27 @@ export function DeploymentCheckCard() {
   const r = check.data;
   const passed = r?.checks.filter((c) => c.ok).length ?? 0;
   return (
-    <section aria-labelledby="deploy-h" className="glass space-y-3 p-5">
+    <section aria-labelledby="deploy-h" className="space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 id="deploy-h" className="font-semibold">
-          Deployment check
-        </h2>
+        <h3 id="deploy-h" className="font-semibold">
+          {r ? (r.ok ? 'Contracts verified ✓' : 'Contracts don\u2019t match') : check.isError ? 'Couldn\u2019t verify contracts' : 'Checking contracts…'}
+        </h3>
         {r ? (
           r.ok ? (
             <span className="text-clue-ink inline-flex items-center gap-1 text-sm font-semibold">
-              <CircleCheck size={16} aria-hidden /> Green · {passed}/{r.checks.length}
+              <CircleCheck size={16} aria-hidden /> {passed}/{r.checks.length} checks
             </span>
           ) : (
             <span className="text-mask-ink inline-flex items-center gap-1 text-sm font-semibold">
               <CircleX size={16} aria-hidden /> Mismatch · {passed}/{r.checks.length}
             </span>
           )
-        ) : check.isError ? (
-          <span className="text-mask-ink text-sm font-semibold">Couldn&apos;t run</span>
-        ) : (
-          <span className="text-muted text-sm">Checking…</span>
-        )}
+        ) : null}
       </div>
-      <p className="text-muted text-sm">
-        Code at every bundle address on both chains, plus the vault, hook, routers, receiver and sender wiring. Writes stay disabled until it passes. Runs once per
-        session.
-      </p>
+      <p className="text-muted text-[13px]">Deployment check: code at every bundle address on both chains plus the contract wiring. Wallet writes stay disabled until it passes.</p>
       {r && (
         <details className="text-sm">
-          <summary className="cursor-pointer font-semibold">Show all {r.checks.length} checks</summary>
+          <summary className="text-muted hover:text-text cursor-pointer font-medium">Show all {r.checks.length} checks</summary>
           <ul className="mt-2 space-y-1">
             {r.checks.map((c) => (
               <li key={c.id} className="flex items-start gap-2">

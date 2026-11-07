@@ -2,14 +2,21 @@
 // Each report version is read through its own World confirmation ("Read" button), so each has its own session token,
 // keyed by `<report_id>@<version>` (the same id the /web/v1 report adapter uses). Tokens live in sessionStorage only
 // (cleared with the tab), never in a cookie.
-const TOKENS_KEY = 'unmasked.review-sessions';
-const ATTEMPTS_KEY = 'unmasked.publication-attempts';
+import { migrateStorageKey } from './storageKeys';
+
+const TOKENS_KEY = 'scoobydao.review-sessions';
+const ATTEMPTS_KEY = 'scoobydao.publication-attempts';
+const OLD_KEYS: Record<string, string> = {
+  [TOKENS_KEY]: 'unmasked.review-sessions',
+  [ATTEMPTS_KEY]: 'unmasked.publication-attempts',
+};
 const listeners = new Set<() => void>();
 const notify = () => listeners.forEach((l) => l());
 
 export const reportKey = (reportId: string, version: string) => `${reportId}@${version}`;
 
 function readMap(key: string): Record<string, string> {
+  if (OLD_KEYS[key]) migrateStorageKey('session', OLD_KEYS[key], key);
   try {
     if (typeof window === 'undefined') return {};
     const v = JSON.parse(window.sessionStorage.getItem(key) ?? '{}');

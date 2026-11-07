@@ -3,6 +3,12 @@ export type ReportEntry = {
   id: string;
   apiOrigin: string;
   title: string;
+  /** Token symbol from the report identity. */
+  symbol?: string;
+  /** Raw backend review status (e.g. "pending", "approved"); display only, never authorization. */
+  reviewStatus?: string;
+  /** First source observation time as reported, if any. */
+  observedAt?: string;
   reportId: string;
   version: string;
   candidateId: string;
@@ -173,6 +179,9 @@ export function backendReportAdapter(base: string): ReportAdapter {
           id: `${detail.report_id}~${detail.report_version}`,
           apiOrigin: base,
           title: `${detail.identity.symbol} research report`,
+          symbol: detail.identity.symbol,
+          reviewStatus: detail.review.status,
+          observedAt: detail.observation_times[0],
           reportId: detail.report_id,
           version: detail.report_version,
           candidateId: detail.candidate_id,

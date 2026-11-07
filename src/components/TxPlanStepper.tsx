@@ -72,7 +72,7 @@ export function TxPlanStepper({ steps, buildError }: { steps: StepProgress[]; bu
     );
   if (steps.length === 0) return null;
   return (
-    <ol className="space-y-2" aria-label="Transaction steps">
+    <ol className="border-line space-y-2 rounded-xl border bg-[color-mix(in_srgb,var(--fog-400)_6%,transparent)] p-3" aria-label="Transaction steps">
       {steps.map((s) => {
         const Icon = ICON[s.status];
         return (

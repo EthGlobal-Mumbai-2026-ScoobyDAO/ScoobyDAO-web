@@ -5,7 +5,7 @@ import Link from 'next/link';
 import type { Hex } from 'viem';
 import { zeroAddress } from 'viem';
 import { Banner } from '@/components/Banner';
-import { CcipNotVoteLabel } from '@/components/HonestyLabels';
+import { Card, EmptyState, HonestyChips, KeyValue, LoadState, Page, PageHeader, TechnicalDetails } from '@/components/ui';
 import { NetworkBadge } from '@/components/NetworkBadge';
 import { TxPlanStepper, usePlan } from '@/components/TxPlanStepper';
 import { explorer } from '@/lib/explorer';
@@ -106,7 +106,6 @@ export function CcipTracker({ stake: s }: { stake: CcipStake }) {
         </p>
       )}
       <Outcome stake={s} />
-      <CcipNotVoteLabel />
     </div>
   );
 }
@@ -305,72 +304,76 @@ export function CcipTrackerPage({ messageId }: { messageId: string }) {
   const example = valid && isV2Example(messageId);
   const reportHref = (id: bigint) => (protocol.kind === 'v2' ? `/onchain/${id}` : `/case/${id}/stake`);
   return (
-    <main className="mx-auto max-w-3xl px-4 py-10">
-      <div className="flex flex-wrap items-center gap-3">
-        <h1 className="font-display text-4xl">Cross-chain stake</h1>
-        <NetworkBadge chainId={ARB} label="Arbitrum Sepolia → Ethereum Sepolia" />
-      </div>
-      <p className="num text-muted mt-2 break-all">{messageId}</p>
-      {example && (
-        <p className="text-muted mt-2 text-sm">
-          The handoff bundle&apos;s delivered example: its first destination attempt failed on low callback gas and was retried manually with 1,500,000 gas. New
-          sends use 1,500,000 from the start.
-        </p>
-      )}
-      <div className="glass mt-6 p-6">
-        {!valid ? (
-          <Banner tone="danger" title="That isn't a CCIP message id">
+    <Page className="max-w-[860px]">
+      <PageHeader
+        eyebrow={<NetworkBadge chainId={ARB} label="Arbitrum Sepolia → Ethereum Sepolia" />}
+        title="Cross-chain stake"
+        description="Live status of one Chainlink CCIP message, read from both chains and the CCIP API."
+      />
+      <HonestyChips facts={['ccipNotVote', 'testToken']} className="-mt-4 mb-6" />
+      {!valid ? (
+        <Card>
+          <EmptyState pose="confused" title="That isn’t a CCIP message id">
             A message id is 32 bytes of hex (0x + 64 characters).
-          </Banner>
-        ) : q.isError ? (
-          <Banner tone="danger" title="Couldn't read this message">
-            {q.error.message}
-          </Banner>
-        ) : q.isLoading ? (
-          <div className="sweep h-40" aria-busy="true" aria-label="Loading message" />
-        ) : !q.data ? (
-          <Banner tone="info" title="No record of this message yet">
-            Neither this browser, the CCIP API nor the receiver knows it yet. If you just sent it, this page checks again every 15 seconds.
-          </Banner>
-        ) : (
-          <>
-            <dl className="mb-5 grid gap-3 text-sm sm:grid-cols-2">
-              <div>
-                <dt className="text-muted">Stake</dt>
-                <dd>
-                  <span className="num font-semibold">{formatUsdc(q.data.amount)} dUSD</span> on {q.data.yes ? 'Yes' : 'No'} for{' '}
-                  {q.data.reportId > 0n ? (
-                    <Link href={reportHref(q.data.reportId)} className="text-beam-ink underline">
-                      report #{q.data.reportId.toString()}
-                    </Link>
-                  ) : (
-                    'an unknown report'
-                  )}
-                </dd>
-              </div>
-              {q.data.sentAt ? (
-                <div>
-                  <dt className="text-muted">Sent</dt>
-                  <dd>{formatDate(q.data.sentAt)}</dd>
-                </div>
-              ) : null}
-              {q.data.sourceAccount && (
-                <div>
-                  <dt className="text-muted">Source payer (Arbitrum Sepolia)</dt>
-                  <dd className="num">{shortHex(q.data.sourceAccount)}</dd>
-                </div>
-              )}
-              {q.data.recipient !== zeroAddress && (
-                <div>
-                  <dt className="text-muted">Recipient (Ethereum Sepolia)</dt>
-                  <dd className="num">{shortHex(q.data.recipient)}</dd>
-                </div>
-              )}
-            </dl>
-            <CcipTracker stake={q.data} />
-          </>
-        )}
-      </div>
+          </EmptyState>
+        </Card>
+      ) : (
+        <LoadState query={q} source="CCIP API and Ethereum Sepolia RPC" skeleton={<div className="sweep h-56 rounded-[14px]" aria-label="Loading message" />}>
+          {(data) =>
+            !data ? (
+              <Card>
+                <EmptyState pose="sniffing" title="No record of this message yet">
+                  Neither this browser, the CCIP API nor the receiver knows it yet. If you just sent it, this page checks again every 15 seconds.
+                </EmptyState>
+              </Card>
+            ) : (
+              <Card>
+                <dl className="mb-6 grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <dt className="text-muted text-[13px]">Stake</dt>
+                    <dd className="mt-0.5">
+                      <span className="num text-xl font-semibold">{formatUsdc(data.amount)} dUSD</span> on{' '}
+                      <span className={data.yes ? 'text-beam-ink font-semibold' : 'text-clue-ink font-semibold'}>{data.yes ? 'Yes' : 'No'}</span>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted text-[13px]">Market</dt>
+                    <dd className="mt-0.5">
+                      {data.reportId > 0n ? (
+                        <Link href={reportHref(data.reportId)} className="text-beam-ink underline">
+                          Market #{data.reportId.toString()}
+                        </Link>
+                      ) : (
+                        'Unknown market'
+                      )}
+                      {data.sentAt ? <span className="text-muted text-[13px]"> · sent {formatDate(data.sentAt)}</span> : null}
+                    </dd>
+                  </div>
+                </dl>
+                <CcipTracker stake={data} />
+              </Card>
+            )
+          }
+        </LoadState>
+      )}
+      {valid && (
+        <TechnicalDetails className="mt-6">
+          <KeyValue
+            items={[
+              { label: 'CCIP message id', value: <span className="num text-xs break-all">{messageId}</span> },
+              ...(q.data?.sourceAccount ? [{ label: 'Source payer (Arbitrum Sepolia)', value: <span className="num">{shortHex(q.data.sourceAccount)}</span> }] : []),
+              ...(q.data && q.data.recipient !== zeroAddress ? [{ label: 'Recipient (Ethereum Sepolia)', value: <span className="num">{shortHex(q.data.recipient)}</span> }] : []),
+              ...(q.data?.ccipApiStatus ? [{ label: 'CCIP API status', value: q.data.ccipApiStatus }] : []),
+            ]}
+          />
+          {example && (
+            <p className="text-muted mt-2 text-[13px]">
+              The handoff bundle&apos;s delivered example: its first destination attempt failed on low callback gas and was retried manually with 1,500,000 gas. New
+              sends use 1,500,000 from the start.
+            </p>
+          )}
+        </TechnicalDetails>
+      )}
       {!example && protocol.kind === 'v2' && (
         <p className="mt-4 text-sm">
           <Link href={`/tx/ccip/${V2_INFO.exampleCCIP.messageId}`} className="text-beam-ink underline">
@@ -378,6 +381,6 @@ export function CcipTrackerPage({ messageId }: { messageId: string }) {
           </Link>
         </p>
       )}
-    </main>
+    </Page>
   );
 }

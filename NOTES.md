@@ -4,6 +4,66 @@
 
 Running log for `scoobydao-web`. Precedence when docs disagree: INTERFACES.md (data shapes) > CLAUDE.md (rules, scope) > THEME.md (look, copy, page features). Where "V2 live integration" and "Revamp" disagree, the V2 section is current.
 
+## Rebrand + UI revamp (Nov 2026)
+
+Current section; it supersedes older UI notes where they disagree. Protocol logic, request/response contracts, transaction plans, World ID state machines, hash checks, phase gates and payout math are unchanged.
+
+### Brand
+- The product is **ScoobyDAO**, mascot **Sniff** (original basset-hound detective). Changed: `<title>` template (`%s · ScoobyDAO`), Logo text and aria-label, Footer, RainbowKit `appName`, README/THEME/CLAUDE/AGENTS. "Unmasked!" remains only as the Final · Yes verdict moment (ResultScreen, StatusChip hint, CaseFile verdict word).
+- THEME.md §0 rule 1 (which said studio characters *could* be used) is replaced by the original-mascot rule. New THEME.md §8 documents the component kit and layout rules.
+- Metadata: description = the one-line pitch, Open Graph + Twitter `summary_large_image`, `metadataBase` from `NEXT_PUBLIC_SITE_URL` (default https://scoobydao-web.vercel.app). `src/app/opengraph-image.tsx` renders the 1200×630 card (wordmark, tagline, pitch, SniffHead on navy). It fetches Inter/Bungee from Google Fonts with a 4 s timeout and falls back to the default font offline.
+- Storage keys migrated by `src/lib/storageKeys.ts` (read old once → write new unless it exists → delete old, all in try/catch): `unmasked:ccip` → `scoobydao:ccip` (localStorage, saved CCIP tracking), `unmasked:v2-deployment` → `scoobydao:v2-deployment`, `unmasked.review-sessions` → `scoobydao.review-sessions`, `unmasked.publication-attempts` → `scoobydao.publication-attempts`, `unmasked:maskpop:<id>` → `scoobydao:maskpop:<id>` (sessionStorage).
+
+### Shell and kit
+- `src/components/ui/`: Page, PageHeader, Section, Card (default · paper · highlight), StatTile, KeyValue, Tabs (+ `tabPanelProps(id, key)`), SegmentedControl, Disclosure, TechnicalDetails, InfoTip, HonestyChips, EmptyState/ErrorState, LoadState, Stepper, MobileNav, WorldConfirm. Tests in `ui.test.tsx`.
+- `LoadState`: skeleton → "Still loading from {source}…" after 8 s → ErrorState with the source name and Retry after 20 s or on error. Late data still renders.
+- `HonestyChips`: one chip per fact, each opening an InfoTip with the exact label from `HonestyLabels.tsx`. New fact "World proofs at the event use test identities" (`testIdentities`).
+- Nav: consumer links only (Cases · Markets · Reports · How it works) + a "My positions" button, network badge, theme toggle, a "More" menu (Review desk; Operator only when `NEXT_PUBLIC_OPERATOR_VIEW=true`) and the wallet button (label "Connect" so it never wraps). Under 900 px: logo, wallet, hamburger → full-height sheet (focus trap, Esc closes, closes on navigation).
+- Footer is now global (layout.tsx): wordmark + tagline, Product, For reviewers ("Reviewer" → /admin), contracts inside TechnicalDetails, "Built with World · Chainlink CCIP · Uniswap v4" as text. Its honesty row carries only "Test World IDs": pages that involve money show test dUSD, public stakes and simulated yield themselves, so the footer would otherwise repeat them on the same screen.
+- Fixture banner is one line; full detail in its `title`.
+- Fixed: fixture mode crashed in `deploymentQueryFor` because the fixture protocol has no `deploymentBundle`. `deploymentQueryFor(undefined)` now returns the default (disabled) query; test in `deployment.test.ts`.
+
+### Case board card action (user decision, 7 Nov)
+- The six scouted cases' primary action is **"Review report"**, linking to the review workspace `/admin/reviews/<id>/<version>` (`reviewWorkspaceHref`), not to a public reader. This overrides the spec line that said case cards link to the public reader.
+
+### Case board and reports
+- Filter groups (`src/components/cases/filters.ts`): **Under review** = draft, awaiting_approval · **Open** = open, open_local_only, published (publication reported, waiting for the case file's onchain check) · **Settling** = locked, matured, proposed, challenged · **Closed** = final_yes, final_no, void, denied, expired. "More filters" holds the exact phase and chain selects.
+- Scouted cases are ordered by how many flags the scout summary names, then the pinned order ("ranked by how suspicious they look"). Their "Historical reference" chip opens the routing/snapshot caveats in a native `<details>`; the card still has exactly one link and no buttons.
+- Review badges only repeat the backend: a backend row reads "Approved by a verified human" only when its status is `published`. Pillar dots appear only where `report.pillars` exists (backend case cards); the public case list has no pillar data.
+- `/reports` merges public backend reports with the six references; filters All / Approved / Reference / Pending (Pending only when this tab holds a review session). Scout activity is a header pill with an InfoTip, replacing the "Discovery monitor" card. Both disclaimer blocks are gone.
+- Public reader route `/reports/[id]/[version]`: a non-reference id falls through to the backend detail page; a reference report renders the gated reader when this tab has a session for it, otherwise "Available to reviewers only" with "Open in review desk". Reader layout: header card, sticky contents, summary first (assessment, key findings, open questions, caveats), one card per pillar, evidence table, limitations, TechnicalDetails (report SHA + recompute, per-file integrity, manifest digests). A failed `report.json` hash still blocks all content.
+
+### World ID and reviewer area
+- One `WorldConfirm` panel (src/components/ui/WorldConfirm.tsx) for Read, each decision and publication sign-off: stepper, "What you're confirming" card with consequence line, large code + copy, QR, countdown ring, live status (static under reduced motion), full-width Cancel, the phishing warning, and full-panel results. The two-step model is explained once in an InfoTip.
+- State mapping (exact names). Read session: none → start; `pending` → waiting; `active` → report + slim session bar; `denied`/`expired`/`cancelled`/`not_permitted`/`failed`/`revoked` → results. Decision: `pending` → waiting; `confirmed`/`denied`/`expired`/`cancelled`/`not_permitted`/`failed`/`superseded` → results. Publication: `pending` → waiting; `approved` → "Approved — publishing…"; `spent` → "Published onchain"; `rejected_not_reviewer`/`denied`/`expired`/`error` → results.
+- Reviewer layout (src/app/admin/layout.tsx, src/app/approve/layout.tsx): "Review desk" header and Queue · Decided · Publish sub-nav. Queue has tabs with counts, search, newest first, source badge (Reference / Generated); raw ids and SHA moved into a popover. Workspace: reader left, sticky decision panel right (three radio cards with consequences, reason with counter — same rule: required after trim, ≤ 1000 chars — review-target digest, Confirm with World ID), decision timeline, small "Withdraw decision" danger zone. Integrity failure still disables the panel. The six reference reports embed the existing ReferenceReader and never offer "Publish onchain".
+- `/approve/demo-<state>` previews run only in fixture mode; in live mode the page says so instead of showing an endless skeleton. No production UI links to them.
+
+### Markets, stake, positions
+- Market names: "Demo market #N", "Original demo #1" for the pre-catalog report on the original deployment (so the two #1s stay distinct), or "SHIB — {short claim}" when a backend report is verified (matching `onchainReportId`, backend `claimHash` = registry, and `matchClaimHash` recomputed in the browser; catalog markets only). The landing page uses the same names. "Flexible registry" no longer appears.
+- Market header: name, "Demo claim — no linked report" (InfoTip), phase chip, chain badge, "Contracts verified ✓", one honesty row chosen per tab, and a key-dates timeline with "Now". Overview leads with the pool summary and one call to action by phase; the payout calculator uses `previewStake`; hashes, roles, vault/hook internals, curve input, liquidity-share supply and the deployment check sit in one TechnicalDetails drawer.
+- Stake: big Yes/No cards with live share; keep/sell YT, slippage, CCIP recipient/nonce and the approval toggle under "Advanced". Closed state: one-line banner + "What you can do now". Write gating, exact-approval default, receipt checks and the deployment-check gate are unchanged.
+- Renamed: "Swap" → "Trade yield tokens", "Settlement" → "How this gets settled", "Claims" → "Your claims", "Claim principal" → "Claim your stake", "RF-YLP" → "liquidity shares". `ReportDropdown.tsx` was replaced by the card-list `MarketPicker`.
+- `/me`: disconnected → Sniff alert + Connect + Browse markets; connected → four tiles then one card per market. `/markets/publish` and the unused `AcceleratedMarket.tsx` were not restyled.
+
+### Landing and Sniff
+- Sniff poses (SniffPose.tsx) are full-body on a 120×120 viewBox with distinct jobs: sniffing (loading), thinking (empty), alert (action), triumphant (success, holding the pulled-off mask), sad (denied/expired), shrug (unavailable); idle, asleep and confused still render. No gradients or SVG ids, so many can share a page. The 3D placeholder Sniff is now a belted trench coat with collar, lapels, sleeves and a magnifier instead of a cone.
+- Landing: one-line pitch, "Browse cases" / "See live markets"; "Live now" (markets with Stake only while staking is open, plus the 3 latest scouted reports, each in LoadState) absorbs the old stats band; How it works is 4 steps with one pose each and "Details" disclosures holding the old long copy; Why trust it is one sentence per tile. "Built with" now appears only in the footer.
+- 404 ("This case went cold.", shrug), error (alert pose + Retry) and loading (sniffing) use the kit. /operator uses PageHeader/Card with roles in TechnicalDetails; every action is unchanged.
+
+### Requests for other repos (backend)
+1. **Public read access** for reference report metadata/files and for approved report versions. Today `/web/v1/admin/reference-reports/...` returns 401 without a reviewer session and the reference-display contract only allows public reads of identifiers and labels, so `/reports/[id]/[version]` shows "Available to reviewers only".
+2. `GET /web/v1/reports` returns 404 on the deployed backend (the case board shows a one-line partial-load note).
+3. `/review-queue` items lack symbol, chain, title/claim and `decided_at`; generated reports show a name derived from the id.
+4. No endpoint lists open publication sign-offs (Publish tab lists approved queue items and sends the reviewer to the case file) and there is no cancel endpoint for a publication sign-off (the screen says the code expires on its own).
+5. The review API can't say whether a market/vault exists for a report; the next-step card points to the case file.
+6. No token name or claim text per market onchain; markets without a verified backend report show "Demo market #N".
+7. No "Start investigation" World flow exists (`allowedCaseActions` returns `[]`); WorldConfirm supports the action for when it does.
+
+### QA tooling
+- `scripts/shot.mjs <path> <out.png> [w] [h] [dark|light] [--full]`: Playwright screenshot helper (uses Playwright from `../deck/build`). Revamp screenshots are in `screenshots/revamp/` (per-area work shots) and `screenshots/revamp/final/` (every route at 1440×900, 768×1024 and 375×812, dark and light).
+- `scripts/axe.mjs [paths…]`: axe-core via Playwright in both themes; exits 1 on serious/critical violations. (The spec said an axe script existed; it didn't, so this was added.)
+
 ## Six historical references, display only (Nov 2026)
 
 Contract `scooby.reference-display/1` (backend `docs/reference-display-contract.md`, backend PR #29). Reusable reader pieces ported from web PR #9 (reconstruction CSV parser, chart and VAE wording); its loopback preview service, `/reference-preview` and branch-specific `vercel.json` were not brought over.

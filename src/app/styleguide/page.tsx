@@ -8,6 +8,7 @@ import {
   TestTokenLabel,
   YtNotPredictionLabel,
 } from '@/components/HonestyLabels';
+import { POSES, SniffPose } from '@/components/SniffPose';
 import { StatusChip } from '@/components/StatusChip';
 import { CASE_STATUSES } from '@/lib/status';
 
@@ -30,6 +31,22 @@ export default function Styleguide() {
             <StatusChip key={s} status={s} size="lg" />
           ))}
         </div>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold">Sniff poses</h2>
+        <p className="text-muted text-sm">
+          sniffing = loading, thinking = empty, alert = action needed, triumphant = success, sad = denied/expired, shrug =
+          unavailable.
+        </p>
+        <ul className="flex flex-wrap gap-4">
+          {POSES.map((p) => (
+            <li key={p} className="text-muted flex flex-col items-center text-[13px]">
+              <SniffPose pose={p} size={112} />
+              {p}
+            </li>
+          ))}
+        </ul>
       </section>
 
       <section className="space-y-3">

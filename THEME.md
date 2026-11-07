@@ -1,4 +1,4 @@
-# Theme & Frontend Generation Spec — "Unmask the Rug"
+# Theme & Frontend Generation Spec — ScoobyDAO
 
 > Revamp (Nov 2026): §2.3 and §5–§6 now describe the real product (report v0.2, Yes/No dUSD stakes, YT market, CCIP, settlement). Older wording elsewhere (prompts in §7) is historical. For the web repo. Read alongside `CLAUDE.md` and `INTERFACES.md`. This file defines the brand, visual system, 3D plan, every page and component, and ready-to-paste prompts for the tools that generate them.
 
@@ -6,7 +6,7 @@
 
 ## 0. Ground rules
 
-1. You can use Scooby-Doo (or any other studio's) character, name, catchphrase, vehicle, logo or likeness — in the 3D model, illustrations, copy, favicon or domain.
+1. **Original mascot only.** The mascot is Sniff, an original basset-hound detective. Never use any studio cartoon character, Great Dane, mystery van, catchphrase or likeness in the 3D model, illustrations, copy, favicon or domain, and never put "Scooby" inside an illustration. "ScoobyDAO" appears only as text (wordmark, titles, copy).
 2. **Demo first, spectacle second.** The 3D layer must never block the demo path (report → approve → stake → trigger → redeem). Every 3D scene has a 2D fallback.
 3. **36-hour budget.** One hero 3D scene + small motion touches. No bespoke 3D on every page.
 4. **Accessibility.** `prefers-reduced-motion` turns off 3D motion and parallax; all status is conveyed by text + icon, not color alone; contrast ≥ 4.5:1.
@@ -15,7 +15,9 @@
 
 ## 1. Brand
 
-### 1.1 Name (pick one; check domain + ETHGlobal showcase for clashes)
+### 1.1 Name
+
+**Decided (Nov 2026): ScoobyDAO**, mascot **Sniff**. Tagline "Sniff out the rug before it pulls."; hero line "Every rug has a villain behind the mask."; pitch "AI agents investigate suspicious tokens. A World ID–verified human signs off. The market decides." Wordmark: SniffHead + "ScoobyDAO" in Bungee. "Unmasked!" survives only as the Final · Yes verdict moment. The table below is the original shortlist, kept for history.
 
 | Name                 | Why                                                  |
 | -------------------- | ---------------------------------------------------- |
@@ -25,7 +27,7 @@
 | **Sleuth**           | Mystery, investigation, neutral                      |
 | **RiskFi** (current) | Keep if you want the plain-finance angle             |
 
-The rest of this file uses **Unmasked** with mascot **Sniff**. Swap freely.
+Older sections below say **Unmasked**; read it as ScoobyDAO. The layout and component rules are in §8 (component kit).
 
 ### 1.2 Story (one paragraph for the landing page)
 
@@ -340,3 +342,15 @@ Rule: if the 3D hero isn't stable by Saturday 6 pm, ship the parallax hero and s
 - [ ] Every tx shows pending → confirmed → explorer link
 - [ ] Phase-closed states visible on stake, market and result pages (with reasons)
 - [ ] Lighthouse performance ≥ 80 on landing; .glb < 3 MB
+
+
+## 8. Component kit and layout rules (rebrand, Nov 2026)
+
+- **Kit:** `src/components/ui/` — `PageHeader`, `Section`, `Card` (default · paper · highlight), `StatTile`, `KeyValue`, `Tabs`, `SegmentedControl`, `Disclosure`, `InfoTip`, `HonestyChips`, `TechnicalDetails`, `EmptyState`/`ErrorState`, `LoadState`, `Stepper`, `MobileNav`, `WorldConfirm`. Pages compose these; don't hand-roll headers, popovers or drawers.
+- **Container:** max-width 1200px, 24px gutters (16px under 640px), via `Page` / `PageHeader`.
+- **Type:** Bungee only for page titles and big numbers; section headings Inter semibold. Page title 40–56px, section 22–24px, card title 18px, body 15–16px, meta 13px; body lines ≤ 68ch.
+- **Spacing:** 8px grid; card padding 20–24px; 24–32px between cards.
+- **Copy:** a title plus one sentence per page, a title plus at most two lines per card. Details go in `Disclosure`, `InfoTip` or `TechnicalDetails`.
+- **Honesty facts:** once per screen, through `HonestyChips` (chip + info popover). Contract names, hashes, roles and the deployment check live in `TechnicalDetails`.
+- **Data cards:** wrap queries in `LoadState` (skeleton → "Still loading…" at 8s → `ErrorState` with Retry and the source name at 20s or on error).
+- **Sniff poses have jobs:** sniffing = loading, thinking = empty, alert = action needed, triumphant = success, sad = denied/expired, shrug = unavailable.

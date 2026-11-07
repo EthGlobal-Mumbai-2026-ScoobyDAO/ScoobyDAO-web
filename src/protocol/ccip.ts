@@ -1,6 +1,7 @@
 import { concatHex, encodeAbiParameters, isAddressEqual, numberToHex, parseEventLogs, zeroAddress, type Address, type Hex, type Log } from 'viem';
 import { ccipStakeReceiverV2Abi, ccipStakeSenderV2Abi } from '@/contracts/v2';
 import type { CcipStake, CcipStatus, RemoteAttempt } from './types';
+import { migrateStorageKey } from '@/lib/storageKeys';
 
 // Cross-chain stake helpers. Shapes come from the contracts and the V2 handoff bundle, not memory:
 //   src/ccip/StakeIntent.sol   (V1): (uint256 protocolVersion, uint256 reportId, bool yes,
@@ -257,7 +258,7 @@ export const isSlowStake = (s: Pick<CcipStake, 'status' | 'sentAt'>, now: number
 
 // ------------------------------------------------------ local tracking (UX only)
 
-const KEY = 'unmasked:ccip';
+const KEY = 'scoobydao:ccip';
 export interface TrackedCcip {
   messageId: Hex;
   reportId: string;
@@ -271,6 +272,7 @@ export interface TrackedCcip {
 
 /** Chain state and the CCIP API are the source of truth; this list only remembers which messages to look up. */
 export function loadTracked(): TrackedCcip[] {
+  migrateStorageKey('local', 'unmasked:ccip', KEY);
   try {
     const raw = window.localStorage.getItem(KEY);
     const v = raw ? (JSON.parse(raw) as unknown) : [];

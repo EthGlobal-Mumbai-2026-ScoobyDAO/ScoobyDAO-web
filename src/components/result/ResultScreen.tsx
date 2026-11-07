@@ -8,14 +8,15 @@ import { useCase } from '@/components/case/useCase';
 import { Countdown } from '@/components/Countdown';
 import { WritesBlockedNote } from '@/components/forms';
 import { HashText } from '@/components/HashText';
-import { EstimateLabel, SimulatedYieldLabel } from '@/components/HonestyLabels';
+import { ConnectButton } from '@rainbow-me/rainbowkit';
+import { Card, EmptyState, KeyValue, LoadState, Page, TechnicalDetails } from '@/components/ui';
 import { MaskPop } from '@/components/MaskPop';
 import { SniffPose } from '@/components/SniffPose';
 import { TxPlanStepper, usePlan } from '@/components/TxPlanStepper';
 import { env } from '@/lib/env';
 import { formatDate, formatDuration, formatUsdc } from '@/lib/format';
 import { evidenceHash } from '@/lib/hash';
-import { estimatePaid } from '@/lib/payout';
+import { estimatePaid, feeOf } from '@/lib/payout';
 import {
   canChallenge,
   canFinalize,
@@ -36,27 +37,57 @@ export function ResultScreen({ id, base = '/case' }: { id: string; base?: CaseBa
   return (
     <CaseFrame state={market}>
       {market.data && (
-        <main className="mx-auto max-w-6xl space-y-8 px-4 py-8 sm:py-10">
-          <CaseHeader market={market.data} report={report} tab="result" base={base} />
+        <Page>
+          <CaseHeader market={market.data} report={report} tab="result" base={base} facts={['testToken', 'simulatedYield', 'estimate']} />
           {market.data.series === false ? (
-            <p className="glass p-6">Published onchain — no market deployed for this report yet, so there is nothing to settle or claim.</p>
+            <Card>
+              <EmptyState pose="thinking" title="Nothing to settle yet">
+                This report is published onchain, but no market was deployed for it, so there is nothing to settle or claim.
+              </EmptyState>
+            </Card>
           ) : (
-            <>
-              <DemoVerdict market={market.data} />
+            <div className="space-y-8">
               <Verdict market={market.data} />
-              <div className="grid gap-6 lg:grid-cols-[1fr_1fr]">
+              {isFinal(market.data.phase) && <ClaimsPanel market={market.data} base={base} />}
+              <div className="grid items-start gap-6 lg:grid-cols-[1.2fr_1fr]">
                 <SettlementTimeline market={market.data} />
                 <div className="space-y-6">
+                  {isFinal(market.data.phase) && <ResultSummary market={market.data} />}
                   <ChallengeForm market={market.data} />
                   <FinalizeButton market={market.data} />
+                  <DemoVerdict market={market.data} />
                 </div>
               </div>
-              <ClaimsPanel market={market.data} base={base} />
-            </>
+              {!isFinal(market.data.phase) && <ClaimsPanel market={market.data} base={base} />}
+            </div>
           )}
-        </main>
+        </Page>
       )}
     </CaseFrame>
+  );
+}
+
+/** Final numbers in one card: outcome, pools, fee and what each winning unit claims. */
+function ResultSummary({ market: m }: { market: MarketView }) {
+  const d = m.decision;
+  const outcome = d?.outcome;
+  const oneSided = m.totals.yes === 0n || m.totals.no === 0n;
+  const fee = !outcome || outcome === 'void' || oneSided ? 0n : feeOf(outcome === 'yes' ? m.totals.no : m.totals.yes);
+  return (
+    <Card title="Final numbers">
+      <KeyValue
+        items={[
+          { label: 'Result', value: <span className="font-semibold">{outcome === 'void' ? 'Void' : outcome === 'yes' ? 'Yes' : 'No'}</span> },
+          ...(d?.finalizedAt ? [{ label: 'Final since', value: formatDate(d.finalizedAt) }] : []),
+          { label: 'Yes pool', value: <span className="num">{formatUsdc(m.totals.yes)} dUSD</span> },
+          { label: 'No pool', value: <span className="num">{formatUsdc(m.totals.no)} dUSD</span> },
+          { label: 'Fee (20% of the losing pool)', value: <span className="num">{formatUsdc(fee)} dUSD</span> },
+          ...(outcome && outcome !== 'void'
+            ? [{ label: `Each ${outcome === 'yes' ? 'Yes' : 'No'} unit claims`, value: <span className="num font-semibold">{formatUsdc(perUnit(m, outcome), { exact: true })} dUSD</span> }]
+            : []),
+        ]}
+      />
+    </Card>
   );
 }
 
@@ -83,8 +114,8 @@ function DemoVerdict({ market: m }: { market: MarketView }) {
   return (
     <section aria-labelledby="demo-verdict-h" className="glass space-y-3 p-5 sm:p-6">
       <div>
-        <h2 id="demo-verdict-h" className="font-display text-2xl">Demo verdict</h2>
-        <p className="text-muted mt-1 text-xs">Temporary hardcoded demo text — this is not calculated by an oracle or price feed.</p>
+        <h2 id="demo-verdict-h" className="text-lg font-semibold">Demo verdict <span className="text-muted text-sm font-normal">· resolver only</span></h2>
+        <p className="text-muted mt-1 text-[13px]">Hardcoded demo text — not calculated by an oracle or price feed.</p>
       </div>
       {!shown ? (
         <button type="button" onClick={() => setShown(true)} className="bg-beam text-on-beam rounded-xl px-4 py-2.5 font-semibold hover:brightness-105">
@@ -92,10 +123,10 @@ function DemoVerdict({ market: m }: { market: MarketView }) {
         </button>
       ) : (
         <>
-          <p className="text-lg font-semibold">{DEMO_VERDICT}</p>
+          <p className="text-[15px] font-semibold">{DEMO_VERDICT}</p>
           <p className="text-muted text-sm">Accepting proposes <strong>Yes</strong> onchain with the SHA-256 hash of this text. It still requires the challenge window and finalization.</p>
           {!proposalOpen && <p className="text-muted text-sm">Onchain acceptance opens at maturity ({formatDate(m.maturity)}) and closes at the result deadline ({formatDate(m.resultDeadline)}).</p>}
-          {proposalOpen && !resolver && <p className="text-mask-ink text-sm">Connect the resolver wallet {m.resolver} to accept this verdict onchain.</p>}
+          {proposalOpen && !resolver && <p className="text-mask-ink text-sm">Connect the resolver wallet <span className="num break-all">{m.resolver}</span> to accept this verdict onchain.</p>}
           <WritesBlockedNote />
           <button
             type="button"
@@ -194,8 +225,8 @@ function SettlementTimeline({ market: m }: { market: MarketView }) {
   const closes = claimsCloseAt(m);
   return (
     <section aria-labelledby="tl-h" className="glass p-5 sm:p-6">
-      <h2 id="tl-h" className="font-display text-2xl">
-        Settlement
+      <h2 id="tl-h" className="text-[1.375rem] font-semibold sm:text-2xl">
+        How this gets settled
       </h2>
       <ol className="mt-4 space-y-4">
         {timelineSteps(m, now).map((s) => (
@@ -229,10 +260,10 @@ function SettlementTimeline({ market: m }: { market: MarketView }) {
         ))}
       </ol>
       {m.decision && m.decision.proposedAt > 0 && (
-        <div className="border-line mt-5 border-t pt-4">
-          <p className="text-muted text-sm">Evidence hash</p>
+        <TechnicalDetails className="mt-5">
+          <p className="text-muted">Evidence hash (proposal)</p>
           <HashText value={m.decision.evidenceHash} label="evidence hash" />
-        </div>
+        </TechnicalDetails>
       )}
     </section>
   );
@@ -250,8 +281,8 @@ export function ChallengeForm({ market: m }: { market: MarketView }) {
   const open = canChallenge(m, now);
   const end = challengeEnds(m);
   return (
-    <section aria-labelledby="ch-h" className="glass space-y-3 p-5">
-      <h2 id="ch-h" className="font-display text-xl">
+    <section aria-labelledby="ch-h" className="glass space-y-3 p-5 sm:p-6">
+      <h2 id="ch-h" className="text-lg font-semibold">
         Challenge the proposal
       </h2>
       {!open ? (
@@ -337,11 +368,11 @@ export function FinalizeButton({ market: m }: { market: MarketView }) {
         ? `The challenge window is still open until ${formatDate(end)}.`
         : `Waiting for a proposal (from maturity, ${formatDate(m.maturity)}). After the result deadline (${formatDate(m.resultDeadline)}) anyone can finalize as Void.`;
   return (
-    <section aria-labelledby="fin-h" className="glass space-y-3 p-5">
-      <h2 id="fin-h" className="font-display text-xl">
+    <section aria-labelledby="fin-h" className="glass space-y-3 p-5 sm:p-6">
+      <h2 id="fin-h" className="text-lg font-semibold">
         Finalize
       </h2>
-      <p className="text-sm">Anyone can finalize — nothing happens automatically.</p>
+      <p className="text-sm">Anyone can finalize; nothing happens automatically.</p>
       {!ready && <p className="text-muted text-sm">{why}</p>}
       {ready && now > m.resultDeadline && <p className="text-beam-ink text-sm">The result deadline has passed, so finalizing makes this report Void.</p>}
       {ready && <WritesBlockedNote />}
@@ -361,30 +392,43 @@ export function FinalizeButton({ market: m }: { market: MarketView }) {
 /** Separate claims; never merged into one button. */
 function ClaimsPanel({ market: m, base }: { market: MarketView; base: CaseBase }) {
   const position = usePosition(m.reportId, m.blockNumber);
-  const { address } = useActiveAccount();
+  const { address, connected } = useActiveAccount();
   const { protocol } = useProtocol();
+  const v2 = protocol.kind === 'v2';
   return (
-    <section aria-labelledby="claims-h" className="space-y-4">
-      <h2 id="claims-h" className="font-display text-2xl">
-        Claims
+    <section aria-labelledby="claims-h">
+      <h2 id="claims-h" className="mb-4 text-[1.375rem] font-semibold sm:text-2xl">
+        Your claims
       </h2>
       {!address ? (
-        <p className="text-muted">Connect a wallet to see what you can claim.</p>
-      ) : position.isLoading || !position.data ? (
-        <div className="sweep h-40" aria-busy="true" aria-label="Loading your positions" />
+        <Card className="flex flex-wrap items-center gap-5">
+          <SniffPose pose="alert" size={80} />
+          <div className="min-w-0 flex-1">
+            <p className="text-[15px]">Connect a wallet to see what you can claim.</p>
+            {!connected && (
+              <div className="mt-3">
+                <ConnectButton />
+              </div>
+            )}
+          </div>
+        </Card>
       ) : (
-        <div className="grid gap-4 md:grid-cols-3">
-          <RedeemCard market={m} pos={position.data} />
-          <YieldCard market={m} pos={position.data} base={base} />
-          {protocol.kind === 'v2' ? null : env.reputationBadgeEnabled ? (
-            <ReputationBadgeCard market={m} pos={position.data} />
-          ) : (
-            <div className="glass p-5">
-              <h3 className="font-semibold">{REPUTATION_BADGE_TITLE}</h3>
-              <p className="text-muted mt-2 text-sm">Not available for this report.</p>
+        <LoadState query={position} source="Ethereum Sepolia RPC" skeleton={<div className="sweep h-40" aria-label="Loading your positions" />}>
+          {(pos) => (
+            <div className={`grid gap-4 ${v2 ? 'md:grid-cols-2' : 'md:grid-cols-3'}`}>
+              <RedeemCard market={m} pos={pos} />
+              <YieldCard market={m} pos={pos} base={base} />
+              {v2 ? null : env.reputationBadgeEnabled ? (
+                <ReputationBadgeCard market={m} pos={pos} />
+              ) : (
+                <div className="glass p-5">
+                  <h3 className="font-semibold">{REPUTATION_BADGE_TITLE}</h3>
+                  <p className="text-muted mt-2 text-sm">Not available for this report.</p>
+                </div>
+              )}
             </div>
           )}
-        </div>
+        </LoadState>
       )}
     </section>
   );
@@ -402,11 +446,8 @@ function RedeemCard({ market: m, pos }: { market: MarketView; pos: PositionView 
   const expired = v2 && claimsExpired(m, now);
   const closes = claimsCloseAt(m);
   return (
-    <div className="glass space-y-3 p-5">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="font-semibold">{v2 ? 'Claim principal' : 'Redeem position'}</h3>
-        {outcome && <EstimateLabel />}
-      </div>
+    <div className="glass space-y-3 p-5 sm:p-6">
+      <h3 className="text-lg font-semibold">{v2 ? 'Claim your stake' : 'Redeem position'}</h3>
       {!outcome ? (
         <p className="text-muted text-sm">
           Opens when the result is final: no earlier than maturity ({formatDate(m.maturity)}) plus the {formatDuration(m.challengePeriod)} challenge window. Claims then
@@ -440,7 +481,7 @@ function RedeemCard({ market: m, pos }: { market: MarketView; pos: PositionView 
       )}
       {v2 && open && closes && (
         <p className="text-muted text-xs">
-          Claims close {formatDate(closes)} (<Countdown to={closes} now={now} endedLabel="now" />). Estimate — final amount comes from the claim receipt.
+          Claims close {formatDate(closes)} (<Countdown to={closes} now={now} endedLabel="now" />).
         </p>
       )}
       {plan.result?.ok && plan.result.effect.paid !== undefined && (
@@ -460,11 +501,8 @@ function YieldCard({ market: m, pos, base }: { market: MarketView; pos: Position
   const lpPlan = usePlan();
   const { address } = useActiveAccount();
   return (
-    <div className="glass space-y-3 p-5">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="font-semibold">Claim yield</h3>
-        <SimulatedYieldLabel />
-      </div>
+    <div className="glass space-y-3 p-5 sm:p-6">
+      <h3 className="text-lg font-semibold">Claim YT yield</h3>
       {!m.yt ? (
         <p className="text-muted text-sm">No YT series yet.</p>
       ) : (
@@ -472,7 +510,7 @@ function YieldCard({ market: m, pos, base }: { market: MarketView; pos: Position
           <p className="text-sm">
             YT balance <span className="num">{formatUsdc(pos.yt)}</span> · claimable <span className="num font-semibold">{formatUsdc(pos.ytClaimable, { exact: true })}</span> dUSD
           </p>
-          <p className="text-muted text-xs">Yield is paid regardless of the verdict, and stays claimable after maturity.</p>
+          <p className="text-muted text-[13px]">Paid whatever the verdict, and claimable after maturity.</p>
           <button
             type="button"
             disabled={plan.running || pos.ytClaimable === 0n || !writes.allowed}
@@ -490,8 +528,8 @@ function YieldCard({ market: m, pos, base }: { market: MarketView; pos: Position
           {protocol.kind === 'v2' && (pos.lpShares > 0n || pos.lpClaimable > 0n) && (
             <div className="border-line space-y-2 border-t pt-3 text-sm">
               <p>
-                LP yield ≈ <span className="num">{formatUsdc(pos.lpClaimable, { exact: true })}</span> dUSD on <span className="num">{formatUsdc(pos.lpShares)}</span> RF-YLP (estimate until
-                checkpoint).{' '}
+                Liquidity yield ≈ <span className="num">{formatUsdc(pos.lpClaimable, { exact: true })}</span> dUSD on <span className="num">{formatUsdc(pos.lpShares)}</span> liquidity
+                shares.{' '}
                 <Link href={casePath(base, m.reportId, 'market')} className="text-beam-ink underline">
                   Remove liquidity
                 </Link>

@@ -27,7 +27,7 @@ import {
   tokenDailyText,
 } from '@/test/referenceFixtures';
 import { ErrorState } from './ReaderStates';
-import { GatedReferenceReader, ReaderView } from './ReferenceReader';
+import { GatedReferenceReader, ReaderView, versionDate } from './ReferenceReader';
 import { PriceView, VaeView, type Loaded } from './sections';
 
 const ok = <T,>(data: T): Loaded<T> => ({ state: 'ok', data });
@@ -198,5 +198,17 @@ describe('reference reader', () => {
     const html = page();
     expect(html).not.toMatch(/<form|<button[^>]*type="submit"/);
     expect(text(html)).not.toMatch(/\bApprove\b|\bReject\b|Request revision|Publish\b/);
+  });
+
+  it('lays out summary first, a table of contents, an evidence table and hashes only in technical details', () => {
+    const html = page();
+    const t = text(html);
+    for (const s of ['On this page', 'Key findings', 'Open questions', 'Counterevidence and caveats', 'Evidence', 'Limitations'])
+      expect(t).toContain(s);
+    expect(t.indexOf('Key findings')).toBeLessThan(t.indexOf('Synthetic microstructure finding. Report summary'));
+    expect(html).toContain('<table');
+    // The report hash appears only inside the technical details drawer.
+    expect(html.indexOf(meta.report_sha256)).toBeGreaterThan(html.indexOf('data-technical-details'));
+    expect(versionDate(meta.report_version)).toBe('7 Nov 2026');
   });
 });

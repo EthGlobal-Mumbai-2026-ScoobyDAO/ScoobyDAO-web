@@ -21,7 +21,7 @@ const connectors = connectorsForWallets(
         { groupName: 'Others', wallets: [walletConnectWallet, injectedWallet] },
       ]
     : [{ groupName: 'Browser wallets', wallets: [injectedWallet] }],
-  { appName: 'Unmasked', projectId: env.walletConnectProjectId || 'unset' },
+  { appName: 'ScoobyDAO', projectId: env.walletConnectProjectId || 'unset' },
 );
 
 /** Ethereum Sepolia hosts the market; Arbitrum Sepolia is only the CCIP source. */

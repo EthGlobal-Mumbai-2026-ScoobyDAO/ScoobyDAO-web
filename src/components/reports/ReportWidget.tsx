@@ -1,12 +1,19 @@
 'use client';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { PillarStatus } from '@/components/reference/ReaderStates';
+import {
+  EvidenceChips,
+  EvidenceTable,
+  ReaderSection,
+  ReaderShell,
+  type TocItem,
+} from '@/components/report/ReaderLayout';
+import { Card, Disclosure, ErrorState, LoadState } from '@/components/ui';
 import { loadNativeReport, PILLARS, type NativeReport } from '@/lib/report-widget';
 import { verifyAsset, type ReportEntry } from '@/lib/reports';
 
 export function ReportWidget({ entry }: { entry: ReportEntry }) {
-  const [index, setIndex] = useState(0);
-  const [evidenceId, setEvidenceId] = useState<string | null>(null);
   const query = useQuery({
     queryKey: [
       'native-report',
@@ -19,271 +26,277 @@ export function ReportWidget({ entry }: { entry: ReportEntry }) {
     queryFn: () => loadNativeReport(entry),
     retry: false,
   });
-  if (query.isPending)
+  if (query.isError)
     return (
-      <p className="mt-6" role="status">
-        Loading research cards…
-      </p>
+      <ErrorState
+        source="Research API"
+        title="Research cards unavailable"
+        message="The research cards are unavailable or the package could not be verified, so nothing is shown."
+        onRetry={() => void query.refetch()}
+      />
     );
-  if (query.isError || !query.data)
-    return (
-      <p className="mt-6" role="alert">
-        Research cards are unavailable or the package could not be verified.
-      </p>
-    );
-  const { report, irc, reasoning, assetBase } = query.data;
-  const [key, name] = PILLARS[index];
-  const pillar = report.pillars[key];
-  const summary = irc?.pillars?.[key];
-  const deep = reasoning?.reasoning?.pillars?.find((p) => p.name === key);
-  const evidence = report.evidence.find((source) => source.id === evidenceId);
+  return (
+    <LoadState
+      query={query}
+      source="Research API"
+      skeleton={<div className="sweep h-64 rounded-[14px]" aria-label="Loading research cards" />}
+    >
+      {(data) => <NativeReader data={data} />}
+    </LoadState>
+  );
+}
+
+function NativeReader({ data }: { data: NativeReport }) {
+  const { report, irc, reasoning, assetBase } = data;
   const recommendation =
     reasoning?.profile === 'scooby.reasoning/2'
       ? reasoning.reasoning.conclusion?.recommendation
       : undefined;
-  const select = (i: number) => {
-    setIndex(i);
-    setEvidenceId(null);
-  };
+  const toc: TocItem[] = [
+    { id: 'summary', label: 'Summary' },
+    ...PILLARS.map(([k, label]) => ({
+      id: `pillar-${k}`,
+      label,
+      marker: <PillarStatus status={report.pillars[k]?.status} compact />,
+    })),
+    { id: 'evidence', label: 'Evidence' },
+  ];
+  const limitations = PILLARS.flatMap(([k]) => [
+    ...(irc?.pillars?.[k]?.limitations ?? []),
+    ...(report.pillars[k]?.quality_issues ?? []),
+  ]);
+  if (limitations.length) toc.push({ id: 'limitations', label: 'Limitations' });
   return (
-    <section className="mt-8" aria-labelledby="research-heading">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-beam-ink text-sm font-semibold">FIVE PILLARS</p>
-          <h2 id="research-heading" className="mt-1 text-2xl font-semibold">
-            The research, in context
-          </h2>
-          <p className="text-muted mt-1 text-sm">
-            Select a pillar to explore its findings and evidence.
-          </p>
-        </div>
-        <p className="text-muted text-sm" aria-live="polite">
-          {index + 1} of {PILLARS.length}
-        </p>
-      </div>
-      <div className="mt-5 flex flex-wrap gap-2" role="group" aria-label="Choose a pillar">
-        {PILLARS.map(([id, label], i) => (
-          <button
-            key={id}
-            type="button"
-            aria-pressed={i === index}
-            onClick={() => select(i)}
-            className={`rounded-full border px-3 py-2 text-sm ${i === index ? 'border-beam bg-beam text-on-beam' : 'border-line bg-surface text-text'}`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-      <article
-        className="border-line bg-surface mt-4 min-w-0 rounded-2xl border p-5 sm:p-8"
-        aria-labelledby="pillar-title"
-        onKeyDown={(event) => {
-          if (event.key === 'ArrowRight' && index < PILLARS.length - 1) {
-            event.preventDefault();
-            select(index + 1);
-          }
-          if (event.key === 'ArrowLeft' && index > 0) {
-            event.preventDefault();
-            select(index - 1);
-          }
-        }}
-      >
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-beam-ink text-xs font-semibold">
-              PILLAR {String(index + 1).padStart(2, '0')}
-            </p>
-            <h3 id="pillar-title" className="mt-2 text-2xl font-semibold">
-              {name}
-            </h3>
-            <p className="text-muted mt-1 text-sm">Status: {pillar.status}</p>
-          </div>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              aria-label="Previous pillar"
-              disabled={index === 0}
-              onClick={() => select(index - 1)}
-              className="border-line rounded-lg border px-4 py-2 disabled:opacity-40"
-            >
-              ←
-            </button>
-            <button
-              type="button"
-              aria-label="Next pillar"
-              disabled={index === PILLARS.length - 1}
-              onClick={() => select(index + 1)}
-              className="border-line rounded-lg border px-4 py-2 disabled:opacity-40"
-            >
-              →
-            </button>
-          </div>
-        </div>
-        <div className="mt-6 grid gap-4 md:grid-cols-2">
-          <div className="bg-surface-raised min-w-0 rounded-xl p-4">
-            <h4 className="text-beam-ink text-xs font-semibold uppercase">Insight</h4>
-            <p className="mt-2 leading-relaxed">
-              {summary?.insight?.text || pillar.summary || 'Insight pending.'}
-            </p>
-          </div>
-          <div className="bg-surface-raised min-w-0 rounded-xl p-4">
-            <h4 className="text-clue-ink text-xs font-semibold uppercase">Reasoning</h4>
-            <p className="mt-2 leading-relaxed">
-              {summary?.reasoning?.text || 'Reasoning pending.'}
-            </p>
-          </div>
-        </div>
-        <div className="mt-5">
-          <h4 className="text-muted text-xs font-semibold uppercase">Citations</h4>
-          <CitationLinks
-            ids={summary?.citations?.evidence_ids ?? pillar.evidence_ids}
-            onSelect={setEvidenceId}
-          />
-        </div>
-        {pillar.series.map((series) => (
-          <SeriesChart key={series.id} series={series} onSelect={setEvidenceId} />
-        ))}
-        <details className="border-line mt-6 border-t pt-4">
-          <summary className="cursor-pointer font-semibold">
-            View full analysis, measurements and claims
-          </summary>
-          <div className="mt-4 space-y-4">
-            {deep?.analysis?.length ? (
-              deep.analysis.map((item, i) => (
-                <div key={i}>
-                  <p className="leading-relaxed">{item.text}</p>
-                  <CitationLinks ids={item.evidence_ids} onSelect={setEvidenceId} />
-                </div>
-              ))
-            ) : (
-              <p className="text-muted">Detailed reasoning unavailable.</p>
+    <ReaderShell toc={toc} header={null}>
+      <ReaderSection id="summary" title="Summary">
+        <div className="space-y-4">
+          <Card>
+            <p className="text-muted text-[13px]">Overall assessment (draft)</p>
+            {report.assessment.label && (
+              <p className="text-beam-ink mt-1 text-xl font-semibold">{report.assessment.label}</p>
             )}
-            {[
-              ...(summary?.limitations ?? []),
-              ...(deep?.limitations ?? []),
-              ...pillar.quality_issues,
-            ].map((item, i) => (
-              <p key={i} className="text-muted text-sm">
-                Limitation: {item}
-              </p>
-            ))}
-            {[...(summary?.questions ?? []), ...(deep?.questions ?? [])].map((item, i) => (
-              <p key={i} className="text-muted text-sm">
-                Open question: {item}
-              </p>
-            ))}
-            <h4 className="font-semibold">Measurements</h4>
-            {pillar.measurements.length ? (
-              pillar.measurements.map((m) => (
-                <div key={m.id} className="border-line rounded-lg border p-3 text-sm">
-                  <p className="font-semibold break-words">
-                    {m.id}:{' '}
-                    {m.value === null
-                      ? `Unknown${m.unknown_reason ? ` — ${m.unknown_reason}` : ''}`
-                      : String(m.value)}{' '}
-                    {m.unit ?? '(unit unknown)'}
-                  </p>
-                  <p className="text-muted mt-1">
-                    Method: {m.method ?? 'unknown'} · Quality: {m.quality}
-                  </p>
-                  <CitationLinks ids={m.evidence_ids} onSelect={setEvidenceId} />
-                </div>
-              ))
-            ) : (
-              <p className="text-muted">No measurements supplied.</p>
-            )}
-            <h4 className="font-semibold">Claims and counterevidence</h4>
-            {pillar.claims.length ? (
-              pillar.claims.map((c) => (
-                <div key={c.id} className="border-line rounded-lg border p-3 text-sm">
-                  <p className="font-semibold">
-                    {c.id} · {c.kind}
-                  </p>
-                  <p className="mt-1">{c.statement}</p>
-                  <p className="text-muted mt-2">Supporting evidence</p>
-                  <CitationLinks ids={c.supporting_evidence_ids} onSelect={setEvidenceId} />
-                  <p className="text-muted mt-2">Counterevidence</p>
-                  <CitationLinks ids={c.counterevidence_ids} onSelect={setEvidenceId} />
-                  {c.contradiction_claim_ids?.length ? (
-                    <p className="text-muted mt-2">
-                      Contradicting claims: {c.contradiction_claim_ids.join(', ')}
-                    </p>
-                  ) : null}
-                  {c.uncertainties?.map((u, i) => (
-                    <p key={i} className="text-muted mt-1">
-                      Uncertainty: {u}
-                    </p>
+            <p className="mt-2 line-clamp-4 max-w-[68ch]">{report.assessment.summary}</p>
+            {(reasoning?.reasoning?.conclusion?.analysis?.length ?? 0) > 0 && (
+              <Disclosure summary="Full reasoning" className="mt-3">
+                <div className="space-y-3">
+                  {reasoning!.reasoning.conclusion!.analysis!.map((paragraph, i) => (
+                    <div key={i} className="max-w-[68ch]">
+                      <p>{paragraph.text}</p>
+                      <EvidenceChips ids={paragraph.evidence_ids} />
+                      <InputRefs ids={paragraph.input_ids} report={report} />
+                    </div>
                   ))}
                 </div>
-              ))
-            ) : (
-              <p className="text-muted">No claims supplied.</p>
+              </Disclosure>
             )}
-          </div>
-        </details>
-      </article>
-      {evidenceId && (
-        <Evidence
-          source={evidence}
-          id={evidenceId}
-          assetBase={assetBase}
-          onClose={() => setEvidenceId(null)}
-        />
-      )}
-      {recommendation && (
-        <section
-          className="border-line bg-surface mt-4 rounded-xl border p-5"
-          aria-label="Proposed action"
-        >
-          <p className="text-beam-ink text-xs font-semibold uppercase">
-            Proposed action · pending review
-          </p>
-          <h3 className="mt-2 text-xl font-semibold">{recommendation.action}</h3>
-          <p className="mt-3">{recommendation.rationale.text}</p>
-          <CitationLinks ids={recommendation.rationale.evidence_ids} onSelect={setEvidenceId} />
-          <InputRefs ids={recommendation.rationale.input_ids} report={report} />
-          <h4 className="mt-5 font-semibold">Counterevidence</h4>
-          {recommendation.counterevidence.length ? (
-            recommendation.counterevidence.map((item, i) => (
-              <div key={i} className="mt-2">
-                <p>{item.text}</p>
-                <CitationLinks ids={item.evidence_ids} onSelect={setEvidenceId} />
-                <InputRefs ids={item.input_ids} report={report} />
-              </div>
-            ))
-          ) : (
-            <p className="text-muted mt-2">None supplied.</p>
+            {report.assessment.unknowns.length > 0 && (
+              <>
+                <h3 className="mt-5 text-lg font-semibold">Open questions</h3>
+                <ul className="mt-2 flex flex-wrap gap-2">
+                  {report.assessment.unknowns.map((u, i) => (
+                    <li key={i} className="border-line rounded-full border px-3 py-1 text-sm">
+                      {u}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </Card>
+          {recommendation && (
+            <Card aria-label="Proposed action">
+              <p className="text-muted text-[13px]">Proposed action · pending review</p>
+              <h3 className="mt-1 text-lg font-semibold">{recommendation.action}</h3>
+              <p className="mt-2 max-w-[68ch]">{recommendation.rationale.text}</p>
+              <EvidenceChips ids={recommendation.rationale.evidence_ids} />
+              <InputRefs ids={recommendation.rationale.input_ids} report={report} />
+              {recommendation.reversal_conditions.length > 0 && (
+                <Disclosure summary="What would change this view" className="mt-3">
+                  <ul className="text-muted list-disc space-y-1 pl-5">
+                    {recommendation.reversal_conditions.map((condition, i) => (
+                      <li key={i}>{condition}</li>
+                    ))}
+                  </ul>
+                </Disclosure>
+              )}
+              <p className="text-muted mt-3 text-[13px]">
+                Evidence references provide traceability, not proof of the interpretation or
+                authenticated sign-off.
+              </p>
+            </Card>
           )}
-          <h4 className="mt-5 font-semibold">What would change this view</h4>
-          <ul className="text-muted mt-2 list-disc space-y-1 pl-5">
-            {recommendation.reversal_conditions.map((condition, i) => (
-              <li key={i}>{condition}</li>
+          {recommendation && (
+            <div className="rounded-[14px] border border-[color-mix(in_srgb,var(--clue-500)_50%,transparent)] bg-[color-mix(in_srgb,var(--clue-500)_10%,var(--surface))] p-5 sm:p-6">
+              <h3 className="text-clue-ink text-lg font-semibold">Counterevidence</h3>
+              {recommendation.counterevidence.length ? (
+                <ul className="mt-2 space-y-3">
+                  {recommendation.counterevidence.map((item, i) => (
+                    <li key={i} className="max-w-[68ch]">
+                      {item.text}
+                      <EvidenceChips ids={item.evidence_ids} />
+                      <InputRefs ids={item.input_ids} report={report} />
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-muted mt-2">None supplied.</p>
+              )}
+            </div>
+          )}
+        </div>
+      </ReaderSection>
+
+      {PILLARS.map(([key, name]) => {
+        const pillar = report.pillars[key];
+        const summary = irc?.pillars?.[key];
+        const deep = reasoning?.reasoning?.pillars?.find((p) => p.name === key);
+        if (!pillar)
+          return (
+            <ReaderSection key={key} id={`pillar-${key}`} title={name}>
+              <p className="text-mask-ink text-sm">Data gap: no record for this pillar.</p>
+            </ReaderSection>
+          );
+        const issues = [...(summary?.limitations ?? []), ...(deep?.limitations ?? []), ...pillar.quality_issues];
+        const questions = [...(summary?.questions ?? []), ...(deep?.questions ?? [])];
+        return (
+          <ReaderSection
+            key={key}
+            id={`pillar-${key}`}
+            title={name}
+            aside={<PillarStatus status={pillar.status} />}
+          >
+            <Card className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="min-w-0">
+                  <h3 className="text-muted text-[13px] font-semibold">Insight</h3>
+                  <p className="mt-1">{summary?.insight?.text || pillar.summary || 'Insight pending.'}</p>
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-muted text-[13px] font-semibold">Reasoning</h3>
+                  <p className="mt-1">{summary?.reasoning?.text || 'Reasoning pending.'}</p>
+                </div>
+              </div>
+              {pillar.series.map((series) => (
+                <SeriesChart key={series.id} series={series} />
+              ))}
+              {(deep?.analysis?.length || pillar.measurements.length || pillar.claims.length) ? (
+                <Disclosure summary="Full analysis, measurements and claims">
+                  <div className="space-y-4">
+                    {deep?.analysis?.map((item, i) => (
+                      <div key={i}>
+                        <p className="max-w-[68ch]">{item.text}</p>
+                        <EvidenceChips ids={item.evidence_ids} />
+                      </div>
+                    ))}
+                    {pillar.measurements.map((m) => (
+                      <div key={m.id} className="border-line rounded-lg border p-3 text-sm">
+                        <p className="font-semibold break-words">
+                          {m.id}:{' '}
+                          {m.value === null
+                            ? `Unknown${m.unknown_reason ? ` — ${m.unknown_reason}` : ''}`
+                            : String(m.value)}{' '}
+                          {m.unit ?? '(unit unknown)'}
+                        </p>
+                        <p className="text-muted mt-1">
+                          Method: {m.method ?? 'unknown'} · Quality: {m.quality}
+                        </p>
+                        <EvidenceChips ids={m.evidence_ids} />
+                      </div>
+                    ))}
+                    {pillar.claims.map((c) => (
+                      <div key={c.id} className="border-line rounded-lg border p-3 text-sm">
+                        <p className="font-semibold">
+                          {c.id} · {c.kind}
+                        </p>
+                        <p className="mt-1">{c.statement}</p>
+                        <p className="text-muted mt-2">Supporting evidence</p>
+                        <EvidenceChips ids={c.supporting_evidence_ids} />
+                        <p className="text-muted mt-2">Counterevidence</p>
+                        {c.counterevidence_ids.length ? (
+                          <EvidenceChips ids={c.counterevidence_ids} />
+                        ) : (
+                          <p className="text-muted">None supplied.</p>
+                        )}
+                        {c.contradiction_claim_ids?.length ? (
+                          <p className="text-muted mt-2">
+                            Contradicting claims: {c.contradiction_claim_ids.join(', ')}
+                          </p>
+                        ) : null}
+                        {c.uncertainties?.map((u, i) => (
+                          <p key={i} className="text-muted mt-1">
+                            Uncertainty: {u}
+                          </p>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                </Disclosure>
+              ) : null}
+              {(issues.length > 0 || questions.length > 0) && (
+                <Disclosure summary={`Quality issues and open questions (${issues.length + questions.length})`}>
+                  <ul className="text-muted list-disc space-y-1 pl-5 text-sm">
+                    {issues.map((item, i) => (
+                      <li key={`l${i}`}>Limitation: {item}</li>
+                    ))}
+                    {questions.map((item, i) => (
+                      <li key={`q${i}`}>Open question: {item}</li>
+                    ))}
+                  </ul>
+                </Disclosure>
+              )}
+              <div>
+                <h3 className="text-muted text-[13px] font-semibold">Evidence cited</h3>
+                {(summary?.citations?.evidence_ids ?? pillar.evidence_ids).length ? (
+                  <EvidenceChips ids={summary?.citations?.evidence_ids ?? pillar.evidence_ids} />
+                ) : (
+                  <p className="text-muted text-sm">None supplied.</p>
+                )}
+              </div>
+            </Card>
+          </ReaderSection>
+        );
+      })}
+
+      <ReaderSection id="evidence" title="Evidence">
+        <EvidenceTable
+          rows={report.evidence.map((source) => ({
+            id: source.id,
+            kind: source.kind,
+            coverage: source.coverage,
+            observed: (
+              <>
+                Observed {source.observed_at ?? 'unknown'}
+                <br />
+                fetched {source.fetched_at ?? 'unknown'}
+              </>
+            ),
+            details: (
+              <>
+                <p>
+                  File <code className="num">{source.path}</code>
+                </p>
+                <p>
+                  SHA-256 <code className="num break-all">{source.sha256}</code>
+                </p>
+                {source.limitations?.map((x, i) => (
+                  <p key={i}>Limitation: {x}</p>
+                ))}
+                <EvidenceDownload source={source} assetBase={assetBase} />
+              </>
+            ),
+          }))}
+        />
+      </ReaderSection>
+
+      {limitations.length > 0 && (
+        <ReaderSection id="limitations" title="Limitations">
+          <ul className="text-muted max-w-[68ch] list-disc space-y-1 pl-5 text-[15px]">
+            {[...new Set(limitations)].map((l, i) => (
+              <li key={i}>{l}</li>
             ))}
           </ul>
-          <p className="text-muted mt-4 text-sm">
-            Evidence references provide traceability, not proof of the interpretation or
-            authenticated sign-off.
-          </p>
-        </section>
+        </ReaderSection>
       )}
-      <details className="border-line bg-surface mt-4 rounded-xl border p-5">
-        <summary className="cursor-pointer font-semibold">Overall assessment and unknowns</summary>
-        <p className="mt-3 font-semibold">{report.assessment.label}</p>
-        <p className="mt-2">{report.assessment.summary}</p>{' '}
-        {reasoning?.reasoning?.conclusion?.analysis?.map((paragraph, i) => (
-          <div key={i} className="mt-3">
-            <p>{paragraph.text}</p>
-            <CitationLinks ids={paragraph.evidence_ids} onSelect={setEvidenceId} />
-            <InputRefs ids={paragraph.input_ids} report={report} />
-          </div>
-        ))}
-        <ul className="text-muted mt-3 list-disc space-y-1 pl-5">
-          {report.assessment.unknowns.map((item, i) => (
-            <li key={i}>{item}</li>
-          ))}
-        </ul>
-      </details>
-    </section>
+    </ReaderShell>
   );
 }
 function InputRefs({ ids, report }: { ids?: string[]; report: NativeReport['report'] }) {
@@ -314,48 +327,17 @@ function InputRefs({ ids, report }: { ids?: string[]; report: NativeReport['repo
     </div>
   );
 }
-function CitationLinks({
-  ids,
-  onSelect,
-}: {
-  ids: string[] | undefined;
-  onSelect: (id: string) => void;
-}) {
-  if (!ids?.length) return <span className="text-muted text-sm">None supplied.</span>;
-  return (
-    <div className="mt-2 flex flex-wrap gap-2">
-      {ids.map((id) => (
-        <button
-          key={id}
-          type="button"
-          onClick={() => {
-            onSelect(id);
-            setTimeout(() => document.getElementById('source-detail')?.focus(), 0);
-          }}
-          className="text-beam-ink border-line max-w-full rounded border px-2 py-1 text-left text-xs break-all underline"
-        >
-          {id}
-        </button>
-      ))}
-    </div>
-  );
-}
-function Evidence({
+function EvidenceDownload({
   source,
-  id,
   assetBase,
-  onClose,
 }: {
-  source: NativeReport['report']['evidence'][number] | undefined;
-  id: string;
+  source: NativeReport['report']['evidence'][number];
   assetBase: string;
-  onClose: () => void;
 }) {
   const [error, setError] = useState(false);
   async function download() {
     try {
       setError(false);
-      if (!source) throw new Error();
       const blob = await verifyAsset({ url: assetBase + source.path, sha256: source.sha256 });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -368,46 +350,17 @@ function Evidence({
     }
   }
   return (
-    <section
-      id="source-detail"
-      tabIndex={-1}
-      aria-label="Evidence detail"
-      className="border-line bg-surface-raised mt-4 rounded-xl border p-5"
-    >
-      <div className="flex justify-between gap-4">
-        <h3 className="font-semibold break-all">Evidence: {id}</h3>
-        <button type="button" onClick={onClose} className="text-beam-ink underline">
-          Close
-        </button>
-      </div>
-      {source ? (
-        <>
-          <p className="text-muted mt-2 text-sm">
-            {source.kind} · Observed: {source.observed_at ?? 'unknown'} · Fetched:{' '}
-            {source.fetched_at ?? 'unknown'}
-          </p>
-          <p className="mt-2 text-sm">{source.coverage}</p>
-          {source.limitations?.map((x, i) => (
-            <p key={i} className="text-muted mt-1 text-sm">
-              {x}
-            </p>
-          ))}
-          <button type="button" onClick={download} className="text-beam-ink mt-3 underline">
-            Download verified evidence
-          </button>
-          {error && <p role="alert">Evidence unavailable or digest mismatch.</p>}
-        </>
-      ) : (
-        <p className="mt-2">Evidence reference unavailable.</p>
-      )}
-    </section>
+    <p>
+      <button type="button" onClick={download} className="text-beam-ink underline">
+        Download verified evidence
+      </button>
+      {error && <span role="alert"> Evidence unavailable or digest mismatch.</span>}
+    </p>
   );
 }
 function SeriesChart({
   series,
-  onSelect,
 }: {
-  onSelect: (id: string) => void;
   series: NativeReport['report']['pillars'][string]['series'][number];
 }) {
   const points = series.points.filter(
@@ -425,7 +378,7 @@ function SeriesChart({
     minV = Math.min(...values),
     maxV = Math.max(...values);
   return (
-    <div className="border-line mt-6 min-w-0 rounded-xl border p-4">
+    <div className="border-line min-w-0 rounded-xl border p-4">
       <h4 className="font-semibold break-words">{series.id}</h4>
       <p className="text-muted mt-1 text-sm">
         {series.unit ?? 'Unit unknown'} · {series.quality} · {series.method ?? 'Method unknown'}
@@ -464,7 +417,7 @@ function SeriesChart({
       ) : (
         <p className="text-muted mt-3">No plottable timestamped observations.</p>
       )}
-      <CitationLinks ids={series.evidence_ids} onSelect={onSelect} />
+      <EvidenceChips ids={series.evidence_ids} />
       <details className="mt-3">
         <summary className="cursor-pointer text-sm">View observations</summary>
         <ul className="mt-2 space-y-1 text-sm">

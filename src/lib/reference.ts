@@ -180,6 +180,11 @@ export function snapshotExpired(expiresAt: string | null, now = Date.now()): boo
   return !Number.isFinite(t) || t <= now;
 }
 
+/** Review desk workspace for a report; the per-report World ID session gates it. */
+export function reviewWorkspaceHref(r: Pick<ReferenceReportLink, 'report_id' | 'report_version'>) {
+  return `/admin/reviews/${encodeURIComponent(r.report_id)}/${encodeURIComponent(r.report_version)}`;
+}
+
 /** Reader route under the review desk; the per-report World ID session gates it. */
 export function referenceReaderHref(r: Pick<ReferenceReportLink, 'report_id' | 'report_version'>) {
   return `/admin/reviews/${encodeURIComponent(r.report_id)}/${encodeURIComponent(r.report_version)}/reference`;

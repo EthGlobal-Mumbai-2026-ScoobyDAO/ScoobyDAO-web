@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { isAddress, zeroAddress, type Address, type Hex } from 'viem';
 import { useAccount } from 'wagmi';
+import { Disclosure } from '@/components/ui';
 import type { ReportChoice } from '@/protocol/reportDiscovery';
 import { activateMarket, configureCcipReceiver, deployCcipSender, deployMarketHook, prepareMarket, setupState, type SetupState } from '@/protocol/marketSetup';
 
@@ -27,9 +28,14 @@ export function MarketSetup({ choice }: { choice: ReportChoice }) {
     catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); }
   }
-  return <section className="glass mx-auto mt-6 max-w-6xl space-y-4 p-5" aria-label="Market setup">
-    <h2 className="font-display text-2xl">Set up this report’s V2 market</h2>
-    <p className="text-muted text-sm">The report is already published in the registry. Its publisher can create the vault and YT, deploy the Uniswap v4 pool, and activate local staking and trading. Complete setup before the vote lock and market maturity.</p>
+  return <section className="border-line space-y-3 rounded-[14px] border border-dashed p-5" aria-labelledby="setup-h">
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <h2 id="setup-h" className="text-lg font-semibold">Market setup <span className="text-muted text-sm font-normal">· publisher only</span></h2>
+      <span className="text-muted text-[13px]">{!choice.tradable ? 'No market deployed yet' : 'Cross-chain staking not set up yet'}</span>
+    </div>
+    <p className="text-muted text-sm">{!choice.tradable ? 'The report is published. Its publisher can deploy the stake vault and yield market here before the lock.' : 'Local staking and trading work. The publisher can still connect Arbitrum Sepolia staking via Chainlink CCIP.'}</p>
+    <Disclosure summary="Show setup steps">
+    <div className="space-y-4">
     <ConnectButton />
     <ol className="list-inside list-decimal space-y-3 text-sm">
       <li>{prepared ? 'Vault and YT prepared' : 'Prepare vault and YT'}
@@ -52,5 +58,7 @@ export function MarketSetup({ choice }: { choice: ReportChoice }) {
     {busy && <p role="status">Waiting for wallet or Sepolia confirmation…</p>}
     {error && <p role="alert" className="text-mask-ink text-sm">{error}</p>}
     {lastTx && <a className="text-beam-ink underline" href={`https://sepolia.etherscan.io/tx/${lastTx}`} target="_blank" rel="noreferrer">View latest setup transaction</a>}
+    </div>
+    </Disclosure>
   </section>;
 }

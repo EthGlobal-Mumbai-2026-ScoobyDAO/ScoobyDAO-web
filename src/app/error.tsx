@@ -1,31 +1,23 @@
 'use client';
 
-import { EmptyState } from '@/components/EmptyState';
+import Link from 'next/link';
+import { ErrorState, Page } from '@/components/ui';
 
-export default function Error({
-  error,
-  reset,
-}: {
-  error: Error & { digest?: string };
-  reset: () => void;
-}) {
+export default function Error({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   return (
-    <main className="mx-auto max-w-3xl px-4 py-16">
-      <EmptyState
-        pose="confused"
+    <Page className="grid min-h-[60vh] place-items-center">
+      <ErrorState
+        source="This page"
         title="Something broke on this page"
+        pose="alert"
+        onRetry={reset}
         action={
-          <button
-            type="button"
-            onClick={reset}
-            className="bg-beam text-on-beam rounded-xl px-5 py-3 font-semibold hover:brightness-105"
-          >
-            Try again
-          </button>
+          <Link href="/" className="border-line hover:border-text inline-flex items-center rounded-xl border px-4 py-2 font-semibold">
+            Home
+          </Link>
         }
-      >
-        <span className="num text-sm">{error.message || 'Unknown error'}</span>
-      </EmptyState>
-    </main>
+        message={<span className="num text-sm">{error.message || 'Unknown error'}</span>}
+      />
+    </Page>
   );
 }

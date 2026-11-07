@@ -4,7 +4,6 @@ import { ExternalLink, PlusCircle } from 'lucide-react';
 import { useState } from 'react';
 import type { Address } from 'viem';
 import { useAccount, useSwitchChain, useWalletClient } from 'wagmi';
-import { TestTokenLabel } from '@/components/HonestyLabels';
 import { TxLink } from '@/components/TxLink';
 import { env } from '@/lib/env';
 import { chainName } from '@/lib/explorer';
@@ -34,14 +33,8 @@ export function GetTestFunds({ token, chains = CHAINS }: { token?: Address; chai
   };
 
   return (
-    <section aria-labelledby="funds-h" className="border-line rounded-xl border border-dashed p-4 text-sm">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 id="funds-h" className="font-semibold">
-          Get demo dUSD
-        </h3>
-        <TestTokenLabel />
-      </div>
-      <p className="mt-2">Ask the team: an operator funds wallets on Ethereum Sepolia and Arbitrum Sepolia. Minting is role-gated, so there is no public mint.</p>
+    <section aria-label="Get demo dUSD" className="text-sm">
+      <p>Ask the team: an operator funds wallets on Ethereum Sepolia and Arbitrum Sepolia. There is no public mint.</p>
       {env.faucetUrl && (
         <a href={env.faucetUrl} target="_blank" rel="noreferrer" className="text-beam-ink mt-2 inline-flex items-center gap-1 font-semibold underline">
           Open the team&apos;s dUSD faucet <ExternalLink size={14} aria-hidden />

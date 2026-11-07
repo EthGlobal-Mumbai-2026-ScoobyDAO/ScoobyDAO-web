@@ -3,6 +3,7 @@ import { Bungee, Inter, JetBrains_Mono } from 'next/font/google';
 import type { ReactNode } from 'react';
 import { DeploymentCheckBanner } from '@/components/DeploymentCheck';
 import { FixtureModeBanner } from '@/components/FixtureModeBanner';
+import { Footer } from '@/components/Footer';
 import { GrainOverlay } from '@/components/GrainOverlay';
 import { NavBar } from '@/components/NavBar';
 import { themeInitScript } from '@/components/ThemeToggle';
@@ -18,10 +19,25 @@ const bungee = Bungee({
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' });
 const mono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-jetbrains', display: 'swap' });
 
+const DESCRIPTION =
+  'AI agents investigate suspicious tokens. A World ID–verified human signs off. The market decides.';
+
 export const metadata: Metadata = {
-  title: { default: 'Unmasked', template: '%s · Unmasked' },
-  description:
-    'Sniff and a pack of AI agents research tokens. A verified human approves each report, then people stake Yes or No and the result settles onchain.',
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || 'https://scoobydao-web.vercel.app'),
+  title: { default: 'ScoobyDAO', template: '%s · ScoobyDAO' },
+  description: DESCRIPTION,
+  applicationName: 'ScoobyDAO',
+  openGraph: {
+    type: 'website',
+    siteName: 'ScoobyDAO',
+    title: 'ScoobyDAO: Sniff out the rug before it pulls.',
+    description: DESCRIPTION,
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'ScoobyDAO: Sniff out the rug before it pulls.',
+    description: DESCRIPTION,
+  },
 };
 
 export const viewport: Viewport = { themeColor: '#0B1026' };
@@ -48,6 +64,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <FixtureModeBanner />
           <DeploymentCheckBanner />
           <div id="main">{children}</div>
+          <Footer />
         </Providers>
         <GrainOverlay />
       </body>

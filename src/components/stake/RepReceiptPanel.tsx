@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { getAddress, isAddress, type Address } from 'viem';
 import { Banner } from '@/components/Banner';
 import { AmountField, ApprovalToggle, validAmount, WritesBlockedNote } from '@/components/forms';
-import { NetworkBadge } from '@/components/NetworkBadge';
+import { Disclosure } from '@/components/ui';
 import { TxPlanStepper, usePlan } from '@/components/TxPlanStepper';
 import { formatDate, formatUsdc } from '@/lib/format';
 import { localStakeOpen, type MarketView } from '@/protocol';
@@ -73,18 +73,18 @@ export function RepReceiptPanel({ market: m }: { market: MarketView }) {
     );
   };
 
+  if (!address) return null;
   return (
-    <section aria-labelledby="rep-h" className="glass space-y-4 p-5">
+    <section aria-labelledby="rep-h" className="glass space-y-3 p-5 sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 id="rep-h" className="font-semibold">
+        <h2 id="rep-h" className="text-lg font-semibold">
           REP receipts
         </h2>
-        <NetworkBadge chainId={11155111} />
+        <span className="num text-[15px] font-semibold">{pos ? formatUsdc(pos.repReceipt) : '…'} REP</span>
       </div>
-      <p className="text-sm">REP is a receipt for dUSD you deposited but haven&apos;t staked yet. Withdraw any time.</p>
-      <p className="text-sm">
-        Your REP: <span className="num font-semibold">{pos ? formatUsdc(pos.repReceipt) : '…'}</span>
-      </p>
+      <p className="text-muted text-sm">A 1:1 receipt for dUSD you deposited but haven&apos;t staked yet. Withdraw any time.</p>
+      <Disclosure summary="Deposit, stake, withdraw or transfer REP" defaultOpen={!!pos && pos.repReceipt > 0n}>
+      <div className="space-y-4">
       <div role="radiogroup" aria-label="REP action" className="flex flex-wrap gap-2">
         {ACTIONS.map(([a, label]) => (
           <button
@@ -107,7 +107,7 @@ export function RepReceiptPanel({ market: m }: { market: MarketView }) {
         <>
           <SidePicker value={side} onChange={setSide} disabled={plan.running || !stakeOpen} />
           {!stakeOpen && <p className="text-muted text-sm">Stakes locked at {formatDate(m.lockTime)}. REP can still be withdrawn or transferred.</p>}
-          <p className="text-muted text-xs">stakeFromREP burns your own REP, so no approval is needed. You get the position and the same amount of YT.</p>
+          <p className="text-muted text-xs">Staking REP burns your own REP, so no approval is needed. You get the position and the same amount of YT.</p>
         </>
       )}
       {action === 'transfer' && (
@@ -145,6 +145,8 @@ export function RepReceiptPanel({ market: m }: { market: MarketView }) {
       </button>
       <TxPlanStepper steps={plan.steps} buildError={plan.buildError} />
       {done && <Banner tone="success" title={done} />}
+      </div>
+      </Disclosure>
     </section>
   );
 }

@@ -1,5 +1,8 @@
 'use client';
 
+import { formatUsdc } from '@/lib/format';
+import { yesShare, type Totals } from '@/lib/payout';
+
 export type SideKey = 'yes' | 'no';
 
 export const SIDE_COPY = {
@@ -21,7 +24,15 @@ export const SIDE_COPY = {
   },
 } as const;
 
-export function SidePicker({ value, onChange, disabled }: { value: SideKey | null; onChange: (s: SideKey) => void; disabled?: boolean }) {
+/** Live share of stakes on one side, as a whole percent (not a probability). */
+export function sideShare(totals: Totals, side: SideKey): number | undefined {
+  const p = yesShare(totals);
+  if (p === undefined) return undefined;
+  const yes = Math.round(p * 100);
+  return side === 'yes' ? yes : 100 - yes;
+}
+
+export function SidePicker({ value, onChange, disabled, totals }: { value: SideKey | null; onChange: (s: SideKey) => void; disabled?: boolean; totals?: Totals }) {
   return (
     <fieldset disabled={disabled} className="grid grid-cols-2 gap-3">
       <legend className="text-muted mb-2 text-sm">Your position</legend>
@@ -31,18 +42,24 @@ export function SidePicker({ value, onChange, disabled }: { value: SideKey | nul
         return (
           <label
             key={s}
-            className={`cursor-pointer rounded-xl border-2 p-3.5 transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-[var(--focus)] ${
+            className={`cursor-pointer rounded-xl border-2 p-4 transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-[var(--focus)] ${
               on ? `${c.ring} ${c.fill}` : 'border-line hover:border-[color-mix(in_srgb,var(--fog-400)_60%,transparent)]'
             } ${disabled ? 'cursor-not-allowed opacity-50' : ''}`}
           >
             <input type="radio" name="side" className="sr-only" checked={on} onChange={() => onChange(s)} />
-            <span className={`font-display flex items-center gap-2 text-xl ${c.ink}`}>
+            <span className={`font-display flex items-center gap-2 text-2xl ${c.ink}`}>
               <span aria-hidden className={`grid h-4 w-4 place-items-center rounded-full border-2 ${on ? c.ring : 'border-line'}`}>
                 {on && <span className={`h-1.5 w-1.5 rounded-full ${c.dot}`} />}
               </span>
               {c.name}
             </span>
             <span className="text-muted mt-1 block text-sm">{c.line}</span>
+            {totals && (
+              <span className="mt-3 block text-[13px]">
+                <span className="num font-semibold">{sideShare(totals, s) ?? 0}%</span> <span className="text-muted">of stakes ·</span>{' '}
+                <span className="num">{formatUsdc(totals[s])}</span> <span className="text-muted">dUSD</span>
+              </span>
+            )}
           </label>
         );
       })}

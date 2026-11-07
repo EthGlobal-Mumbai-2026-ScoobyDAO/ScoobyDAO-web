@@ -11,6 +11,7 @@ import { SimulatedYieldDemoLabel, TestTokenLabel } from '@/components/HonestyLab
 import { NetworkBadge } from '@/components/NetworkBadge';
 import { TxLink } from '@/components/TxLink';
 import { TxPlanStepper, usePlan } from '@/components/TxPlanStepper';
+import { Card as UiCard, InfoTip, Page, PageHeader, TechnicalDetails } from '@/components/ui';
 import { formatDate, formatUsdc } from '@/lib/format';
 import { evidenceHash } from '@/lib/hash';
 import { canAdjudicate, canClaimFee, canInjectYield, canPropose, isSameAddress, V2_INFO, type MarketView, type Outcome } from '@/protocol';
@@ -30,14 +31,18 @@ export function OperatorScreen() {
   const market = useMarket(id);
   const { address, connected } = useActiveAccount();
   return (
-    <main className="mx-auto max-w-5xl space-y-6 px-4 py-8 sm:py-10">
-      <div className="space-y-2">
-        <h1 className="font-display text-4xl">Operator</h1>
-        <p className="text-muted max-w-3xl">
-          Role-gated demo actions, sent from your connected wallet. This page holds no keys. A button turns on only when the chain says your wallet holds the role and
-          the contract would accept the call now.
-        </p>
-      </div>
+    <Page className="space-y-6">
+      <PageHeader
+        className="!mb-2"
+        title="Operator"
+        description="Role-gated demo actions, sent from your connected wallet. This page holds no keys."
+        status={
+          <InfoTip label="When buttons turn on">
+            A button turns on only when the chain says your wallet holds the role and the contract would accept the call now.
+          </InfoTip>
+        }
+        actions={<NetworkBadge chainId={SEPOLIA} />}
+      />
       {protocol.kind !== 'v2' ? (
         <Banner tone="info" title="The operator view is for the live V2 deployment" />
       ) : !connected ? (
@@ -51,7 +56,7 @@ export function OperatorScreen() {
       ) : (
         <Operator m={market.data} me={address} />
       )}
-    </main>
+    </Page>
   );
 }
 
@@ -64,42 +69,50 @@ function Operator({ m, me }: { m: MarketView; me: `0x${string}` }) {
     ['CCIP recovery operator', m.recoveryOperator, 'recovers undecodable CCIP deliveries'],
   ];
   const demo = [m.reviewer, m.resolver, m.adjudicator].every((a) => isSameAddress(a, V2_INFO.deployer));
+  const mine = roles.filter(([, addr]) => isSameAddress(addr, me)).map(([role]) => role);
   return (
     <>
-      <section aria-labelledby="roles-h" className="glass space-y-3 p-5">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 id="roles-h" className="font-semibold">
-            Roles for report #{m.reportId.toString()} (read from chain)
-          </h2>
-          <NetworkBadge chainId={SEPOLIA} />
-        </div>
-        <table className="w-full text-sm">
-          <caption className="sr-only">Roles and whether your wallet holds them</caption>
-          <tbody>
-            {roles.map(([role, addr, what]) => (
-              <tr key={role} className="border-line border-t align-top">
-                <td className="py-2 pr-3">
-                  <p className="font-semibold">{role}</p>
-                  <p className="text-muted text-xs">{what}</p>
-                </td>
-                <td className="py-2 pr-3">{addr ? <TxLink kind="address" value={addr} chainId={SEPOLIA} /> : '—'}</td>
-                <td className="py-2">
-                  {isSameAddress(addr, me) ? (
-                    <span className="text-clue-ink inline-flex items-center gap-1 font-semibold">
-                      <CircleCheck size={15} aria-hidden /> your wallet
-                    </span>
-                  ) : (
-                    <span className="text-muted inline-flex items-center gap-1">
-                      <CircleMinus size={15} aria-hidden /> not you
-                    </span>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {demo && <p className="text-beam-ink text-sm font-semibold">Demo roles: all held by the deployer wallet.</p>}
-      </section>
+      <UiCard title={`Your roles on report #${m.reportId.toString()}`} aria-label="Your roles">
+        <p className="text-[15px]">
+          {mine.length ? (
+            <span className="text-clue-ink inline-flex items-center gap-1.5 font-semibold">
+              <CircleCheck size={16} aria-hidden /> Your wallet holds: {mine.join(', ')}
+            </span>
+          ) : (
+            <span className="text-muted inline-flex items-center gap-1.5">
+              <CircleMinus size={16} aria-hidden /> Your wallet holds none of these roles; every action stays off.
+            </span>
+          )}
+        </p>
+        {demo && <p className="text-beam-ink mt-2 text-sm font-semibold">Demo roles: all held by the deployer wallet.</p>}
+        <TechnicalDetails title="All roles (read from chain)" className="mt-4">
+          <table className="w-full text-sm">
+            <caption className="sr-only">Roles and whether your wallet holds them</caption>
+            <tbody>
+              {roles.map(([role, addr, what]) => (
+                <tr key={role} className="border-line border-t align-top first:border-t-0">
+                  <td className="py-2 pr-3">
+                    <p className="font-semibold">{role}</p>
+                    <p className="text-muted text-xs">{what}</p>
+                  </td>
+                  <td className="py-2 pr-3">{addr ? <TxLink kind="address" value={addr} chainId={SEPOLIA} /> : '—'}</td>
+                  <td className="py-2">
+                    {isSameAddress(addr, me) ? (
+                      <span className="text-clue-ink inline-flex items-center gap-1 font-semibold">
+                        <CircleCheck size={15} aria-hidden /> your wallet
+                      </span>
+                    ) : (
+                      <span className="text-muted inline-flex items-center gap-1">
+                        <CircleMinus size={15} aria-hidden /> not you
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TechnicalDetails>
+      </UiCard>
       <div className="grid gap-6 md:grid-cols-2">
         <Decide kind="propose" m={m} me={me} />
         <Decide kind="adjudicate" m={m} me={me} />
@@ -112,13 +125,9 @@ function Operator({ m, me }: { m: MarketView; me: `0x${string}` }) {
 
 function Card({ title, children, label }: { title: string; children: ReactNode; label?: ReactNode }) {
   return (
-    <section className="glass space-y-3 p-5" aria-label={title}>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-semibold">{title}</h2>
-        {label}
-      </div>
-      {children}
-    </section>
+    <UiCard title={title} actions={label} role="region" aria-label={title}>
+      <div className="space-y-3">{children}</div>
+    </UiCard>
   );
 }
 

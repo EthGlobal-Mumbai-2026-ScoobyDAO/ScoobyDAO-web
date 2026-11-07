@@ -2,7 +2,7 @@ import { getAddress, type Address } from 'viem';
 import { describe, expect, it } from 'vitest';
 import { ARB_SEPOLIA_ID, SEPOLIA_ID, v2 } from '@/contracts/v2';
 import recorded from '@/test/recorded/v2-wiring.json';
-import { runDeploymentCheck, WIRING, writeBlockReason, type DeploymentReads } from './deployment';
+import { deploymentQuery, deploymentQueryFor, runDeploymentCheck, WIRING, writeBlockReason, type DeploymentReads } from './deployment';
 
 // The passing case replays reads recorded from the live chains (src/test/recorded/v2-wiring.json);
 // the mismatched case changes a few of them. No network.
@@ -87,5 +87,16 @@ describe('deployment check against a mocked multicall', () => {
   it('pauses writes while checking and when the check itself errors', () => {
     expect(writeBlockReason(undefined)).toMatch(/Checking the V2 deployment/);
     expect(writeBlockReason(undefined, new Error('RPC down'))).toMatch(/Couldn't verify the V2 deployment.*RPC down/);
+  });
+});
+
+describe('deploymentQueryFor', () => {
+  it('falls back to the default check when there is no bundle (fixture or V1 protocol)', () => {
+    expect(() => deploymentQueryFor(undefined)).not.toThrow();
+    expect(deploymentQueryFor(undefined)).toBe(deploymentQuery);
+  });
+
+  it('uses the default check for the handoff bundle', () => {
+    expect(deploymentQueryFor(v2)).toBe(deploymentQuery);
   });
 });

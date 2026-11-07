@@ -41,7 +41,7 @@ export function useFixtureSync() {
 /** V2 only: the once-per-session check that the chain matches the handoff bundle. */
 export function useDeploymentCheck() {
   const { protocol } = useProtocol();
-  return useQuery({ ...deploymentQueryFor((protocol as typeof v2Flexible).deploymentBundle), enabled: protocol.kind === 'v2' });
+  return useQuery({ ...deploymentQueryFor((protocol as Partial<typeof v2Flexible>).deploymentBundle), enabled: protocol.kind === 'v2' });
 }
 
 /** Whether wallet writes may run. V2 writes wait for a passing deployment check. */

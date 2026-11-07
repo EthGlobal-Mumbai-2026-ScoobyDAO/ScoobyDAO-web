@@ -11,6 +11,7 @@ import {
   allowedCaseActions,
   referenceReaderHref,
   referenceStatus,
+  reviewWorkspaceHref,
   scoutFindings,
   snapshotExpired,
   toReferenceCase,
@@ -92,17 +93,22 @@ describe('six reference pairs', () => {
       const c = toReferenceCase(caseItemFor(pair) as PublicCaseItem)!;
       expect(c.pair.case_id).toBe(caseId);
       expect(c.reports).toHaveLength(1);
-      const href = referenceReaderHref(c.reports[0]);
-      expect(href).toBe(`/admin/reviews/${reportId}/${version}/reference`);
+      expect(referenceReaderHref(c.reports[0])).toBe(`/admin/reviews/${reportId}/${version}/reference`);
+      const href = reviewWorkspaceHref(c.reports[0]);
+      expect(href).toBe(`/admin/reviews/${reportId}/${version}`);
       const html = renderToStaticMarkup(
         <ReferenceCaseCard c={c} now={Date.parse('2026-11-07T00:00:00Z')} />,
       );
       expect(html).toContain(`href="${href}"`);
       expect(html).toContain('Awaiting approval');
       expect(html).toContain('Open questions (1)');
-      expect(html).toContain('Read report');
-      // The docket card carries no reference or snapshot boilerplate.
-      expect(html).not.toMatch(/Historical reference|Synthetic routing text|Snapshot expired/);
+      expect(html).toContain('Review report');
+      // The docket card carries one small "Historical reference" chip; its routing and snapshot caveats stay
+      // inside the closed popover, not on the card.
+      expect(html.match(/Historical reference/g)).toHaveLength(1);
+      // The phase chip already says the review state; no second badge repeats it.
+      expect(html).not.toContain('Pending review');
+      expect(html).not.toMatch(/Synthetic routing text|Snapshot expired|snapshot has expired/i);
     },
   );
 
@@ -114,7 +120,7 @@ describe('six reference pairs', () => {
     expect(c.reports).toEqual([]);
     expect(c.mismatched).toHaveLength(1);
     const html = renderToStaticMarkup(<ReferenceCaseCard c={c} />);
-    expect(html).not.toContain('Read report');
+    expect(html).not.toContain('Review report');
     expect(html).toContain('Report link withheld');
   });
 
@@ -158,7 +164,7 @@ describe('six reference pairs', () => {
       );
       // The only link is the reader.
       expect(html.match(/href="([^"]+)"/g)).toEqual([
-        `href="${referenceReaderHref(c.reports[0])}"`,
+        `href="${reviewWorkspaceHref(c.reports[0])}"`,
       ]);
     }
   });

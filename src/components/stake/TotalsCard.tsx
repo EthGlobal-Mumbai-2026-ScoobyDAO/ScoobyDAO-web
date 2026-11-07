@@ -1,48 +1,44 @@
-import { OddsBar } from '@/components/OddsBar';
-import { PublicStakesLabel } from '@/components/HonestyLabels';
 import { NetworkBadge } from '@/components/NetworkBadge';
+import { OddsBar } from '@/components/OddsBar';
+import { Card } from '@/components/ui';
 import { formatUsdc } from '@/lib/format';
 import type { MarketView } from '@/protocol';
+import { PayoutRulesTip } from './PayoutCalculator';
 
+/** Pool totals plus the payout rules as three short lines (details in the popover). */
 export function TotalsCard({ market: m }: { market: MarketView }) {
+  const total = m.totals.yes + m.totals.no;
   return (
-    <section aria-labelledby="totals-h" className="glass p-5 sm:p-6">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 id="totals-h" className="font-semibold">
-          Stakes so far
-        </h2>
-        <span className="flex flex-wrap gap-2">
-          <PublicStakesLabel />
-          <NetworkBadge chainId={11155111} />
-        </span>
-      </div>
-      <dl className="mt-4 grid grid-cols-3 gap-3">
-        {[
-          ['Total', m.totals.yes + m.totals.no, 'text-text'],
-          ['Yes', m.totals.yes, 'text-beam-ink'],
-          ['No', m.totals.no, 'text-clue-ink'],
-        ].map(([label, v, ink]) => (
-          <div key={label as string}>
-            <dt className="text-muted text-xs">{label as string}</dt>
-            <dd className={`num mt-1 text-lg font-semibold sm:text-xl ${ink as string}`}>{formatUsdc(v as bigint)}</dd>
-          </div>
-        ))}
-      </dl>
-      <p className="text-muted mt-1 text-xs">dUSD. Credited CCIP stakes are included; stakes still in transit are not.</p>
-      <div className="mt-5">
+    <Card title="Stakes so far" actions={<NetworkBadge chainId={11155111} />}>
+      <p className="num text-3xl font-semibold">
+        {formatUsdc(total)} <span className="text-muted text-base font-normal">dUSD</span>
+      </p>
+      <div className="mt-4">
         <OddsBar yes={m.totals.yes} no={m.totals.no} />
       </div>
-      <div id="how-payouts-work" className="border-line text-muted mt-6 border-t pt-4 text-sm">
-        <h3 className="text-text font-semibold">How payouts work</h3>
-        <p className="mt-1.5">
-          After maturity the resolver proposes Yes, No or Void with an evidence hash. Anyone can challenge during the challenge
-          window; then anyone can finalize. Winners get their stake back plus 80% of the losing pool, pro rata. The fee is 20% of
-          the losing pool only. Losers get 0.
-        </p>
-        <p className="mt-2">Example: Yes 80, No 20, Yes wins → treasury 4, each Yes unit redeems 1.20, each No unit 0.</p>
-        <p className="mt-2">Void (one side empty, or no final result by the deadline) returns principal, no fee.</p>
-        <p className="mt-2">If a simulated loss reduced the vault&apos;s principal, every payout scales by what&apos;s left. Claims stay open for 90 days after the result is final.</p>
+      <p className="text-muted mt-2 text-[13px]">
+        Yes <span className="num">{formatUsdc(m.totals.yes)}</span> · No <span className="num">{formatUsdc(m.totals.no)}</span>. Credited CCIP stakes count; stakes in transit
+        don&apos;t yet.
+      </p>
+      <div id="how-payouts-work" className="border-line mt-5 border-t pt-4">
+        <h3 className="flex items-center gap-1.5 text-[15px] font-semibold">
+          How payouts work <PayoutRulesTip />
+        </h3>
+        <ul className="mt-2 space-y-1.5 text-sm">
+          <li className="flex justify-between gap-3">
+            <span className="text-muted">Winners</span>
+            <span className="text-right">stake back + 80% of the losing pool</span>
+          </li>
+          <li className="flex justify-between gap-3">
+            <span className="text-muted">Losers</span>
+            <span className="text-right">0</span>
+          </li>
+          <li className="flex justify-between gap-3">
+            <span className="text-muted">Void</span>
+            <span className="text-right">stakes back, no fee</span>
+          </li>
+        </ul>
       </div>
-    </section>
+    </Card>
   );
 }

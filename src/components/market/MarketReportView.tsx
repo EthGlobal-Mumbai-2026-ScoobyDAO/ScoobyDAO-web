@@ -5,7 +5,7 @@ import { StakeScreen } from '@/components/stake/StakeScreen';
 import { MarketScreen } from '@/components/market/MarketScreen';
 import { ResultScreen } from '@/components/result/ResultScreen';
 import { ChainsScreen } from './ChainsScreen';
-import { ReportDropdown } from './ReportDropdown';
+import { MarketChoicesProvider } from '@/components/case/MarketContext';
 import { TxProvider } from '@/lib/tx';
 import { ProtocolOverrideProvider } from '@/protocol/hooks';
 import type { ReportChoice } from '@/protocol/reportDiscovery';
@@ -24,11 +24,17 @@ export function MarketReportView({ deployment, reportId, tab, choices }: { deplo
       : tab === 'market' ? <MarketScreen id={reportId} base={base} />
         : tab === 'result' ? <ResultScreen id={reportId} base={base} />
           : <ChainsScreen id={reportId} base={base} />;
+  const ctx = useMemo(() => ({ choices, deployment, id: reportId }), [choices, deployment, reportId]);
   return <ProtocolOverrideProvider protocol={protocol}>
     <TxProvider bundle={protocol.deploymentBundle}>
-      <ReportDropdown choices={choices} deployment={deployment} id={reportId} />
-      {choice && ((choice.market && !choice.ccipReady) || !choice.tradable) && <MarketSetup choice={choice} />}
-      {view}
+      <MarketChoicesProvider value={ctx}>
+        {view}
+        {choice && ((choice.market && !choice.ccipReady) || !choice.tradable) && (
+          <div className="mx-auto w-full max-w-[1200px] px-4 pb-12 sm:px-6">
+            <MarketSetup choice={choice} />
+          </div>
+        )}
+      </MarketChoicesProvider>
     </TxProvider>
   </ProtocolOverrideProvider>;
 }

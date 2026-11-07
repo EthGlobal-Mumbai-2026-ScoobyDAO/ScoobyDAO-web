@@ -1,4 +1,4 @@
-# Unmasked web app (repo `ScoobyDAO-web`) — Claude Code spec
+# ScoobyDAO web app (repo `ScoobyDAO-web`) — Claude Code spec
 
 > Frontend for ETHGlobal Mumbai 2026. Read this file, `INTERFACES.md` (v3, Nov 2026) and `NOTES.md` ("V2 live integration (Nov 2026)", then "Revamp (Nov 2026)") before writing code. The web consumes the backend `/web/v1` API and the deployed **RiskFi V2** contracts. It owns no secrets.
 
@@ -12,7 +12,7 @@
 2. **No secrets.** Only `NEXT_PUBLIC_*` values. Never call World's token endpoint, hold private keys or sign approvals.
 3. **No client state is authorization.** The UI shows what the backend and the chain say; it never decides a report is approved.
 4. **No transactions to real networks from scripts or tests.** Tests use fixtures or mocked transports. The UI sends transactions only when a human clicks.
-5. **Brand:** "Unmasked" and the original mascot "Sniff". No studio cartoon characters, names, catchphrases or likenesses anywhere user-facing or in assets. `ScoobyDAO` stays internal.
+5. **Brand:** "ScoobyDAO" and the original mascot "Sniff", a basset-hound detective. No studio cartoon characters, Great Danes, mystery vans, catchphrases or likenesses anywhere user-facing or in assets, and never "Scooby" inside an illustration; "ScoobyDAO" appears only as text. "Unmasked!" is only the Final · Yes verdict moment. Pages use the `src/components/ui/` kit and the layout rules in THEME.md §8.
 6. **Don't guess interfaces.** V2 calls come from the bundle ABIs (`src/contracts/v2`, declared in `src/protocol/v2contracts.ts` `V2_USAGE`); V1 from generated ABIs; backend shapes from `../ScoobyDAO-backend`. Key addresses by (chainId, name), never by address alone. Record every gap in `NOTES.md`.
 7. **Honesty labels** (components in `src/components/HonestyLabels.tsx`): "dUSD — test token, not USDC", "Simulated yield", "Demo clock", "Stakes are public onchain", "The YT price is not a prediction of the verdict", "A CCIP transfer is not a vote until it is credited", "Demo identity: World Agent Pass"; V2 adds "Curve output — not a Yes/No probability or verdict oracle", "Demo report #N (onchain) — not linked to a backend research report", "Estimate — final amount comes from the claim receipt" and "Simulated yield — demo only".
 8. Pages and components import contracts only through `src/protocol`, never raw ABIs.

@@ -1,25 +1,26 @@
 import Link from 'next/link';
-import { EmptyState } from '@/components/EmptyState';
+import { EmptyState, Page } from '@/components/ui';
 
 export default function NotFound() {
   return (
-    <main className="mx-auto max-w-3xl px-4 py-16">
+    <Page className="grid min-h-[60vh] place-items-center">
       <EmptyState
         as="h1"
-        pose="sad"
+        pose="shrug"
         title="This case went cold."
         action={
-          <Link
-            href="/cases"
-            className="bg-beam text-on-beam rounded-xl px-5 py-3 font-semibold hover:brightness-105"
-          >
-            Back to the case board
-          </Link>
+          <div className="flex flex-wrap justify-center gap-2">
+            <Link href="/cases" className="bg-beam text-on-beam rounded-xl px-5 py-3 font-semibold hover:brightness-105">
+              Browse cases
+            </Link>
+            <Link href="/" className="border-line hover:border-text rounded-xl border px-5 py-3 font-semibold">
+              Home
+            </Link>
+          </div>
         }
       >
-        Sniff followed the trail to this address and found nothing. The link may be wrong, or the
-        case was never filed.
+        Nothing is filed at this address. The link may be wrong.
       </EmptyState>
-    </main>
+    </Page>
   );
 }

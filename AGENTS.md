@@ -1,4 +1,4 @@
-# Agent rules (Unmasked web)
+# Agent rules (ScoobyDAO web)
 
 Read `CLAUDE.md` first; it has the hard rules, routes and terms. In short:
 
@@ -6,7 +6,7 @@ Read `CLAUDE.md` first; it has the hard rules, routes and terms. In short:
 - No secrets; only `NEXT_PUBLIC_*`. No transactions to real networks from scripts or tests (tests use `src/test/mockRpc.ts` and `src/test/recorded/`).
 - **V2 is the live default.** The V2 handoff bundle (`../v2`) is the source of truth for addresses, ABIs, pool key, selectors and report #1; sync it with `npm run sync:v2` (hash-checked), never hand-edit `src/contracts/v2/`. Key addresses by (chainId, name).
 - Contracts only through `src/protocol`; V1 ABIs come from `npm run sync:contracts`, never hand-written. V2 calls must be declared in `src/protocol/v2contracts.ts` (`V2_USAGE`).
-- Use the honesty labels in `src/components/HonestyLabels.tsx`. Brand is "Unmasked" + "Sniff".
+- Use the honesty labels in `src/components/HonestyLabels.tsx`. Brand is "ScoobyDAO" + the original mascot "Sniff" (THEME.md §0). Show honesty facts once per screen with `HonestyChips`; build pages from `src/components/ui/` (THEME.md §8).
 - Record conflicts and assumptions in `NOTES.md`.
 - Keep `npm run typecheck && npm run lint && npm test && npm run build` green.
 

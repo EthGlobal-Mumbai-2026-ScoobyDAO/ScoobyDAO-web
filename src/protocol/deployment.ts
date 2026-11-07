@@ -3,6 +3,7 @@ import { allContracts, ARB_SEPOLIA_ID, SEPOLIA_ID, v2, v2Flexible, type V2ChainI
 import { clientFor, multicallLoose, type ReadCall, type ReadResult } from './clients';
 import { read } from './v2contracts';
 import { makeV2Handles } from './v2contracts';
+import { migrateStorageKey } from '@/lib/storageKeys';
 
 // Once-per-session check that the chain matches the handoff bundle before any V2 write is allowed:
 // code at every bundle address, and the wiring between vault, hook, routers, receiver and sender.
@@ -186,9 +187,10 @@ export const liveDeploymentReads = (): DeploymentReads => ({
 
 // A passing report is remembered for the browser session (per bundle version), so the check runs
 // once per session. Failures are never cached: a reload checks again.
-const CACHE_KEY = 'unmasked:v2-deployment';
+const CACHE_KEY = 'scoobydao:v2-deployment';
 
 function cachedReport(): DeploymentReport | undefined {
+  migrateStorageKey('session', 'unmasked:v2-deployment', CACHE_KEY);
   try {
     const r = JSON.parse(window.sessionStorage.getItem(CACHE_KEY) ?? 'null') as DeploymentReport | null;
     return r && r.ok && r.bundle === v2.version ? r : undefined;
@@ -255,8 +257,9 @@ export const flexibleDeploymentQuery = {
 };
 
 /** Validate each activated report's local contracts before its write plans run. */
-export function deploymentQueryFor(bundle: V2Bundle) {
-  if (bundle.version === v2.version) return deploymentQuery;
+/** The deployment check for a bundle. No bundle (fixture or V1 protocol, where the check is disabled) → the default. */
+export function deploymentQueryFor(bundle: V2Bundle | undefined) {
+  if (!bundle || bundle.version === v2.version) return deploymentQuery;
   if (bundle.version === v2Flexible.version) return flexibleDeploymentQuery;
   return {
     queryKey: ['deployment', bundle.version] as const,

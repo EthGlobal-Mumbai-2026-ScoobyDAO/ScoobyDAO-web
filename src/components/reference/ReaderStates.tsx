@@ -9,15 +9,31 @@ const STATUS: Record<string, { text: string; Icon: typeof CircleCheck; cls: stri
   partial: { text: 'Partial', Icon: CircleDashed, cls: 'text-beam-ink' },
   unavailable: { text: 'Unavailable', Icon: CircleSlash, cls: 'text-mask-ink' },
 };
-export function PillarStatus({ status }: { status: string | null | undefined }) {
+export function PillarStatus({
+  status,
+  compact = false,
+}: {
+  status: string | null | undefined;
+  /** Icon only, with the status as screen-reader text and a tooltip. */
+  compact?: boolean;
+}) {
   const s = (status && STATUS[status]) || {
     text: status ? `Status: ${status}` : 'Status unknown',
     Icon: AlertTriangle,
     cls: 'text-muted',
   };
+  if (compact)
+    return (
+      <span className={`inline-flex shrink-0 ${s.cls}`} title={s.text}>
+        <s.Icon size={14} aria-hidden />
+        <span className="sr-only">{s.text}</span>
+      </span>
+    );
   return (
-    <span className={`inline-flex items-center gap-1.5 text-sm font-semibold ${s.cls}`}>
-      <s.Icon size={16} aria-hidden /> {s.text}
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full border border-current/40 px-2.5 py-0.5 text-sm font-semibold ${s.cls}`}
+    >
+      <s.Icon size={15} aria-hidden /> {s.text}
     </span>
   );
 }

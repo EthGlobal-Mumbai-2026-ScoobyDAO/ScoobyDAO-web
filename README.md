@@ -1,10 +1,10 @@
-# Unmasked (web)
+# ScoobyDAO (web)
 
 **Live V2 app:** [scoobydao-web.vercel.app](https://scoobydao-web.vercel.app) · [Vercel project](https://vercel.com/dwaipayan25s-projects/scoobydao-web)
 
 Pushes to `main` deploy to Vercel production; pull requests receive preview deployments and GitHub commit status checks.
 
-Frontend for **Unmasked** (ETHGlobal Mumbai 2026). AI agents and an original detective-hound mascot, Sniff, research suspicious tokens and write a five-pillar report. A reviewed report is published to a `ReportRegistry`, and anyone stakes **dUSD** on **Yes** or **No**, directly on Ethereum Sepolia or from Arbitrum Sepolia over Chainlink CCIP. Each stake records a non-transferable Yes/No position and mints the same amount of a transferable **yield token (YT)**, which trades on a Uniswap v4 hook market until maturity. After maturity a proposed result can be challenged before anyone finalizes it.
+Frontend for **ScoobyDAO** (ETHGlobal Mumbai 2026). AI agents and an original detective-hound mascot, Sniff, research suspicious tokens and write a five-pillar report. A reviewed report is published to a `ReportRegistry`, and anyone stakes **dUSD** on **Yes** or **No**, directly on Ethereum Sepolia or from Arbitrum Sepolia over Chainlink CCIP. Each stake records a non-transferable Yes/No position and mints the same amount of a transferable **yield token (YT)**, which trades on a Uniswap v4 hook market until maturity. After maturity a proposed result can be challenged before anyone finalizes it.
 
 The live default is **RiskFi V2**. `/markets` discovers both registries and offers the same Overview, Stake, Trade YT, Result, and Chains views for each report. `/reports` reads the separate research API through a same-origin proxy when `NEXT_PUBLIC_REPORT_API_URL` is configured (see [LIVE-STATE.md](LIVE-STATE.md) and [HANDOFF-REPORTS.md](HANDOFF-REPORTS.md)).
 

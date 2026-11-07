@@ -1,7 +1,6 @@
 'use client';
 
 import Link from 'next/link';
-import { SectionLink } from '@/components/SectionLink';
 import { useEffect, useRef, type ReactNode } from 'react';
 
 // Positions keep clear of the left-aligned headline and of Sniff; only the first shows on small screens.
@@ -48,7 +47,7 @@ export function Hero({ scene }: { scene: ReactNode }) {
     <section
       ref={ref}
       aria-labelledby="hero-h"
-      className="hero relative isolate flex min-h-[calc(100svh-4rem)] items-end overflow-hidden text-[#e8ecff] sm:items-center"
+      className="hero relative isolate flex min-h-[min(calc(100svh-4rem),760px)] items-end overflow-hidden text-[#e8ecff] sm:items-center"
       style={{
         ['--fx' as string]: '70%',
         ['--fy' as string]: '42%',
@@ -79,10 +78,9 @@ export function Hero({ scene }: { scene: ReactNode }) {
         >
           Every rug has a villain behind the mask.
         </h1>
-        <p className="mt-6 max-w-xl text-lg text-[#c9d0f0] drop-shadow-[0_2px_10px_rgb(0_0_0/0.8)]">
-          Sniff and a pack of AI agents research suspicious tokens, unknowns and counterevidence
-          included. A verified human approves the exact report, then anyone stakes Yes or No and the
-          result settles onchain, with a challenge window before anything is final.
+        <p className="mt-5 max-w-[34rem] text-lg text-[#c9d0f0] drop-shadow-[0_2px_10px_rgb(0_0_0/0.8)] sm:text-xl">
+          AI agents investigate suspicious tokens. A <span className="whitespace-nowrap">World ID–verified</span> human signs off. The market
+          decides.
         </p>
         <div className="mt-8 flex flex-wrap gap-3">
           <Link
@@ -91,12 +89,12 @@ export function Hero({ scene }: { scene: ReactNode }) {
           >
             Browse cases
           </Link>
-          <SectionLink
-            section="how-it-works"
+          <Link
+            href="/markets"
             className="rounded-xl border border-[#7a86b8] bg-[#0b1026]/60 px-6 py-3.5 text-lg font-semibold backdrop-blur hover:border-[#e8ecff]"
           >
-            How it works
-          </SectionLink>
+            See live markets
+          </Link>
         </div>
       </div>
     </section>

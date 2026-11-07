@@ -1,4 +1,4 @@
-import { EstimateLabel } from '@/components/HonestyLabels';
+import { InfoTip } from '@/components/ui';
 import { formatUsdc } from '@/lib/format';
 import { previewStake, type Totals } from '@/lib/payout';
 import type { SideKey } from './SidePicker';
@@ -17,23 +17,24 @@ export function PayoutPreview({ totals, side, amount, projectedPrincipal }: { to
   return (
     <section aria-labelledby="payout-h" className="border-line space-y-3 rounded-xl border p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 id="payout-h" className="font-semibold">
+        <h3 id="payout-h" className="text-[15px] font-semibold">
           If you stake {formatUsdc(amount)} dUSD on {side === 'yes' ? 'Yes' : 'No'}
         </h3>
-        <EstimateLabel />
+        <InfoTip label="Payout formula" align="end">
+          <span className="num block">payout = s + ⌊s × (L − ⌊L/5⌋) / W⌋</span>
+          <span className="text-muted mt-1 block">Each winning unit now redeems {formatUsdc(p.perUnitIfWin, { exact: true })}. Totals keep moving until the lock.</span>
+        </InfoTip>
       </div>
       <dl className="space-y-2 text-sm">
         <Line label="If Yes wins" value={p.ifYes} hint={side === 'yes' ? `fee ${formatUsdc(p.feeIfYes)} dUSD = 20% of the ${formatUsdc(loserIfYes)} No pool` : 'your No position pays 0'} />
         <Line label="If No wins" value={p.ifNo} hint={side === 'no' ? `fee ${formatUsdc(p.feeIfNo)} dUSD = 20% of the ${formatUsdc(loserIfNo)} Yes pool` : 'your Yes position pays 0'} />
-        <Line label="If Void" value={p.ifVoid} hint="principal back, no fee" />
+        <Line label="If Void" value={p.ifVoid} hint="stake back, no fee" />
       </dl>
-      <p className="num text-muted text-xs">payout = s + ⌊s × (L − ⌊L/5⌋) / W⌋ · each winning unit now redeems {formatUsdc(p.perUnitIfWin, { exact: true })}</p>
       {scaled && (
         <p className="text-beam-ink text-xs">
           A simulated loss left {formatUsdc(projectedPrincipal!)} of {formatUsdc(total)} dUSD backing positions, so every figure above is scaled down pro rata.
         </p>
       )}
-      <p className="text-muted text-xs">Totals keep moving until lock, so this changes as others stake.</p>
     </section>
   );
 }

@@ -3,8 +3,7 @@
 import { useState } from 'react';
 import { Banner } from '@/components/Banner';
 import { AmountField, ApprovalToggle, validAmount, WritesBlockedNote } from '@/components/forms';
-import { SimulatedYieldLabel } from '@/components/HonestyLabels';
-import { NetworkBadge } from '@/components/NetworkBadge';
+import { Disclosure } from '@/components/ui';
 import { TxPlanStepper, usePlan } from '@/components/TxPlanStepper';
 import { formatDate, formatUsdc } from '@/lib/format';
 import { lpRemoveOut, lpSharesFor, minOutFor, pairLiquidity, tradingOpen, DEFAULT_SLIPPAGE_BPS, type MarketView, type PositionView } from '@/protocol';
@@ -84,19 +83,17 @@ export function LiquidityPanel({ market: m, pos }: { market: MarketView; pos: Po
   };
 
   return (
-    <section aria-labelledby="lp-h" className="glass space-y-4 p-5">
+    <section aria-labelledby="lp-h" className="glass space-y-4 p-5 sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 id="lp-h" className="font-semibold">
-          Liquidity (RF-YLP)
+        <h2 id="lp-h" className="text-lg font-semibold">
+          Provide liquidity
         </h2>
-        <NetworkBadge chainId={11155111} />
+        <span className="num text-muted text-[13px]">{share.toFixed(2)}% of the pool</span>
       </div>
       <dl className="grid grid-cols-2 gap-3 text-sm">
         <div>
-          <dt className="text-muted">Your RF-YLP</dt>
-          <dd className="num font-semibold">
-            {formatUsdc(pos.lpShares)} <span className="text-muted font-normal">({share.toFixed(2)}% of the pool)</span>
-          </dd>
+          <dt className="text-muted">Your liquidity shares</dt>
+          <dd className="num font-semibold">{formatUsdc(pos.lpShares)}</dd>
         </div>
         <div>
           <dt className="text-muted">Your share of reserves</dt>
@@ -105,12 +102,8 @@ export function LiquidityPanel({ market: m, pos }: { market: MarketView; pos: Po
           </dd>
         </div>
         <div>
-          <dt className="text-muted">LP yield claimable (estimate until checkpoint)</dt>
+          <dt className="text-muted">Yield to claim (estimate)</dt>
           <dd className="num">{formatUsdc(pos.lpClaimable, { exact: true })} dUSD</dd>
-        </div>
-        <div>
-          <dt className="text-muted">LP yield index</dt>
-          <dd className="num text-xs break-all">{p.lpYieldPerShare?.toString() ?? '—'}</dd>
         </div>
       </dl>
       <div className="flex flex-wrap items-center gap-2">
@@ -122,7 +115,6 @@ export function LiquidityPanel({ market: m, pos }: { market: MarketView; pos: Po
         >
           Claim LP yield
         </button>
-        <SimulatedYieldLabel />
       </div>
       <TxPlanStepper steps={claimPlan.steps} buildError={claimPlan.buildError} />
       {claimPlan.result?.ok && claimPlan.result.effect.paid !== undefined && (
@@ -131,6 +123,8 @@ export function LiquidityPanel({ market: m, pos }: { market: MarketView; pos: Po
         </p>
       )}
 
+      <Disclosure summary="Add or remove liquidity">
+      <div className="space-y-4">
       <div role="radiogroup" aria-label="Liquidity action" className="flex gap-2">
         {(['add', 'remove'] as const).map((k) => (
           <button
@@ -227,6 +221,11 @@ export function LiquidityPanel({ market: m, pos }: { market: MarketView; pos: Po
       )}
       <TxPlanStepper steps={plan.steps} buildError={plan.buildError} />
       {done && <Banner tone="success" title={done} />}
+      <p className="text-muted text-xs">
+        Shares are RF-YLP tokens (YieldLPShare). LP yield index <span className="num break-all">{p.lpYieldPerShare?.toString() ?? '—'}</span>.
+      </p>
+      </div>
+      </Disclosure>
     </section>
   );
 }

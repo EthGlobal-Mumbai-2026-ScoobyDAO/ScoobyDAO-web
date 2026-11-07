@@ -2,13 +2,14 @@
 
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useQueries } from '@tanstack/react-query';
-import { BadgeCheck } from 'lucide-react';
+import { ArrowRight, BadgeCheck } from 'lucide-react';
 import Link from 'next/link';
 import { useMemo } from 'react';
 import { TrackedCcipList } from '@/components/ccip/CcipTracker';
-import { EmptyState } from '@/components/EmptyState';
-import { DemoReportLabel, SimulatedYieldLabel } from '@/components/HonestyLabels';
-import { NetworkBadge } from '@/components/NetworkBadge';
+import { linkTargets } from '@/components/case/MarketContext';
+import { marketName } from '@/components/case/marketName';
+import { useLinkedReports } from '@/components/case/useLinkedReport';
+import { Card, EmptyState, HonestyChips, LoadState, Page, PageHeader, StatTile } from '@/components/ui';
 import { StatusChip } from '@/components/StatusChip';
 import { TxPlanStepper, usePlan } from '@/components/TxPlanStepper';
 import { TxProvider } from '@/lib/tx';
@@ -18,6 +19,7 @@ import { claimPrincipalOpen, claimsCloseAt, claimsExpired, type MarketView, type
 import { ProtocolOverrideProvider, useActiveAccount, useChainTime, useProtocol, usePublished, useTrackedCcip, useWritesAllowed } from '@/protocol/hooks';
 import type { ReportChoice } from '@/protocol/reportDiscovery';
 import { protocolForReport } from '@/protocol/reportProtocol';
+import { summarize } from './summarize';
 
 export function PositionsScreen({ reports }: { reports: ReportChoice[] }) {
   const { protocol, ready, fixtureMode } = useProtocol();
@@ -49,65 +51,135 @@ export function PositionsScreen({ reports }: { reports: ReportChoice[] }) {
   const loaded = fixtureMode
     ? fixtureRows.filter((row) => row.data).map((row) => ({ ...row.data!, deployment: undefined, reportProtocol: protocol }))
     : reportRows.flatMap((row, index) => row.data ? [{ ...row.data, deployment: sources[index].report.deployment, reportProtocol: sources[index].protocol }] : []);
-  const failed = (fixtureMode ? fixtureRows : reportRows).find((row) => row.isError);
+  const rows = fixtureMode ? fixtureRows : reportRows;
+  const failed = rows.find((row) => row.isError);
   const loading = fixtureMode ? published.isLoading || fixtureRows.some((row) => row.isLoading) : reportRows.some((row) => row.isLoading);
-  const mine = loaded.filter(({ pos }) => hasAnything(pos));
-  const reportIds = new Set(loaded.map(({ market }) => market.reportId.toString()));
-  const otherTracked = tracked.filter((t) => !reportIds.has(t.reportId));
+  const links = useLinkedReports(linkTargets(reports), !fixtureMode);
+  const query = {
+    data: loading ? undefined : loaded,
+    isError: (fixtureMode && published.isError) || !!failed,
+    error: fixtureMode && published.isError ? published.error : failed?.error,
+    refetch: () => {
+      void published.refetch();
+      rows.forEach((r) => void r.refetch());
+    },
+  };
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
-      <h1 className="font-display text-4xl sm:text-5xl">My positions</h1>
-      <p className="text-muted mt-2 max-w-2xl">Everything this wallet holds, read from chain. Each claim is its own button.</p>
+    <Page>
+      <PageHeader
+        title="My positions"
+        description="Everything this wallet holds across markets, read from chain. Each claim is its own button."
+        actions={
+          (connected || fixtureMode) && <Link href="/markets" className="border-line inline-flex items-center gap-1.5 rounded-xl border px-4 py-2 font-semibold hover:border-[var(--fog-400)]">
+            Browse markets <ArrowRight size={16} aria-hidden />
+          </Link>
+        }
+      />
       {!connected && !fixtureMode ? (
-        <div className="mt-8">
-          <ConnectButton />
-        </div>
-      ) : (fixtureMode && published.isError) || failed ? (
-        <EmptyState pose="confused" title="Couldn't read your positions from chain">
-          {(published.error ?? failed?.error)?.message}
-        </EmptyState>
-      ) : loading ? (
-        <div className="mt-8 grid gap-4" aria-busy="true" aria-label="Loading positions">
-          {[0, 1, 2].map((i) => (
-            <div key={i} className="sweep h-32" />
-          ))}
-        </div>
-      ) : mine.length === 0 && tracked.length === 0 ? (
-        <EmptyState pose="asleep" title="Nothing here yet">
-          This wallet has no positions, YT, REP receipts, LP shares or cross-chain stakes. <Link href="/cases" className="text-beam-ink underline">Browse cases</Link>.
-        </EmptyState>
+        <Card>
+          <EmptyState
+            pose="alert"
+            title="Connect a wallet"
+            action={
+              <div className="flex flex-wrap items-center justify-center gap-3">
+                <ConnectButton />
+                <Link href="/markets" className="text-beam-ink font-semibold underline underline-offset-4">
+                  Browse markets
+                </Link>
+              </div>
+            }
+          >
+            Connect a wallet to see your stakes, yield tokens and claims.
+          </EmptyState>
+        </Card>
       ) : (
-        <ul className="mt-8 space-y-4">
-          {loaded
-            .filter(({ market, pos }) => hasAnything(pos) || tracked.some((t) => t.reportId === market.reportId.toString()))
-            .map(({ market, pos, deployment, reportProtocol }) => (
-              <li key={`${deployment ?? 'fixture'}:${market.reportId.toString()}`}>
-                {deployment ? (
-                  <ProtocolOverrideProvider protocol={reportProtocol}>
-                    <TxProvider bundle={reportProtocol.deploymentBundle}>
-                      <PositionRow market={market} pos={pos} deployment={deployment} />
-                    </TxProvider>
-                  </ProtocolOverrideProvider>
-                ) : <PositionRow market={market} pos={pos} />}
-              </li>
-            ))}
-          {otherTracked.length > 0 && (
-            <li className="glass p-5">
-              <p className="font-semibold">Other cross-chain stakes from this browser</p>
-              <TrackedCcipList items={otherTracked} />
-            </li>
-          )}
-        </ul>
+        <LoadState
+          query={query}
+          source="Ethereum Sepolia RPC"
+          skeleton={
+            <div className="grid gap-4" aria-label="Loading positions">
+              <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+                {[0, 1, 2, 3].map((i) => (
+                  <div key={i} className="sweep h-24" />
+                ))}
+              </div>
+              <div className="sweep h-40" />
+            </div>
+          }
+        >
+          {(all) => {
+            const mine = all.filter(({ pos }) => hasAnything(pos));
+            const reportIds = new Set(all.map(({ market }) => market.reportId.toString()));
+            const otherTracked = tracked.filter((t) => !reportIds.has(t.reportId));
+            if (mine.length === 0 && tracked.length === 0)
+              return (
+                <Card>
+                  <EmptyState
+                    pose="thinking"
+                    title="Nothing here yet"
+                    action={
+                      <Link href="/markets" className="bg-beam text-on-beam inline-flex items-center gap-2 rounded-xl px-4 py-2.5 font-semibold hover:brightness-105">
+                        Browse markets <ArrowRight size={16} aria-hidden />
+                      </Link>
+                    }
+                  >
+                    This wallet has no stakes, yield tokens, REP receipts, liquidity or cross-chain stakes yet.
+                  </EmptyState>
+                </Card>
+              );
+            const t = summarize(mine);
+            return (
+              <div className="space-y-8">
+                <HonestyChips facts={['testToken', 'publicStakes', 'simulatedYield', 'estimate']} />
+                <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+                  <StatTile label="Staked" value={`${formatUsdc(t.staked)}`} hint="dUSD on Yes and No" />
+                  <StatTile label="Claimable now" value={`${formatUsdc(t.claimable)}`} hint="dUSD, estimate" />
+                  <StatTile label="Yield tokens" value={`${formatUsdc(t.yt)}`} hint="YT across markets" />
+                  <StatTile label="REP receipts" value={`${formatUsdc(t.rep)}`} hint="dUSD deposited, not staked" />
+                </div>
+                <ul className="space-y-6">
+                  {all
+                    .filter(({ market, pos }) => hasAnything(pos) || tracked.some((x) => x.reportId === market.reportId.toString()))
+                    .map(({ market, pos, deployment, reportProtocol }) => {
+                      const name = deployment
+                        ? marketName({ id: market.reportId, deployment, linked: links.get(`${deployment}:${market.reportId}`) })
+                        : `Case #${market.reportId.toString()}`;
+                      return (
+                        <li key={`${deployment ?? 'fixture'}:${market.reportId.toString()}`}>
+                          {deployment ? (
+                            <ProtocolOverrideProvider protocol={reportProtocol}>
+                              <TxProvider bundle={reportProtocol.deploymentBundle}>
+                                <PositionRow market={market} pos={pos} deployment={deployment} name={name} />
+                              </TxProvider>
+                            </ProtocolOverrideProvider>
+                          ) : (
+                            <PositionRow market={market} pos={pos} name={name} />
+                          )}
+                        </li>
+                      );
+                    })}
+                  {otherTracked.length > 0 && (
+                    <li>
+                      <Card title="Other cross-chain stakes from this browser">
+                        <TrackedCcipList items={otherTracked} />
+                      </Card>
+                    </li>
+                  )}
+                </ul>
+              </div>
+            );
+          }}
+        </LoadState>
       )}
-    </main>
+    </Page>
   );
 }
 
 const hasAnything = (p: PositionView) =>
   p.yes > 0n || p.no > 0n || p.yt > 0n || p.ytClaimable > 0n || p.lpShares > 0n || p.lpClaimable > 0n || p.pendingCcip.length > 0 || p.reputationBadge || p.repReceipt > 0n;
 
-function PositionRow({ market: m, pos, deployment }: { market: MarketView; pos: PositionView; deployment?: ReportChoice['deployment'] }) {
+function PositionRow({ market: m, pos, deployment, name }: { market: MarketView; pos: PositionView; deployment?: ReportChoice['deployment']; name: string }) {
   const { protocol } = useProtocol();
   const { address } = useActiveAccount();
   const now = useChainTime() ?? m.chainTime;
@@ -117,24 +189,25 @@ function PositionRow({ market: m, pos, deployment }: { market: MarketView; pos: 
   const outcome = m.decision?.outcome;
   const claimOpen = v2 ? claimPrincipalOpen(m, now) : !!outcome;
   const closes = claimsCloseAt(m);
-  const href = deployment ? `/markets/${deployment}/${m.reportId}/result` : v2 ? `/onchain/${m.reportId}` : `/case/${m.reportId}/result`;
+  const href = deployment ? `/markets/${deployment}/${m.reportId}` : v2 ? `/onchain/${m.reportId}` : `/case/${m.reportId}/result`;
   const busy = plan.running || !writes.allowed;
   return (
-    <article className="glass space-y-4 p-5">
+    <article className="glass space-y-5 p-5 sm:p-6">
       <header className="flex flex-wrap items-center gap-3">
-        <h2 className="font-display text-2xl">
+        <h2 className="min-w-0 text-lg font-semibold">
           <Link href={href} className="hover:underline">
-            {deployment ? `${deployment === 'flexible' ? 'Flexible' : 'Original'} report` : v2 ? 'Report' : 'Case'} #{m.reportId.toString()}
+            {name}
           </Link>
         </h2>
         <StatusChip status={m.phase} />
-        <NetworkBadge chainId={11155111} />
-        {m.demoReport && <DemoReportLabel id={m.reportId} />}
         {pos.reputationBadge && (
           <span className="text-clue-ink inline-flex items-center gap-1 text-sm font-semibold">
             <BadgeCheck size={16} aria-hidden /> Reputation badge (World ID, V1)
           </span>
         )}
+        <Link href={href} className="text-beam-ink ml-auto inline-flex items-center gap-1 text-sm font-semibold">
+          Open market <ArrowRight size={14} aria-hidden />
+        </Link>
       </header>
       <div className="grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
         {(['yes', 'no'] as const).map((s) =>
@@ -160,9 +233,7 @@ function PositionRow({ market: m, pos, deployment }: { market: MarketView; pos: 
         )}
         {(pos.yt > 0n || pos.ytClaimable > 0n) && (
           <Item title="Yield token (YT, transferable)" value={`${formatUsdc(pos.yt)} YT`}>
-            <p>
-              Claimable {formatUsdc(pos.ytClaimable, { exact: true })} dUSD <SimulatedYieldLabel />
-            </p>
+            <p>Claimable {formatUsdc(pos.ytClaimable, { exact: true })} dUSD</p>
             <button type="button" disabled={busy || pos.ytClaimable === 0n} onClick={() => void plan.start(() => protocol.claimYield(m.reportId, address!))} className="btn-claim">
               Claim
             </button>
@@ -177,8 +248,8 @@ function PositionRow({ market: m, pos, deployment }: { market: MarketView; pos: 
           </Item>
         )}
         {(pos.lpShares > 0n || pos.lpClaimable > 0n) && (
-          <Item title="LP shares (RF-YLP)" value={formatUsdc(pos.lpShares)}>
-            <p>LP yield ≈ {formatUsdc(pos.lpClaimable, { exact: true })} dUSD (estimate until checkpoint)</p>
+          <Item title="Liquidity shares" value={formatUsdc(pos.lpShares)}>
+            <p>Liquidity yield ≈ {formatUsdc(pos.lpClaimable, { exact: true })} dUSD</p>
             {protocol.claimLPYield && (
               <button type="button" disabled={busy} onClick={() => void plan.start(() => protocol.claimLPYield!(m.reportId, address))} className="btn-claim">
                 Claim
@@ -187,10 +258,7 @@ function PositionRow({ market: m, pos, deployment }: { market: MarketView; pos: 
           </Item>
         )}
       </div>
-      <div>
-        <p className="text-sm font-semibold">Cross-chain stakes</p>
-        <TrackedCcipList reportId={m.reportId} extra={pos.pendingCcip} />
-      </div>
+      <TrackedCcipList reportId={m.reportId} extra={pos.pendingCcip} />
       <TxPlanStepper steps={plan.steps} buildError={plan.buildError} />
       {plan.result?.ok && plan.result.effect.paid !== undefined && (
         <p className="text-clue-ink text-sm" role="status">
@@ -203,8 +271,8 @@ function PositionRow({ market: m, pos, deployment }: { market: MarketView; pos: 
 
 function Item({ title, value, children }: { title: string; value: string; children: React.ReactNode }) {
   return (
-    <div className="border-line space-y-1 rounded-xl border p-3">
-      <p className="text-muted">{title}</p>
+    <div className="border-line space-y-1.5 rounded-xl border p-4">
+      <p className="text-muted text-[13px]">{title}</p>
       <p className="num text-lg font-semibold">{value}</p>
       {children}
     </div>

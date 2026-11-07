@@ -1,15 +1,16 @@
 'use client';
 
-import { CheckCircle2, ExternalLink, UserX, XCircle } from 'lucide-react';
+import { ArrowRight, CheckCircle2, UserX, XCircle } from 'lucide-react';
 import Link from 'next/link';
-import { QRCodeSVG } from 'qrcode.react';
-import { Banner } from '@/components/Banner';
-import { Countdown } from '@/components/Countdown';
+import { useEffect, useState, type ReactNode } from 'react';
 import { HashText } from '@/components/HashText';
-import { TxLink } from '@/components/TxLink';
-import { useEffect, useState } from 'react';
 import { DemoIdentityLabel } from '@/components/HonestyLabels';
+import { SniffPose } from '@/components/SniffPose';
+import { TxLink } from '@/components/TxLink';
 import { ClaimCard } from '@/components/report/ClaimCard';
+import { EmptyState, LoadState, PageHeader, Stepper, TechnicalDetails, type StepState } from '@/components/ui';
+import { Digest, WorldConfirm, worldButtonClass } from '@/components/ui/WorldConfirm';
+import { approvalPhase } from '@/components/admin/reviewMeta';
 import { ApiError, type ReportWithRaw } from '@/lib/api';
 import { chainName } from '@/lib/explorer';
 import { env } from '@/lib/env';
@@ -17,88 +18,118 @@ import { matchClaimHash, sameHash, type ClaimHashMatch } from '@/lib/hash';
 import { useApproval, useFixturesMode, useReport } from '@/lib/queries';
 import type { Approval } from '@/lib/types';
 
-// Projector screen for the World Agent Pass sign-off. Display only: every state shown
-// here comes from GET /approvals/:id (polled every 2s); the UI never decides approval.
+// Publication sign-off, step 3 of the reviewer journey. Display only: every state shown here comes from
+// GET /approvals/:id (polled every 2s); the UI never decides approval.
+
+const REGISTRY = 'ScoobyDAO report registry on Ethereum Sepolia';
+const caseHref = (reportId: string) => `/cases/${encodeURIComponent(reportId)}`;
 
 export function ApproveScreen({ id }: { id: string }) {
   const approval = useApproval(id);
-  const a = approval.data;
-  const final = a && a.status !== 'pending';
-  const report = useReport(a?.reportId);
-  const fixtures = useFixturesMode().data ?? false;
-  const r = report.data;
+  const fixtures = useFixturesMode().data;
 
-  if (approval.isError) {
-    const notFound = approval.error instanceof ApiError && approval.error.status === 404;
-    const signedOut = approval.error instanceof ApiError && (approval.error.status === 401 || approval.error.status === 403);
-    if (signedOut)
+  // /approve/demo-<status> are fixture-only previews; the live backend has no such ids.
+  if (id.startsWith('demo-') && fixtures === false)
+    return (
+      <Shell>
+        <EmptyState pose="shrug" title="Demo previews run in fixture mode only">
+          This app talks to the live backend, so there is no demo sign-off to show.{' '}
+          <Link href="/admin/publish" className="text-beam-ink underline underline-offset-4">
+            Go to Publish
+          </Link>
+        </EmptyState>
+      </Shell>
+    );
+
+  if (approval.isError && approval.error instanceof ApiError) {
+    const st = approval.error.status;
+    if (st === 401 || st === 403)
       return (
         <Shell>
-          <Banner tone="warning" title="Open the report at the review desk to follow this sign-off">
-            Only the reviewer who requested it can see this sign-off, from the same browser tab.{' '}
-            <Link href="/admin" className="underline underline-offset-4">
+          <EmptyState pose="alert" title="Open the report at the review desk first">
+            Only the reviewer who requested this sign-off can follow it, from the same browser tab. Open the report
+            with the same World ID, then reopen this page.
+          </EmptyState>
+          <p className="text-center">
+            <Link href="/admin" className={worldButtonClass.primary}>
               Go to the review desk
             </Link>
-            , press Read on the report with the same World ID, then reopen this page.
-          </Banner>
+          </p>
         </Shell>
       );
-    return (
-      <Shell>
-        <Banner
-          tone="danger"
-          title={
-            notFound ? 'No sign-off request with this id' : "Couldn't load this sign-off request"
-          }
-        >
-          {notFound
-            ? 'Check the link, or request a new sign-off from the case file.'
-            : approval.error.message}
-        </Banner>
-      </Shell>
-    );
+    if (st === 404)
+      return (
+        <Shell>
+          <EmptyState pose="thinking" title="No sign-off request with this id">
+            Check the link, or request a new sign-off from the case file.
+          </EmptyState>
+        </Shell>
+      );
   }
 
-  if (!a)
-    return (
-      <Shell>
-        <Skeleton />
-      </Shell>
-    );
+  return (
+    <LoadState
+      query={approval}
+      source="Review API"
+      skeleton={
+        <Shell>
+          <Skeleton />
+        </Shell>
+      }
+    >
+      {(a) => <Body approval={a} simulated={fixtures ?? false} />}
+    </LoadState>
+  );
+}
 
+function Body({ approval: a, simulated }: { approval: Approval; simulated: boolean }) {
+  const report = useReport(a.reportId);
+  const r = report.data;
   return (
     <Shell status={a.status} demoIdentity={a.demoIdentity}>
-      <div className="grid gap-8 lg:grid-cols-[1.25fr_1fr] lg:gap-12">
-        <ClaimToCheck approval={a} report={r} />
-        <div
-          className={`lg:sticky lg:top-24 lg:self-start ${final ? 'order-first lg:order-none' : ''}`}
-        >
-          {final ? (
-            <Result approval={a} simulated={fixtures} />
-          ) : (
-            <CodePanel approval={a} />
-          )}
+      <Stepper className="mb-8 max-w-2xl" label="Reviewer journey" steps={journey(a.status)} />
+      {a.status === 'pending' ? (
+        <CodePanel approval={a} report={r} reportError={report.isError} />
+      ) : (
+        <div className="mx-auto max-w-[880px] space-y-6">
+          <Result approval={a} simulated={simulated} />
+          <Card title="What was published" approval={a} report={r} reportError={report.isError} />
         </div>
-      </div>
+      )}
     </Shell>
   );
 }
 
-function Shell({ children, status, demoIdentity }: { children: React.ReactNode; status?: Approval['status']; demoIdentity?: boolean }) {
+export function journey(status: Approval['status']): { label: string; state: StepState }[] {
+  const publish: StepState =
+    status === 'pending' ? 'current' : status === 'approved' || status === 'spent' ? 'done' : 'failed';
+  const onchain: StepState = status === 'spent' ? 'done' : status === 'approved' ? 'current' : 'todo';
+  return [
+    { label: 'Review', state: 'done' },
+    { label: 'Publish (World ID)', state: publish },
+    { label: 'Onchain', state: onchain },
+  ];
+}
+
+function Shell({
+  children,
+  status,
+  demoIdentity,
+}: {
+  children: ReactNode;
+  status?: Approval['status'];
+  demoIdentity?: boolean;
+}) {
   return (
-    <main className="mx-auto max-w-7xl px-4 py-8 text-lg sm:px-6 sm:py-12">
-      <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="font-display text-4xl sm:text-5xl">Human sign-off</h1>
-          <p className="text-muted mt-2 max-w-2xl text-xl">
-            No agent can open a case alone. An enrolled reviewer checks this exact report and claim and
-            approves or denies it in World App.
-          </p>
-        </div>
-        {status && <ApprovalChip status={status} />}
-      </header>
+    <main className="py-8 sm:py-10">
+      <PageHeader
+        eyebrow="Step 3 · Publication sign-off"
+        title="Publish onchain"
+        description="No agent publishes alone. A reviewer checks this exact claim and confirms in World App."
+        status={status && <ApprovalChip status={status} />}
+      />
       {demoIdentity && (
-        <p className="mb-6">
+        <p className="-mt-4 mb-6">
           <DemoIdentityLabel />
         </p>
       )}
@@ -141,27 +172,26 @@ const CHIP: Record<Approval['status'], { label: string; cls: string }> = {
 function ApprovalChip({ status }: { status: Approval['status'] }) {
   const c = CHIP[status];
   return (
-    <span
-      className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-base font-semibold ${c.cls}`}
-    >
+    <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-semibold ${c.cls}`}>
       {status === 'pending' ? (
         <span className="relative flex h-2.5 w-2.5" aria-hidden>
           <span className="bg-ghost absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 motion-reduce:hidden" />
           <span className="bg-ghost relative inline-flex h-2.5 w-2.5 rounded-full" />
         </span>
       ) : status === 'approved' || status === 'spent' ? (
-        <CheckCircle2 size={18} aria-hidden />
+        <CheckCircle2 size={16} aria-hidden />
       ) : status === 'rejected_not_reviewer' ? (
-        <UserX size={18} aria-hidden />
+        <UserX size={16} aria-hidden />
       ) : (
-        <XCircle size={18} aria-hidden />
+        <XCircle size={16} aria-hidden />
       )}
       {c.label}
     </span>
   );
 }
 
-function ClaimToCheck({ approval, report }: { approval: Approval; report?: ReportWithRaw }) {
+/** Recomputes the claim hash from the case file's manifest in this browser and compares it with the approval. */
+function useHashCheck(approval: Approval, report?: ReportWithRaw) {
   // The backend's declared algorithm, else keccak256 (its default) then SHA-256.
   const [recomputed, setRecomputed] = useState<ClaimHashMatch | null>(null);
   useEffect(() => {
@@ -170,198 +200,265 @@ function ClaimToCheck({ approval, report }: { approval: Approval; report?: Repor
         .then(setRecomputed)
         .catch(() => setRecomputed(null));
   }, [report, approval.claimHashAlg]);
-  const hashOk = report ? sameHash(approval.claimHash, report.claimHash) && (!recomputed || recomputed.match) : undefined;
+  const ok = report ? sameHash(approval.claimHash, report.claimHash) && (!recomputed || recomputed.match) : undefined;
+  return { ok, alg: recomputed?.alg };
+}
+
+/** "What you're publishing": claim, token, version, hashes (short, with copy), registry; full values in a drawer. */
+export function PublishingDetails({
+  approval,
+  report,
+  reportError,
+}: {
+  approval: Approval;
+  report?: ReportWithRaw;
+  reportError?: boolean;
+}) {
+  const check = useHashCheck(approval, report);
   const reportSha = approval.reportSha256 ?? report?.reportSha256;
-
   return (
-    <section aria-labelledby="claim-h" className="glass p-6 sm:p-8">
-      <h2 id="claim-h" className="text-muted text-xl font-semibold">
-        {approval.status === 'pending' ? 'Check this claim before approving' : 'The claim the reviewer saw'}
-      </h2>
-
-      <dl className="mt-6 space-y-6">
-        <div>
-          <dt className="text-muted text-base">Report</dt>
-          <dd className="mt-1 text-xl">
-            {report ? (
-              <>
-                <span className="font-semibold">{report.report.identity.symbol}</span>{' '}
-                <span className="text-muted">on {chainName(report.report.identity.chain_id)}</span>
-                <span className="num mt-1 block text-base break-all">{report.report.identity.address}</span>
-              </>
-            ) : (
-              <span className="sweep inline-block h-7 w-96 max-w-full" />
-            )}
-          </dd>
-          {report && (
-            <dd className="text-muted mt-1 text-base">
-              Version <span className="num text-text">{report.version}</span> · schema v{report.report.schema_version}
-            </dd>
+    <div className="space-y-4">
+      {report ? (
+        <ClaimCard manifest={report.claimManifest} />
+      ) : reportError ? (
+        <p role="alert" className="text-mask-ink text-sm">
+          Couldn’t load the case file, so the claim can’t be shown or checked here. Don’t approve until it loads.
+        </p>
+      ) : (
+        <span className="sweep block h-32 rounded-xl" aria-label="Loading the claim" />
+      )}
+      <dl className="grid gap-3 text-[15px] sm:grid-cols-[auto_1fr] sm:gap-x-6">
+        <dt className="text-muted">Claim hash</dt>
+        <dd className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <Digest value={approval.claimHash} label="claim hash" />
+          {check.ok !== undefined && (
+            <span className={`inline-flex items-center gap-1.5 text-sm ${check.ok ? 'text-clue-ink' : 'text-mask-ink font-semibold'}`}>
+              {check.ok ? <CheckCircle2 size={16} aria-hidden /> : <XCircle size={16} aria-hidden />}
+              {check.ok
+                ? `Matches the case file (recomputed in this browser${check.alg ? `, ${check.alg}` : ''})`
+                : "Doesn't match the case file. Don't approve."}
+            </span>
           )}
-        </div>
-
-        <div>
-          <dt className="sr-only">Claim</dt>
-          <dd>{report ? <ClaimCard manifest={report.claimManifest} size="xl" /> : <span className="sweep block h-40" />}</dd>
-        </div>
-
-        <div>
-          <dt className="text-muted text-base">Claim hash (goes onchain as claimHash)</dt>
-          <dd className="mt-1">
-            <HashText value={approval.claimHash} size="xl" label="claim hash" />
-          </dd>
-          {hashOk !== undefined && (
-            <dd className={`mt-2 inline-flex items-center gap-2 text-base ${hashOk ? 'text-clue-ink' : 'text-mask-ink'}`}>
-              {hashOk ? <CheckCircle2 size={18} aria-hidden /> : <XCircle size={18} aria-hidden />}
-              {hashOk ? `Matches the case file (recomputed in this browser${recomputed ? `, ${recomputed.alg}` : ''})` : "Doesn't match the case file. Don't approve."}
-            </dd>
-          )}
-        </div>
-
+        </dd>
         {reportSha && (
+          <>
+            <dt className="text-muted">Report SHA-256</dt>
+            <dd>
+              <Digest value={reportSha} label="report SHA-256" />
+            </dd>
+          </>
+        )}
+        <dt className="text-muted">Goes to</dt>
+        <dd>{REGISTRY}</dd>
+      </dl>
+      <TechnicalDetails>
+        <dl className="space-y-3">
           <div>
-            <dt className="text-muted text-base">Report SHA-256 (goes onchain as reportHash)</dt>
-            <dd className="mt-1">
-              <HashText value={reportSha} size="xl" label="report SHA-256" />
+            <dt className="text-muted">Claim hash (onchain claimHash)</dt>
+            <dd>
+              <HashText value={approval.claimHash} label="claim hash" />
             </dd>
           </div>
-        )}
-      </dl>
-
+          {reportSha && (
+            <div>
+              <dt className="text-muted">Report SHA-256 (onchain reportHash)</dt>
+              <dd>
+                <HashText value={reportSha} label="report SHA-256" />
+              </dd>
+            </div>
+          )}
+          {report && (
+            <div>
+              <dt className="text-muted">Token address · schema</dt>
+              <dd className="num break-all">
+                {report.report.identity.address} · v{report.report.schema_version}
+              </dd>
+            </div>
+          )}
+          <div>
+            <dt className="text-muted">Report id · sign-off id</dt>
+            <dd className="num break-all">
+              {approval.reportId} · {approval.id}
+            </dd>
+          </div>
+        </dl>
+      </TechnicalDetails>
       {report && (
-        <p className="mt-6 text-base">
-          <Link href={`/cases/${encodeURIComponent(report.id)}`} className="text-beam-ink underline underline-offset-4">
+        <p className="text-sm">
+          <Link href={caseHref(report.id)} className="text-beam-ink underline underline-offset-4">
             Open the full case file
           </Link>
         </p>
       )}
-    </section>
+    </div>
   );
 }
 
-export function CodePanel({ approval }: { approval: Approval }) {
+function subjectOf(report?: ReportWithRaw) {
+  return report
+    ? `${report.report.identity.symbol} on ${chainName(report.report.identity.chain_id)}`
+    : undefined;
+}
+
+function Card({
+  title,
+  approval,
+  report,
+  reportError,
+}: {
+  title: string;
+  approval: Approval;
+  report?: ReportWithRaw;
+  reportError?: boolean;
+}) {
   return (
-    <section
-      aria-labelledby="code-h"
-      className="bg-surface rounded-2xl border-2 border-[color-mix(in_srgb,var(--ghost-300)_45%,transparent)] p-6 sm:p-8"
-    >
-      <h2 id="code-h" className="text-muted text-xl font-semibold">
-        Reviewer: approve in World App
-      </h2>
-
-      <p className="text-muted mt-6 text-base">Your code</p>
-      <p
-        className="num mt-1 text-5xl font-bold tracking-[0.12em] sm:text-6xl"
-        aria-label={`Code ${approval.userCode?.split('').join(' ')}`}
-      >
-        {approval.userCode ?? '—'}
+    <section aria-label={title} className="glass p-5 sm:p-6">
+      <h2 className="text-muted text-sm font-medium">{title}</h2>
+      <p className="mt-1 text-lg font-semibold">
+        {subjectOf(report) ?? approval.reportId}
+        {report && <span className="text-muted num ml-2 text-sm font-normal">{report.version}</span>}
       </p>
-      <p className="mt-3 text-base">
-        World App shows only the requester and this code. Check the claim above before approving.
-      </p>
-
-      {(approval.verificationUriComplete ?? approval.verificationUri) && (
-        <div className="mt-6 flex flex-col gap-6 sm:flex-row sm:items-center">
-          <div className="w-fit rounded-xl bg-white p-3">
-            <QRCodeSVG
-              value={approval.verificationUriComplete ?? approval.verificationUri!}
-              size={176}
-              marginSize={0}
-              level="M"
-              title="Scan to open World App"
-            />
-          </div>
-          <a
-            href={approval.verificationUri ?? approval.verificationUriComplete}
-            target="_blank"
-            rel="noreferrer"
-            className="bg-beam text-on-beam inline-flex items-center justify-center gap-2 rounded-xl px-6 py-4 text-lg font-semibold hover:brightness-105"
-          >
-            Open World App <ExternalLink size={18} aria-hidden />
-          </a>
-        </div>
-      )}
-
-      <p className="border-line text-muted mt-6 flex items-baseline gap-3 border-t pt-5 text-base">
-        Code expires in{' '}
-        <Countdown
-          to={approval.expiresAt}
-          endedLabel="now"
-          className="text-text text-3xl font-semibold"
-        />
-      </p>
-      <p className="text-muted mt-2 text-sm">This page updates on its own every 2 seconds.</p>
+      <div className="mt-4">
+        <PublishingDetails approval={approval} report={report} reportError={reportError} />
+      </div>
     </section>
   );
 }
+
+/** Pending: the World code step, with "What you're publishing" first. */
+export function CodePanel({
+  approval,
+  report,
+  reportError,
+}: {
+  approval: Approval;
+  report?: ReportWithRaw;
+  reportError?: boolean;
+}) {
+  return (
+    <WorldConfirm
+      hideStepper
+      action="publish"
+      phase="waiting"
+      subject={subjectOf(report)}
+      version={report?.version}
+      consequence="Publishing records this exact claim and report hash onchain. Nothing is published unless you confirm."
+      details={<PublishingDetails approval={approval} report={report} reportError={reportError} />}
+      userCode={approval.userCode}
+      qrValue={approval.verificationUriComplete ?? approval.verificationUri}
+      openUrl={approval.verificationUri ?? approval.verificationUriComplete}
+      expiresAt={approval.expiresAt}
+      noCancelNote="There’s no cancel for a sign-off: the code expires on its own. This page checks every 2 seconds."
+    />
+  );
+}
+
+const again = (a: Approval, label: string) => (
+  <Link href={caseHref(a.reportId)} className={worldButtonClass.primary}>
+    {label} <ArrowRight size={16} aria-hidden />
+  </Link>
+);
 
 export function Result({ approval, simulated }: { approval: Approval; simulated?: boolean }) {
+  const tx = approval.publishTxHash && (
+    <p className="text-[15px]">
+      Publish tx: <TxLink value={approval.publishTxHash} chainId={11155111} simulated={simulated} />
+    </p>
+  );
   switch (approval.status) {
     case 'approved':
       return (
-        <Banner tone="success" size="xl" title="Approved — publishing…">
-          <p>The reviewer approved this exact claim. The backend is publishing it onchain.</p>
-          {approval.publishTxHash && (
-            <p className="mt-3 text-base">
-              Publish tx: <TxLink value={approval.publishTxHash} chainId={11155111} simulated={simulated} />
-            </p>
-          )}
-          <p className="text-muted mt-3 text-base">This page keeps checking every 2 seconds.</p>
-        </Banner>
+        <section
+          aria-labelledby="publishing-h"
+          className="bg-surface flex flex-col items-center rounded-2xl border-2 border-[color-mix(in_srgb,var(--clue-500)_60%,transparent)] px-5 py-10 text-center"
+        >
+          <SniffPose pose="sniffing" size={120} />
+          <h2 id="publishing-h" className="font-display mt-4 text-2xl sm:text-3xl">
+            Approved — publishing…
+          </h2>
+          <p className="mt-2 max-w-[60ch]">The reviewer approved this exact claim. The backend is publishing it onchain.</p>
+          <div className="mt-3 space-y-1">
+            {tx ?? <p className="text-muted text-sm">Transaction pending; the link appears once the backend sends it.</p>}
+          </div>
+          <p role="status" className="text-muted mt-3 text-sm">
+            This page keeps checking every 2 seconds.
+          </p>
+        </section>
       );
     case 'spent':
       return (
-        <Banner tone="success" size="xl" title="Published onchain">
-          {approval.publishTxHash && (
-            <p className="text-base">
-              Publish tx: <TxLink value={approval.publishTxHash} chainId={11155111} simulated={simulated} />
-            </p>
-          )}
+        <section
+          aria-labelledby="published-h"
+          className="bg-surface flex flex-col items-center rounded-2xl border-2 border-[color-mix(in_srgb,var(--clue-500)_60%,transparent)] px-5 py-10 text-center"
+        >
+          <SniffPose pose="triumphant" size={132} />
+          <h2 id="published-h" className="font-display mt-4 text-2xl sm:text-3xl">
+            Published onchain
+          </h2>
+          <div className="mt-3">{tx}</div>
           {approval.onchainReportId && env.protocol === 'v2' && env.chainMode === 'live' ? (
             // V2: the case file links onchain only after the registry's claim hash matches, and a new
             // publication has no market until a per-report vault is deployed.
-            <Link
-              href={`/cases/${encodeURIComponent(approval.reportId)}`}
-              className="bg-beam text-on-beam mt-5 inline-flex items-center gap-2 rounded-xl px-6 py-3 text-lg font-semibold hover:brightness-105"
-            >
-              Open the case file to verify report #{approval.onchainReportId}
-            </Link>
+            <>
+              <Link href={caseHref(approval.reportId)} className={`${worldButtonClass.primary} mt-6`}>
+                Open the case file to verify report #{approval.onchainReportId}
+              </Link>
+              <p className="text-muted mt-2 max-w-[60ch] text-sm">
+                The market opens from the case file once the onchain record checks out and a vault exists.
+              </p>
+            </>
           ) : approval.onchainReportId ? (
-            <Link
-              href={`/case/${approval.onchainReportId}`}
-              className="bg-beam text-on-beam mt-5 inline-flex items-center gap-2 rounded-xl px-6 py-3 text-lg font-semibold hover:brightness-105"
-            >
-              Go to case #{approval.onchainReportId}
+            <Link href={`/case/${approval.onchainReportId}`} className={`${worldButtonClass.primary} mt-6`}>
+              Open market for case #{approval.onchainReportId}
             </Link>
           ) : (
-            <p className="text-muted mt-4 text-base">The case link appears once the backend reports the onchain id.</p>
+            <p className="text-muted mt-4 text-sm">The case link appears once the backend reports the onchain id.</p>
           )}
-        </Banner>
+        </section>
       );
     case 'denied':
       return (
-        <Banner tone="danger" size="xl" title="Denied — no case opened.">
-          <p>Draft only, no market opened.</p>
-          <p className="text-muted mt-2 text-base">The reviewer turned this claim down. Nothing was published onchain.</p>
-        </Banner>
+        <WorldConfirm
+          hideStepper
+          action="publish"
+          phase={approvalPhase('denied')}
+          resultTitle="Denied — no case opened."
+          resultBody={<p>Draft only, no market opened. Nothing was published onchain.</p>}
+          resultAction={again(approval, 'Back to the case file')}
+        />
       );
     case 'expired':
       return (
-        <Banner tone="warning" size="xl" title="Expired — no case opened.">
-          <p className="text-muted text-base">Nobody approved before the code ran out. Request a new approval from the case file.</p>
-        </Banner>
+        <WorldConfirm
+          hideStepper
+          action="publish"
+          phase={approvalPhase('expired')}
+          resultTitle="Expired — no case opened."
+          resultBody="Nobody approved before the code ran out. Nothing was published onchain."
+          resultAction={again(approval, 'Get a new code from the case file')}
+        />
       );
     case 'rejected_not_reviewer':
       return (
-        <Banner tone="danger" size="xl" icon={UserX} title="This World ID isn't an enrolled reviewer — nothing published.">
-          <p className="text-muted text-base">Only enrolled reviewers can approve a claim.</p>
-        </Banner>
+        <WorldConfirm
+          hideStepper
+          action="publish"
+          phase={approvalPhase('rejected_not_reviewer')}
+          resultTitle="This World ID isn't an enrolled reviewer — nothing published."
+          resultBody="Only enrolled reviewers can approve a claim."
+          resultAction={again(approval, 'Back to the case file')}
+        />
       );
     case 'error':
       return (
-        <Banner tone="danger" size="xl" title="World verification unavailable — nothing published.">
-          {approval.detail && <p className="text-muted text-base">{approval.detail}</p>}
-        </Banner>
+        <WorldConfirm
+          hideStepper
+          action="publish"
+          phase={approvalPhase('error')}
+          resultTitle="World verification unavailable — nothing published."
+          detail={approval.detail}
+          resultAction={again(approval, 'Try again from the case file')}
+        />
       );
     default:
       return null;
@@ -370,18 +467,13 @@ export function Result({ approval, simulated }: { approval: Approval; simulated?
 
 function Skeleton() {
   return (
-    <div
-      className="grid gap-8 lg:grid-cols-[1.25fr_1fr]"
-      aria-busy="true"
-      aria-label="Loading sign-off request"
-    >
-      <div className="glass space-y-4 p-8">
-        <div className="sweep h-6 w-1/3" />
-        <div className="sweep h-10 w-full" />
-        <div className="sweep h-20 w-full" />
-        <div className="sweep h-8 w-2/3" />
+    <div className="mx-auto max-w-[880px] space-y-6" aria-label="Loading sign-off request">
+      <div className="sweep h-6 w-1/2 rounded" />
+      <div className="glass space-y-4 p-6">
+        <div className="sweep h-8 w-1/3" />
+        <div className="sweep h-28 w-full" />
       </div>
-      <div className="glass space-y-4 p-8">
+      <div className="glass space-y-4 p-6">
         <div className="sweep h-14 w-2/3" />
         <div className="sweep h-44 w-44" />
       </div>

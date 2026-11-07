@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { Approval } from '@/lib/types';
-import { CodePanel, Result } from './ApproveScreen';
+import { CodePanel, journey, Result } from './ApproveScreen';
 
 const base: Approval = {
   id: 'att-1',
@@ -16,12 +16,22 @@ const base: Approval = {
 const html = (a: Partial<Approval>) => renderToStaticMarkup(<Result approval={{ ...base, ...a }} />);
 
 describe('approve screen states', () => {
-  it('pending: large code, QR of verificationUriComplete, the World App note', () => {
+  it('pending: what you publish first, then the large code, QR, World App link and the code warning', () => {
     const h = renderToStaticMarkup(<CodePanel approval={base} />);
+    expect(h).toContain('Publish onchain');
+    expect(h).toContain("ScoobyDAO report registry on Ethereum Sepolia");
+    expect(h.indexOf('What you’re confirming')).toBeLessThan(h.indexOf('ABCD-1234'));
     expect(h).toContain('ABCD-1234');
-    expect(h).toContain('World App shows only the requester and this code. Check the claim above before approving.');
+    expect(h).toContain('Only enter codes you started on this screen. World App shows only &#x27;ScoobyDAO&#x27; and this code — check the action above.');
     expect(h).toContain('href="https://world.org/device"');
     expect(h).toContain('<svg'); // QR
+    expect(h).toContain('0xaaaaaa…aaaa'); // short claim hash with copy
+  });
+  it('journey stepper: Review done, Publish current, then Onchain', () => {
+    expect(journey('pending').map((s) => s.state)).toEqual(['done', 'current', 'todo']);
+    expect(journey('approved').map((s) => s.state)).toEqual(['done', 'done', 'current']);
+    expect(journey('spent').map((s) => s.state)).toEqual(['done', 'done', 'done']);
+    expect(journey('denied').map((s) => s.state)).toEqual(['done', 'failed', 'todo']);
   });
   it('approved → "Approved — publishing…"', () => expect(html({ status: 'approved' })).toContain('Approved — publishing…'));
   it('spent → "Published onchain" with tx link; in live V2 the button opens the case file, which verifies the onchain record', () => {

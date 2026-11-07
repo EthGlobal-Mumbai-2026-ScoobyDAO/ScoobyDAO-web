@@ -1,19 +1,22 @@
 'use client';
 
 import { ReviewQueue } from '@/components/admin/ReviewQueue';
+import { PageHeader } from '@/components/ui';
+import type { QueueTab } from '@/components/admin/reviewMeta';
 
-export function ReviewDesk() {
+export function ReviewDesk({ view = 'queue' }: { view?: 'queue' | 'decided' }) {
+  const decided = view === 'decided';
   return (
-    <main className="mx-auto max-w-5xl px-4 py-8 sm:py-12">
-      <header className="mb-8">
-        <h1 className="font-display text-4xl sm:text-5xl">Review desk</h1>
-        <p className="text-muted mt-2 max-w-2xl">
-          Reports waiting for review. Press Read and confirm with World ID to open one; each
-          confirmation opens only that report. Only approved versions appear in the public report
-          library.
-        </p>
-      </header>
-      <ReviewQueue />
+    <main className="py-8 sm:py-10">
+      <PageHeader
+        title={decided ? 'Case closed?' : 'Fresh leads'}
+        description={
+          decided
+            ? 'Reports a reviewer approved, rejected or sent back. Only approved versions are public.'
+            : 'Reports waiting for a human. Each one opens with its own World ID confirmation.'
+        }
+      />
+      <ReviewQueue initialTab={(decided ? 'approved' : 'waiting') satisfies QueueTab} />
     </main>
   );
 }

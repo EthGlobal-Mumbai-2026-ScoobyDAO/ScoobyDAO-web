@@ -1,36 +1,18 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ExternalLink, LogOut, ScanEye } from 'lucide-react';
-import { QRCodeSVG } from 'qrcode.react';
+import { Fingerprint, LogOut } from 'lucide-react';
 import { useEffect, useSyncExternalStore, type ReactNode } from 'react';
-import { Banner } from '@/components/Banner';
 import { Countdown } from '@/components/Countdown';
+import { WorldConfirm } from '@/components/ui/WorldConfirm';
 import { ApiError } from '@/lib/api';
-import { adminApi, adminToken, FINAL_SESSION, reportKey, type AdminSession } from '@/lib/adminApi';
+import { adminApi, adminToken, reportKey, type AdminSession } from '@/lib/adminApi';
+import { reportLabel, reviewQueueKey, sessionPhase } from './reviewMeta';
 
 export const readSessionKey = (report: string) => ['admin-session', report] as const;
 
-const ENDED: Record<string, { title: string; body: string }> = {
-  denied: {
-    title: 'Denied in World App',
-    body: 'The report was not opened. Press Read to try again.',
-  },
-  expired: { title: 'The code expired', body: 'Press Read for a new code.' },
-  cancelled: { title: 'Cancelled', body: 'Press Read to try again.' },
-  not_permitted: {
-    title: "This World ID can't review reports",
-    body: 'The confirmed World ID is not an enrolled reviewer. Ask an operator to add it to the reviewer list.',
-  },
-  failed: {
-    title: "World couldn't confirm",
-    body: 'The report was not opened. Press Read to try again.',
-  },
-  revoked: { title: 'Closed', body: 'Press Read to open this report again.' },
-};
-
 /**
- * Read gate for one report version. Pressing Read starts a World login limited to this report; the backend decides
+ * Read gate for one report version. Pressing Open starts a World login limited to this report; the backend decides
  * whether the confirmed World ID may review it. Children render only for an active session for this report, and
  * that session opens nothing else.
  */
@@ -61,6 +43,12 @@ export function ReadGate({
       q.state.data?.state === 'pending' ? Math.max(2, q.state.data.interval ?? 5) * 1000 : false,
     refetchIntervalInBackground: true,
   });
+  // Anonymous list (ids, versions, report hashes): names the report and its hash on the confirm card.
+  const queue = useQuery({
+    queryKey: reviewQueueKey,
+    queryFn: () => adminApi.publicQueue(),
+    refetchInterval: 15_000,
+  });
   const start = useMutation({
     mutationFn: () => adminApi.startSession(id, version),
     onSuccess: (s) => qc.setQueryData(readSessionKey(report), s),
@@ -70,7 +58,7 @@ export function ReadGate({
     onSettled: () => qc.removeQueries({ queryKey: readSessionKey(report) }),
   });
 
-  // An unknown or expired token: forget it and offer Read again.
+  // An unknown or expired token: forget it and offer Open again.
   const unauthorized = session.error instanceof ApiError && session.error.status === 401;
   useEffect(() => {
     if (unauthorized) adminToken.clear(report);
@@ -80,147 +68,80 @@ export function ReadGate({
   if (s?.state === 'active')
     return (
       <>
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 text-sm">
-          <p className="text-muted">
-            Opened with World ID
-            {s.label ? (
-              <>
-                {' '}
-                as <span className="text-text font-semibold">{s.label}</span>
-              </>
-            ) : null}{' '}
-            · this report only
-            {s.expires_at ? (
-              <>
-                {' '}
-                · closes in <Countdown to={s.expires_at} endedLabel="now" />
-              </>
-            ) : null}
-          </p>
-          <button
-            type="button"
-            onClick={() => close.mutate()}
-            className="border-line inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 font-semibold hover:border-[var(--fog-400)]"
-          >
-            <LogOut size={16} aria-hidden /> Close report
-          </button>
-        </div>
+        <SessionBar session={s} onClose={() => close.mutate()} closing={close.isPending} />
         {children(s)}
       </>
     );
 
-  if (s?.state === 'pending')
-    return (
-      <WorldCodePanel
-        title="Read: confirm in World App"
-        userCode={s.user_code}
-        verificationUri={s.verification_uri}
-        expiresAt={s.expires_at}
-        note="Scan the QR code from inside World App (or open the link on the phone with World App) and check that it shows this code. This opens only this report."
-        onCancel={() => close.mutate()}
-      />
-    );
-
-  const ended = s && FINAL_SESSION.includes(s.state) ? ENDED[s.state] : undefined;
+  const item = queue.data?.items.find((i) => i.report_id === id && i.report_version === version);
+  const label = reportLabel(id, version, item?.report_sha256);
   return (
-    <section aria-labelledby="read-h" className="glass max-w-2xl space-y-5 p-6 sm:p-8">
-      <h2 id="read-h" className="font-display text-3xl">
-        Read this report
-      </h2>
-      <p className="text-muted">
-        This report is not public yet. Confirm with World ID to open it; the confirmation opens only
-        this report. Each approval, rejection or revision is confirmed in World App again.
-      </p>
-      {ended && (
-        <Banner tone={s?.state === 'revoked' ? 'info' : 'warning'} title={ended.title}>
-          {s?.detail ?? ended.body}
-        </Banner>
-      )}
-      {start.isError && (
-        <Banner tone="danger" title="Read didn't start">
-          {start.error.message}
-        </Banner>
-      )}
-      <button
-        type="button"
-        onClick={() => start.mutate()}
-        disabled={start.isPending}
-        className="bg-beam text-on-beam inline-flex items-center gap-2 rounded-xl px-5 py-3 font-semibold hover:brightness-105 disabled:opacity-60"
-      >
-        <ScanEye size={18} aria-hidden /> {start.isPending ? 'Starting…' : 'Read with World ID'}
-      </button>
-    </section>
+    <WorldConfirm
+      action="open"
+      phase={sessionPhase(s?.state)}
+      subject={label.name}
+      version={version}
+      digest={item?.report_sha256}
+      digestLabel="Report SHA-256"
+      startTitle="This draft isn’t public yet"
+      startBody="Confirm with World ID to open it. The confirmation opens only this report."
+      startLabel="Open with World ID"
+      onStart={() => start.mutate()}
+      starting={start.isPending}
+      error={start.isError ? `Couldn’t start: ${start.error.message}` : close.isError ? close.error.message : null}
+      userCode={s?.user_code}
+      qrValue={s?.verification_uri}
+      openUrl={s?.verification_uri}
+      expiresAt={s?.expires_at}
+      onCancel={() => close.mutate()}
+      cancelling={close.isPending}
+      detail={s?.detail}
+      onNext={() => start.mutate()}
+    />
   );
 }
 
-/** Code, QR and countdown for a World device login (sign-in or a decision confirmation). */
-export function WorldCodePanel({
-  title,
-  userCode,
-  verificationUri,
-  expiresAt,
-  note,
-  onCancel,
+/** Slim bar under the nav while a report session is open. */
+export function SessionBar({
+  session,
+  onClose,
+  closing,
 }: {
-  title: string;
-  userCode?: string;
-  verificationUri?: string;
-  expiresAt?: number;
-  note: ReactNode;
-  onCancel?: () => void;
+  session: Pick<AdminSession, 'label' | 'expires_at'>;
+  onClose: () => void;
+  closing?: boolean;
 }) {
   return (
-    <section
-      aria-labelledby="world-code-h"
-      className="bg-surface max-w-2xl rounded-2xl border-2 border-[color-mix(in_srgb,var(--ghost-300)_45%,transparent)] p-6 sm:p-8"
-    >
-      <h2 id="world-code-h" className="text-muted text-xl font-semibold">
-        {title}
-      </h2>
-      <p className="text-muted mt-6 text-base">Your code</p>
-      <p
-        className="num mt-1 text-5xl font-bold tracking-[0.12em]"
-        aria-label={`Code ${userCode?.split('').join(' ')}`}
-      >
-        {userCode ?? '—'}
-      </p>
-      <p className="mt-3 text-base">{note}</p>
-      {verificationUri && (
-        <div className="mt-6 flex flex-col gap-6 sm:flex-row sm:items-center">
-          <div className="w-fit rounded-xl bg-white p-3">
-            <QRCodeSVG
-              value={verificationUri}
-              size={176}
-              marginSize={0}
-              level="M"
-              title="Scan with World App"
-            />
-          </div>
-          <a
-            href={verificationUri}
-            target="_blank"
-            rel="noreferrer"
-            className="bg-beam text-on-beam inline-flex items-center justify-center gap-2 rounded-xl px-6 py-4 text-lg font-semibold hover:brightness-105"
-          >
-            Open World App <ExternalLink size={18} aria-hidden />
-          </a>
-        </div>
-      )}
-      {expiresAt && (
-        <p className="border-line text-muted mt-6 flex items-baseline gap-3 border-t pt-5 text-base">
-          Code expires in{' '}
-          <Countdown to={expiresAt} endedLabel="now" className="text-text text-3xl font-semibold" />
+    <div className="border-line sticky top-16 z-30 -mx-4 mb-6 border-b bg-[color-mix(in_srgb,var(--bg)_85%,transparent)] px-4 py-2 backdrop-blur-md sm:-mx-6 sm:px-6">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-sm">
+        <p className="text-muted flex items-center gap-2">
+          <Fingerprint size={16} aria-hidden className="text-clue-ink shrink-0" />
+          <span>
+            Opened with World ID
+            {session.label ? (
+              <>
+                {' '}
+                as <span className="text-text font-semibold">{session.label}</span>
+              </>
+            ) : null}{' '}
+            · this report only
+            {session.expires_at ? (
+              <>
+                {' '}
+                · closes in <Countdown to={session.expires_at} endedLabel="now" className="text-text" />
+              </>
+            ) : null}
+          </span>
         </p>
-      )}
-      {onCancel && (
         <button
           type="button"
-          onClick={onCancel}
-          className="text-muted mt-4 text-sm underline underline-offset-4"
+          onClick={onClose}
+          disabled={closing}
+          className="border-line inline-flex items-center gap-2 rounded-lg border px-3 py-1 font-semibold hover:border-[var(--fog-400)] disabled:opacity-60"
         >
-          Cancel
+          <LogOut size={14} aria-hidden /> {closing ? 'Closing…' : 'Close'}
         </button>
-      )}
-    </section>
+      </div>
+    </div>
   );
 }
