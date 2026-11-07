@@ -7,8 +7,6 @@ import { StatusChip } from '@/components/StatusChip';
 import { HonestyChips, InfoTip, Page, type HonestyFact } from '@/components/ui';
 import type { WebReport } from '@/lib/types';
 import type { MarketView } from '@/protocol';
-import { useChainTime } from '@/protocol/hooks';
-import { KeyDates } from './KeyDates';
 import { choiceKey, linkTargets, useMarketChoices } from './MarketContext';
 import { MarketPicker } from './MarketPicker';
 import { marketTitle } from './marketName';
@@ -41,7 +39,6 @@ export function CaseHeader({
   /** Honesty facts for this screen, shown once as chips under the title. */
   facts?: HonestyFact[];
 }) {
-  const now = useChainTime() ?? m.chainTime;
   const ctx = useMarketChoices();
   const links = useLinkedReports(ctx ? linkTargets(ctx.choices) : [], !!ctx);
   const current = ctx ? choiceKey(ctx) : undefined;
@@ -82,9 +79,6 @@ export function CaseHeader({
         </div>
       </div>
       {chips.length > 0 && <HonestyChips facts={chips} reportId={m.reportId} />}
-      <div className="glass px-5 pt-5 pb-4 sm:pt-10">
-        <KeyDates market={m} now={now} />
-      </div>
       <nav aria-label="Market sections" className="border-line flex gap-1 overflow-x-auto border-b">
         {report && (
           <Link href={`/cases/${encodeURIComponent(report.id)}`} className="text-muted hover:text-text -mb-px shrink-0 border-b-2 border-transparent px-3 py-2.5 text-[15px] whitespace-nowrap">
