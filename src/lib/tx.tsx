@@ -35,8 +35,16 @@ function makeDeps(qc: QueryClient, bundle?: V2Bundle): RunDeps {
       if (!account) throw new Error('Connect a wallet first.');
       const { request } = await simulate(wagmiConfig, { ...decodable(req), account, chainId });
       const client = getPublicClient(wagmiConfig, { chainId: chainId as ChainId }) as PublicClient;
-      const gas = await client.estimateContractGas({ ...decodable(req), account } as never);
-      return write(wagmiConfig, { ...request, gas: withGasMargin(gas) });
+      const [gas, fees] = await Promise.all([
+        client.estimateContractGas({ ...decodable(req), account } as never),
+        chainId === 421614 ? client.estimateFeesPerGas() : Promise.resolve(undefined),
+      ]);
+      // Arbitrum Sepolia's base fee can rise between simulation and eth_sendRawTransaction.
+      // maxFeePerGas is only a ceiling; doubling it does not double the fee actually paid.
+      const arbFeeCap = fees?.maxFeePerGas
+        ? { maxFeePerGas: fees.maxFeePerGas * 2n, maxPriorityFeePerGas: fees.maxPriorityFeePerGas }
+        : {};
+      return write(wagmiConfig, { ...request, gas: withGasMargin(gas), ...arbFeeCap });
     },
     // The receipt is read on the step's own chain; anything but 'success' is replayed for its reason.
     confirm: async (hash, req, chainId) => {
