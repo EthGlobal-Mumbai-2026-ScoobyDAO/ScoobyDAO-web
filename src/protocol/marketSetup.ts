@@ -117,8 +117,16 @@ export async function deployCcipSender(choice: ReportChoice): Promise<Hex> {
   if (!isAddressEqual(owner, account)) throw new Error(`Connect the CCIP factory owner ${owner}.`);
   const call = { address: arbFactory, abi, functionName: 'deploy', args: [market.ccipReceiver, BigInt(choice.id), BigInt(choice.report?.crossChainCutoff ?? 0)], account, chainId: 421614 };
   const { request } = await simulateContract(wagmiConfig, call as never);
-  const gas = await arb.estimateContractGas(call as never);
-  const hash = await writeContract(wagmiConfig, { ...request, gas: gas + gas / 5n } as never);
+  const [gas, fees] = await Promise.all([arb.estimateContractGas(call as never), arb.estimateFeesPerGas()]);
+  // Arbitrum Sepolia's base fee can move between simulation and wallet broadcast. A 2x cap is only
+  // a ceiling (the transaction still pays the actual base fee) and prevents a small rise from making
+  // eth_sendRawTransaction reject the signed transaction before it reaches the chain.
+  const maxFeePerGas = fees.maxFeePerGas ? fees.maxFeePerGas * 2n : undefined;
+  const hash = await writeContract(wagmiConfig, {
+    ...request,
+    gas: gas + gas / 5n,
+    ...(maxFeePerGas ? { maxFeePerGas, maxPriorityFeePerGas: fees.maxPriorityFeePerGas } : {}),
+  } as never);
   const receipt = await waitForTransactionReceipt(wagmiConfig, { hash, chainId: 421614 });
   if (receipt.status !== 'success') throw new Error('CCIP sender deployment reverted.');
   return hash;
