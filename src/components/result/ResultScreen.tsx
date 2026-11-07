@@ -2,8 +2,9 @@
 
 import { CheckCircle2, Circle, CircleDot, FileUp } from 'lucide-react';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { casePath, CaseFrame, CaseHeader, type CaseBase } from '@/components/case/CaseHeader';
+import { useMarketChoices } from '@/components/case/MarketContext';
 import { useCase } from '@/components/case/useCase';
 import { Countdown } from '@/components/Countdown';
 import { WritesBlockedNote } from '@/components/forms';
@@ -34,12 +35,16 @@ import { REPUTATION_BADGE_TITLE, ReputationBadgeCard } from './ReputationBadgeCa
 
 export function ResultScreen({ id, base = '/case' }: { id: string; base?: CaseBase }) {
   const { market, report } = useCase(id, base);
+  const marketChoice = useMarketChoices();
+  const settlementPreview = marketChoice?.deployment === 'original' && marketChoice.id === '1';
   return (
     <CaseFrame state={market}>
       {market.data && (
         <Page>
           <CaseHeader market={market.data} report={report} tab="result" base={base} facts={['testToken', 'simulatedYield', 'estimate']} />
-          {market.data.series === false ? (
+          {settlementPreview ? (
+            <OriginalDemoSettlementPreview market={market.data} />
+          ) : market.data.series === false ? (
             <Card>
               <EmptyState pose="thinking" title="Nothing to settle yet">
                 This report is published onchain, but no market was deployed for it, so there is nothing to settle or claim.
@@ -64,6 +69,126 @@ export function ResultScreen({ id, base = '/case' }: { id: string; base?: CaseBa
         </Page>
       )}
     </CaseFrame>
+  );
+}
+
+const PREVIEW_VERDICT = 'Yes — this token price went down by 80%, and the report had already identified it as suspicious.';
+
+function OriginalDemoSettlementPreview({ market: m }: { market: MarketView }) {
+  const position = usePosition(m.reportId, m.blockNumber);
+  const [stage, setStage] = useState<'proposed' | 'challenge' | 'final'>('proposed');
+  const [challengeEndsAt, setChallengeEndsAt] = useState(0);
+  const [remaining, setRemaining] = useState(60);
+
+  useEffect(() => {
+    if (stage !== 'challenge') return;
+    const tick = () => {
+      const seconds = Math.max(0, Math.ceil((challengeEndsAt - Date.now()) / 1000));
+      setRemaining(seconds);
+      if (seconds === 0) setStage('final');
+    };
+    tick();
+    const timer = window.setInterval(tick, 250);
+    return () => window.clearInterval(timer);
+  }, [challengeEndsAt, stage]);
+
+  const pos = position.data;
+  const losingPool = m.totals.no;
+  const fee = m.totals.yes > 0n && losingPool > 0n ? feeOf(losingPool) : 0n;
+  const perYes = estimatePaid('yes', 'yes', 1_000_000n, m.totals);
+  const yesReturn = pos ? estimatePaid('yes', 'yes', pos.yes, m.totals) : 0n;
+  const totalStake = pos ? pos.yes + pos.no : 0n;
+  const net = yesReturn - totalStake;
+  const startFinalization = () => {
+    setRemaining(60);
+    setChallengeEndsAt(Date.now() + 60_000);
+    setStage('challenge');
+  };
+
+  return (
+    <div className="space-y-6">
+      <Card title="Demo settlement preview">
+        <p className="text-muted text-sm">Frontend preview for Original Demo #1 only. It sends no transaction and does not change the onchain report.</p>
+      </Card>
+
+      {stage === 'final' ? (
+        <section className="glass flex flex-wrap items-center gap-6 p-6" aria-live="polite">
+          <MaskPop claimId="original-demo-1-preview" className="h-36 w-36" />
+          <div>
+            <p className="font-display text-beam-ink text-5xl">Unmasked!</p>
+            <p className="mt-2 text-lg">Preview result: Yes. Each Yes unit returns {formatUsdc(perYes, { exact: true })} dUSD; No returns 0.</p>
+          </div>
+        </section>
+      ) : (
+        <Card title="Proposed verdict">
+          <p className="text-lg font-semibold">{PREVIEW_VERDICT}</p>
+          {stage === 'proposed' ? (
+            <>
+              <p className="text-muted mt-2 text-sm">The preview is ready to enter its one-minute challenge window.</p>
+              <button type="button" onClick={startFinalization} className="bg-beam text-on-beam mt-4 rounded-xl px-4 py-2.5 font-semibold hover:brightness-105">
+                Finalize verdict
+              </button>
+            </>
+          ) : (
+            <div className="mt-4" role="status" aria-live="polite">
+              <p className="text-beam-ink font-semibold">Challenge window · {remaining}s remaining</p>
+              <div className="bg-line mt-2 h-2 overflow-hidden rounded-full">
+                <div className="bg-beam h-full transition-[width] duration-300" style={{ width: `${(remaining / 60) * 100}%` }} />
+              </div>
+              <p className="text-muted mt-2 text-sm">If no challenge is entered, this preview finalizes as Yes automatically.</p>
+            </div>
+          )}
+        </Card>
+      )}
+
+      <div className="grid items-start gap-6 lg:grid-cols-[1.1fr_1fr]">
+        <Card title="Settlement progress">
+          <ol className="space-y-4">
+            <PreviewStep label="Locked" detail="Completed for this preview" done />
+            <PreviewStep label="Matured" detail="Completed for this preview" done />
+            <PreviewStep label="Proposed: YES" detail={PREVIEW_VERDICT} done />
+            <PreviewStep label="Challenge window" detail={stage === 'proposed' ? 'Starts when you select Finalize verdict' : stage === 'challenge' ? `${remaining}s remaining` : 'Closed with no challenge'} done={stage === 'final'} current={stage === 'challenge'} />
+            <PreviewStep label="Final: YES" detail={stage === 'final' ? 'Settlement preview complete' : 'Waiting for the challenge window'} done={stage === 'final'} current={false} />
+          </ol>
+        </Card>
+
+        <div className="space-y-6">
+          <Card title="Market settlement numbers">
+            <KeyValue items={[
+              { label: 'Proposed result', value: <span className="font-semibold">Yes</span> },
+              { label: 'Yes pool', value: <span className="num">{formatUsdc(m.totals.yes)} dUSD</span> },
+              { label: 'No pool', value: <span className="num">{formatUsdc(m.totals.no)} dUSD</span> },
+              { label: 'Fee (20% of losing pool)', value: <span className="num">{formatUsdc(fee)} dUSD</span> },
+              { label: 'Each Yes unit returns', value: <span className="num font-semibold">{formatUsdc(perYes, { exact: true })} dUSD</span> },
+            ]} />
+          </Card>
+
+          <Card title="Your estimated settlement">
+            <LoadState query={position} source="Ethereum Sepolia RPC" skeleton={<div className="sweep h-40" aria-label="Loading your position" />}>
+              {(walletPosition) => <KeyValue items={[
+                { label: 'Your Yes stake', value: <span className="num">{formatUsdc(walletPosition.yes)} dUSD</span> },
+                { label: 'Your No stake', value: <span className="num">{formatUsdc(walletPosition.no)} dUSD</span> },
+                { label: 'Your total staked', value: <span className="num">{formatUsdc(totalStake)} dUSD</span> },
+                { label: 'Estimated Yes return', value: <span className="num font-semibold">{formatUsdc(yesReturn, { exact: true })} dUSD</span> },
+                { label: 'No return', value: <span className="num">0.000000 dUSD</span> },
+                { label: 'Estimated net result', value: <span className={`num font-semibold ${net >= 0n ? 'text-clue-ink' : 'text-mask-ink'}`}>{net >= 0n ? '+' : ''}{formatUsdc(net, { exact: true })} dUSD</span> },
+                { label: 'YT held (separate from verdict)', value: <span className="num">{formatUsdc(walletPosition.yt)} YT</span> },
+                { label: 'LP shares (separate from verdict)', value: <span className="num">{formatUsdc(walletPosition.lpShares)} RF-YLP</span> },
+              ]} />}
+            </LoadState>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PreviewStep({ label, detail, done = false, current = false }: { label: string; detail: string; done?: boolean; current?: boolean }) {
+  return (
+    <li className="flex gap-3">
+      {done ? <CheckCircle2 className="text-clue-ink mt-0.5 shrink-0" size={20} aria-hidden /> : current ? <CircleDot className="text-beam-ink mt-0.5 shrink-0" size={20} aria-hidden /> : <Circle className="text-muted mt-0.5 shrink-0" size={20} aria-hidden />}
+      <div><p className="font-semibold">{label}</p><p className="text-muted text-sm">{detail}</p></div>
+    </li>
   );
 }
 
