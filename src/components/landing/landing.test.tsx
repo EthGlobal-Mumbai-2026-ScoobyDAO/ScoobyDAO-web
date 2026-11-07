@@ -129,3 +129,13 @@ describe('404', () => {
     expect(m).toContain('href="/"');
   });
 });
+
+describe('hashTarget', () => {
+  it('reads the section id from a location hash', async () => {
+    const { hashTarget } = await import('./HashScroll');
+    expect(hashTarget('#how-it-works')).toBe('how-it-works');
+    expect(hashTarget('')).toBeNull();
+    expect(hashTarget('#')).toBeNull();
+    expect(hashTarget('#a%20b')).toBe('a b');
+  });
+});

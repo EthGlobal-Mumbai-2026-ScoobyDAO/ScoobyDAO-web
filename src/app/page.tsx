@@ -1,4 +1,5 @@
 import { Hero } from '@/components/landing/Hero';
+import { HashScroll } from '@/components/landing/HashScroll';
 import { HeroSceneGate } from '@/components/landing/HeroSceneGate';
 import { HowItWorks } from '@/components/landing/HowItWorks';
 import { LiveNow } from '@/components/landing/LiveNow';
@@ -12,6 +13,7 @@ export default async function Home() {
   const reports = await listReportChoices();
   return (
     <main>
+      <HashScroll />
       <Hero scene={<HeroSceneGate />} />
       <Page as="div" className="space-y-16 sm:space-y-24">
         <LiveNow reports={reports} />

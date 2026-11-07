@@ -30,8 +30,41 @@ const deployments = [
   { key: 'original', bundle: v2 },
 ] as const;
 
-/** Enumerate both onchain registries on each request; report IDs are namespaced by registry. */
+// Server-side cache. Reading both registries takes ~2 s of RPC round trips, and every market tab, the landing page
+// and /me need the list, so each navigation used to wait on it. Answers are reused for CHOICES_TTL_MS; after that the
+// cached list is still served immediately while one background refresh runs (stale-while-revalidate). A new report
+// therefore shows up within about a minute. Failures are never cached.
+const CHOICES_TTL_MS = 30_000;
+let cached: { at: number; value: ReportChoice[] } | undefined;
+let inflight: Promise<ReportChoice[]> | undefined;
+
+function refreshChoices(): Promise<ReportChoice[]> {
+  inflight ??= readReportChoices()
+    .then((value) => {
+      cached = { at: Date.now(), value };
+      return value;
+    })
+    .finally(() => {
+      inflight = undefined;
+    });
+  return inflight;
+}
+
+/** Report choices from both onchain registries, cached briefly on the server (see above). */
 export async function listReportChoices(): Promise<ReportChoice[]> {
+  if (!cached) return refreshChoices();
+  if (Date.now() - cached.at > CHOICES_TTL_MS) void refreshChoices().catch(() => undefined);
+  return cached.value;
+}
+
+/** Test hook: drop the cached list. */
+export const resetReportChoicesCache = () => {
+  cached = undefined;
+  inflight = undefined;
+};
+
+/** Enumerate both onchain registries; report IDs are namespaced by registry. */
+async function readReportChoices(): Promise<ReportChoice[]> {
   const client = sepoliaClient();
   const results = await Promise.all(deployments.map(async ({ key, bundle }) => {
     const address = bundle.sepolia.ReportRegistry;

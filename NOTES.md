@@ -60,6 +60,10 @@ Current section; it supersedes older UI notes where they disagree. Protocol logi
 6. No token name or claim text per market onchain; markets without a verified backend report show "Demo market #N".
 7. No "Start investigation" World flow exists (`allowedCaseActions` returns `[]`); WorldConfirm supports the action for when it does.
 
+### Speed and in-page links (7 Nov follow-up)
+- `listReportChoices()` (both onchain registries, ~1.5–2.7 s of RPC reads) ran on every request for `/`, `/markets`, every market tab and `/me`; `/markets` paid it twice because of its redirect. It is now cached on the server for 30 s with stale-while-revalidate and a shared in-flight read (`src/protocol/reportDiscovery.ts`, tests in `reportDiscovery.test.ts`). Warm market pages went from 1.3–2.7 s to 30–65 ms; a newly published report appears within about a minute.
+- "How it works" from another page landed at the top of `/`: Next's hash scroll ran while the route was still loading, and the Live now cards then pushed the section down. `src/components/landing/HashScroll.tsx` scrolls to the hash after mount and keeps the section aligned for up to 3 s while the layout settles, stopping as soon as the user scrolls. Checked from /reports and a market page at 1440 px and from the mobile menu at 375 px: the section lands under the nav.
+
 ### QA tooling
 - `scripts/shot.mjs <path> <out.png> [w] [h] [dark|light] [--full]`: Playwright screenshot helper (uses Playwright from `../deck/build`). Revamp screenshots are in `screenshots/revamp/` (per-area work shots) and `screenshots/revamp/final/` (every route at 1440×900, 768×1024 and 375×812, dark and light).
 - `scripts/axe.mjs [paths…]`: axe-core via Playwright in both themes; exits 1 on serious/critical violations. (The spec said an axe script existed; it didn't, so this was added.)
