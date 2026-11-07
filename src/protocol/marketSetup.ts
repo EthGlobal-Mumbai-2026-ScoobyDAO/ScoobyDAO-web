@@ -48,7 +48,12 @@ async function send(address: Address, abi: Abi, functionName: string, args: unkn
   return hash;
 }
 
-export type SetupState = { series: { vault: Address; yt: Address; rep: Address }; market: { hook: Address } };
+export type SetupState = {
+  series: { vault: Address; yt: Address; rep: Address };
+  market: { hook: Address; ccipReceiver: Address };
+  sender: Address;
+  sourceSender: Address;
+};
 export async function setupState(choice: ReportChoice): Promise<SetupState> {
   const registry = registryFor(choice.deployment);
   const reportId = BigInt(choice.id);
@@ -56,7 +61,15 @@ export async function setupState(choice: ReportChoice): Promise<SetupState> {
     client().readContract({ address: seriesFactory, abi: series, functionName: 'getSeries', args: [registry, reportId] }),
     client().readContract({ address: poolCatalog, abi: catalog, functionName: 'getMarket', args: [registry, reportId] }),
   ]);
-  return { series: s as SetupState['series'], market: m as SetupState['market'] };
+  const market = m as SetupState['market'];
+  const arb = getPublicClient(wagmiConfig, { chainId: 421614 });
+  const sender = market.ccipReceiver !== zeroAddress && arb
+    ? await arb.readContract({ address: arbFactory, abi: senderFactoryAbi as Abi, functionName: 'senderForReceiver', args: [market.ccipReceiver] }).catch(() => zeroAddress) as Address
+    : zeroAddress;
+  const sourceSender = market.ccipReceiver !== zeroAddress
+    ? await client().readContract({ address: market.ccipReceiver, abi: receiverAbi as Abi, functionName: 'sourceSender' }).catch(() => zeroAddress) as Address
+    : zeroAddress;
+  return { series: s as SetupState['series'], market, sender, sourceSender };
 }
 
 export async function prepareMarket(choice: ReportChoice, treasury: Address): Promise<Hex> {
@@ -94,14 +107,15 @@ export async function activateMarket(choice: ReportChoice, hook: Address): Promi
 export async function deployCcipSender(choice: ReportChoice): Promise<Hex> {
   const registry = registryFor(choice.deployment);
   const account = await publisher(registry);
-  if (!choice.market) throw new Error('Activate the market first.');
+  const market = (await setupState(choice)).market;
+  if (market.hook === zeroAddress || market.ccipReceiver === zeroAddress) throw new Error('Activate the market first.');
   if (getAccount(wagmiConfig).chainId !== 421614) await switchChain(wagmiConfig, { chainId: 421614 });
   const arb = getPublicClient(wagmiConfig, { chainId: 421614 });
   if (!arb) throw new Error('Arbitrum Sepolia RPC unavailable.');
   const abi = senderFactoryAbi as Abi;
   const owner = await arb.readContract({ address: arbFactory, abi, functionName: 'owner' }) as Address;
   if (!isAddressEqual(owner, account)) throw new Error(`Connect the CCIP factory owner ${owner}.`);
-  const call = { address: arbFactory, abi, functionName: 'deploy', args: [choice.market.ccipReceiver, BigInt(choice.id), BigInt(choice.report?.crossChainCutoff ?? 0)], account, chainId: 421614 };
+  const call = { address: arbFactory, abi, functionName: 'deploy', args: [market.ccipReceiver, BigInt(choice.id), BigInt(choice.report?.crossChainCutoff ?? 0)], account, chainId: 421614 };
   const { request } = await simulateContract(wagmiConfig, call as never);
   const gas = await arb.estimateContractGas(call as never);
   const hash = await writeContract(wagmiConfig, { ...request, gas: gas + gas / 5n } as never);
@@ -113,10 +127,11 @@ export async function deployCcipSender(choice: ReportChoice): Promise<Hex> {
 export async function configureCcipReceiver(choice: ReportChoice): Promise<Hex> {
   const registry = registryFor(choice.deployment);
   const account = await publisher(registry);
-  if (!choice.market) throw new Error('Activate the market first.');
+  const market = (await setupState(choice)).market;
+  if (market.hook === zeroAddress || market.ccipReceiver === zeroAddress) throw new Error('Activate the market first.');
   const arb = getPublicClient(wagmiConfig, { chainId: 421614 });
   if (!arb) throw new Error('Arbitrum Sepolia RPC unavailable.');
-  const sender = await arb.readContract({ address: arbFactory, abi: senderFactoryAbi as Abi, functionName: 'senderForReceiver', args: [choice.market.ccipReceiver] }) as Address;
+  const sender = await arb.readContract({ address: arbFactory, abi: senderFactoryAbi as Abi, functionName: 'senderForReceiver', args: [market.ccipReceiver] }) as Address;
   if (sender === zeroAddress) throw new Error('Deploy the Arbitrum CCIP sender first.');
-  return send(choice.market.ccipReceiver as Address, receiverAbi as Abi, 'configureSourceSender', [sender], account);
+  return send(market.ccipReceiver, receiverAbi as Abi, 'configureSourceSender', [sender], account);
 }

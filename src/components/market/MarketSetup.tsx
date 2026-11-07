@@ -21,19 +21,21 @@ export function MarketSetup({ choice }: { choice: ReportChoice }) {
   useEffect(() => { let live = true; void setupState(choice).then(s => { if (live) setState(s); }).catch(e => { if (live) setError(String(e)); }); return () => { live = false; }; }, [choice]);
   const prepared = !!state && state.series.vault !== zeroAddress;
   const activated = !!state && state.market.hook !== zeroAddress;
-  const senderDeployed = !!choice.sender && choice.sender !== zeroAddress;
+  const senderDeployed = !!state && state.sender !== zeroAddress;
+  const ccipReady = senderDeployed && state?.sourceSender.toLowerCase() === state?.sender.toLowerCase();
   async function run(fn: () => Promise<Hex>) {
     setBusy(true); setError('');
     try { const tx = await fn(); setLastTx(tx); setState(await setupState(choice)); router.refresh(); }
     catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); }
   }
+  if (state && activated && ccipReady) return null;
   return <section className="border-line space-y-3 rounded-[14px] border border-dashed p-5" aria-labelledby="setup-h">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <h2 id="setup-h" className="text-lg font-semibold">Market setup <span className="text-muted text-sm font-normal">· publisher only</span></h2>
-      <span className="text-muted text-[13px]">{!choice.tradable ? 'No market deployed yet' : 'Cross-chain staking not set up yet'}</span>
+      <span className="text-muted text-[13px]">{!activated ? 'No market deployed yet' : 'Cross-chain staking not set up yet'}</span>
     </div>
-    <p className="text-muted text-sm">{!choice.tradable ? 'The report is published. Its publisher can deploy the stake vault and yield market here before the lock.' : 'Local staking and trading work. The publisher can still connect Arbitrum Sepolia staking via Chainlink CCIP.'}</p>
+    <p className="text-muted text-sm">{!activated ? 'The report is published. Its publisher can deploy the stake vault and yield market here before the lock.' : 'Local staking and trading work. The publisher can still connect Arbitrum Sepolia staking via Chainlink CCIP.'}</p>
     <Disclosure summary="Show setup steps">
     <div className="space-y-4">
     <ConnectButton />
@@ -50,8 +52,8 @@ export function MarketSetup({ choice }: { choice: ReportChoice }) {
       {activated && <li>{senderDeployed ? 'Arbitrum CCIP sender deployed' : 'Deploy the Arbitrum CCIP sender'}
         {!senderDeployed && <div className="mt-2"><button type="button" disabled={busy || !address} className="bg-beam text-on-beam rounded-lg px-3 py-2 disabled:opacity-50" onClick={() => void run(() => deployCcipSender(choice))}>Deploy CCIP sender</button></div>}
       </li>}
-      {activated && <li>{choice.ccipReady ? 'Sepolia receiver trusts this sender' : 'Configure the Sepolia receiver to trust the sender'}
-        {senderDeployed && !choice.ccipReady && <div className="mt-2"><button type="button" disabled={busy || !address} className="bg-beam text-on-beam rounded-lg px-3 py-2 disabled:opacity-50" onClick={() => void run(() => configureCcipReceiver(choice))}>Configure receiver</button></div>}
+      {activated && <li>{ccipReady ? 'Sepolia receiver trusts this sender' : 'Configure the Sepolia receiver to trust the sender'}
+        {senderDeployed && !ccipReady && <div className="mt-2"><button type="button" disabled={busy || !address} className="bg-beam text-on-beam rounded-lg px-3 py-2 disabled:opacity-50" onClick={() => void run(() => configureCcipReceiver(choice))}>Configure receiver</button></div>}
       </li>}
     </ol>
     <p className="text-muted text-sm">After activation, stake dUSD to mint YT, then add dUSD and YT liquidity on Trade YT so swaps can execute. Complete CCIP setup before the remote cutoff.</p>
